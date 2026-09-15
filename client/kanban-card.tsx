@@ -143,53 +143,45 @@ export function KanbanCard({
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (
           _e: GestureResponderEvent,
           gestureState: PanResponderGestureState
         ) => {
-          const moved =
-            Math.abs(gestureState.dx) > 4 || Math.abs(gestureState.dy) > 4;
-          return moved;
+          return Math.abs(gestureState.dx) > 6 || Math.abs(gestureState.dy) > 6;
+        },
+        onMoveShouldSetPanResponderCapture: (
+          _e: GestureResponderEvent,
+          gestureState: PanResponderGestureState
+        ) => {
+          return Math.abs(gestureState.dx) > 6 || Math.abs(gestureState.dy) > 6;
         },
         onPanResponderGrant: () => {
-          dragThresholdPassed.current = false;
+          dragThresholdPassed.current = true;
+          onDragStart(task.id, task.laneId);
         },
         onPanResponderMove: (
           _e: GestureResponderEvent,
           gestureState: PanResponderGestureState
         ) => {
-          if (!dragThresholdPassed.current) {
-            const dist = Math.hypot(gestureState.dx, gestureState.dy);
-            if (dist > 6) {
-              dragThresholdPassed.current = true;
-              onDragStart(task.id, task.laneId);
-            }
-          }
-          if (dragThresholdPassed.current) {
-            onDragMove(
-              gestureState.dx,
-              gestureState.dy,
-              gestureState.moveX,
-              gestureState.moveY
-            );
-          }
+          onDragMove(
+            gestureState.dx,
+            gestureState.dy,
+            gestureState.moveX,
+            gestureState.moveY
+          );
         },
         onPanResponderRelease: () => {
           const didDrag = dragThresholdPassed.current;
           dragThresholdPassed.current = false;
           onDragEnd(didDrag);
-          if (!didDrag) {
-            onPress();
-          }
         },
         onPanResponderTerminate: () => {
-          const didDrag = dragThresholdPassed.current;
           dragThresholdPassed.current = false;
           onDragEnd(false);
         },
       }),
-    [task.id, task.laneId, onDragStart, onDragMove, onDragEnd, onPress]
+    [task.id, task.laneId, onDragStart, onDragMove, onDragEnd]
   );
 
   const otherLanes = useMemo(
@@ -198,13 +190,24 @@ export function KanbanCard({
   );
 
   return (
-    <View style={styles.card} {...panResponder.panHandlers}>
+    <Pressable
+      style={styles.card}
+      onPress={() => {
+        if (!dragThresholdPassed.current) {
+          onPress();
+        }
+      }}
+      {...panResponder.panHandlers}
+    >
       <View style={styles.cardHeader}>
         <Text style={styles.title} numberOfLines={2}>
           {task.title}
         </Text>
         <Pressable
-          onPress={() => setShowMoveMenu((v) => !v)}
+          onPress={(e) => {
+            e.stopPropagation();
+            setShowMoveMenu((v) => !v);
+          }}
           style={styles.moveButton}
           hitSlop={8}
         >
@@ -245,6 +248,6 @@ export function KanbanCard({
           ))}
         </View>
       )}
-    </View>
+    </Pressable>
   );
 }

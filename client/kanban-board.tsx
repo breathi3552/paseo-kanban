@@ -26,6 +26,7 @@ import { useProjects, getProjectDisplayName } from "./use-projects";
 import { KanbanCard } from "./kanban-card";
 import { TaskModal, type TaskSaveSession, type TaskDeleteSession } from "./task-modal";
 import { LaneModal, type LaneSaveSession, type LaneDeleteSession } from "./lane-modal";
+import { findHoveredLaneId } from "./drag-hit-test";
 
 interface ActiveTaskSession {
   mode: "create" | "edit";
@@ -59,8 +60,9 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
   const laneLayouts = useRef<
     Record<string, { x: number; y: number; width: number; height: number }>
   >({});
+  const containerBoundsRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const containerRef = useRef<View | null>(null);
   const scrollOffsetRef = useRef(0);
-
   const isReady = settings.status === "ready";
   const board = isReady ? settings.values : null;
   const revision = isReady ? settings.revision : "";
@@ -302,24 +304,39 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
   }, [board, selectedProjectId]);
 
   // Handle Drag Move & Hit Testing
+  const updateContainerBounds = () => {
+    if (containerRef.current?.measureInWindow) {
+      containerRef.current.measureInWindow((wx, wy, ww, wh) => {
+        if (ww > 0 && wh > 0) {
+          containerBoundsRef.current = { x: wx, y: wy, width: ww, height: wh };
+        }
+      });
+    }
+  };
+
   const handleDragStart = (taskId: string, laneId: string) => {
+    updateContainerBounds();
     setDraggingTaskId(taskId);
     setDraggingSourceLaneId(laneId);
     setHoveredLaneId(laneId);
   };
 
-  const handleDragMove = (_dx: number, _dy: number, pageX: number) => {
-    const relativeX = pageX - (layout.compact ? 10 : 16) + scrollOffsetRef.current;
-    let foundLaneId: string | null = null;
-    for (const [id, rect] of Object.entries(laneLayouts.current)) {
-      if (relativeX >= rect.x && relativeX <= rect.x + rect.width) {
-        foundLaneId = id;
-        break;
-      }
-    }
-    if (foundLaneId) {
-      setHoveredLaneId(foundLaneId);
-    }
+  const handleDragMove = (_dx: number, _dy: number, moveX: number, moveY: number) => {
+    if (!board) return;
+    const laneItems = board.lanes.map((l) => ({
+      id: l.id,
+      rect: laneLayouts.current[l.id] ?? { x: 0, y: 0, width: 0, height: 0 },
+    }));
+
+    const hitLaneId = findHoveredLaneId({
+      pointerX: moveX,
+      pointerY: moveY,
+      containerBounds: containerBoundsRef.current,
+      scrollX: scrollOffsetRef.current,
+      lanes: laneItems,
+    });
+
+    setHoveredLaneId(hitLaneId);
   };
 
   const handleDragEnd = async (didDrag: boolean) => {
@@ -331,7 +348,13 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
     setDraggingSourceLaneId(null);
     setHoveredLaneId(null);
 
-    if (didDrag && currentTaskId && targetLane && targetLane !== currentSourceLaneId && board) {
+    if (
+      didDrag &&
+      currentTaskId &&
+      targetLane &&
+      targetLane !== currentSourceLaneId &&
+      board
+    ) {
       try {
         const nextBoard = moveTask(board, currentTaskId, targetLane);
         await settings.save(nextBoard, revision);
@@ -340,7 +363,6 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
       }
     }
   };
-
   // State operations with session baseline locking
   const handleSaveTask = async (session: TaskSaveSession): Promise<boolean> => {
     const { mode, baseBoard, baseRevision, taskData } = session;
@@ -625,9 +647,19 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
 
       {/* Main Board Lanes */}
       <ScrollView
+        ref={(r) => {
+          containerRef.current = r as unknown as View;
+        }}
         horizontal
         style={styles.lanesContainer}
         contentContainerStyle={styles.lanesContent}
+        onLayout={(e) => {
+          const { x, y, width, height } = e.nativeEvent.layout;
+          if (!containerBoundsRef.current) {
+            containerBoundsRef.current = { x, y, width, height };
+          }
+          updateContainerBounds();
+        }}
         onScroll={(e) => {
           scrollOffsetRef.current = e.nativeEvent.contentOffset.x;
         }}
@@ -718,7 +750,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                           defaultProjectId: task.projectId,
                         });
                       }}
-                      onMoveToLane={(targetId) => handleMoveTaskDirectly(task.id, targetId)}
+                      onMoveToLane={(targetId: string) => handleMoveTaskDirectly(task.id, targetId)}
                       onDragStart={handleDragStart}
                       onDragMove={handleDragMove}
                       onDragEnd={handleDragEnd}
