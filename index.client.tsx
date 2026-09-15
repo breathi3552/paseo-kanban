@@ -10,21 +10,5 @@ export default function contribute(client: PluginClientContext) {
     surface: "kanban",
   });
 
-  client.addWorkspacePanel({
-    id: "kanban",
-    title: "看板",
-    icon: "PanelsTopLeft",
-    context: "workspace",
-    locations: ["workspace", "explorer"],
-    Component: KanbanBoardView,
-  });
-
-  client.addSettingsScreen({
-    id: "kanban",
-    title: "看板",
-    icon: "PanelsTopLeft",
-    Component: KanbanBoardView,
-  });
-
   return () => {};
 }
