@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { Modal, TextInput, Icon } from "@getpaseo/plugin/client/react-native";
+import { Modal, TextInput, Icon, ScrollView } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanLane, KanbanTask, KanbanSubtask, KanbanBoard } from "../shared/kanban";
 import type { ProjectItem } from "./use-projects";
@@ -95,6 +95,14 @@ export function TaskModal({
   const styles = useMemo(
     () =>
       StyleSheet.create({
+        modalBody: {
+          flex: 1,
+          minHeight: 0,
+        },
+        scrollBody: {
+          flex: 1,
+          minHeight: 0,
+        },
         container: {
           gap: layout.compact ? 12 : 16,
         },
@@ -244,6 +252,7 @@ export function TaskModal({
           justifyContent: "flex-end",
           gap: 10,
           marginTop: 10,
+          flexShrink: 0,
         },
         cancelButton: {
           paddingHorizontal: 16,
@@ -349,7 +358,6 @@ export function TaskModal({
 
     setIsSaving(true);
     setErrorMessage(null);
-
     const taskId =
       mode === "edit" && task
         ? task.id
@@ -361,25 +369,30 @@ export function TaskModal({
       completed: s.completed,
     }));
 
-    const success = await onSave({
-      mode,
-      baseBoard,
-      baseRevision,
-      taskData: {
-        id: taskId,
-        title: trimmedTitle,
-        description: description.trim(),
-        laneId,
-        projectId,
-        subtasks: sanitizedSubtasks,
-      },
-    });
-
-    setIsSaving(false);
-    if (success) {
-      onClose();
-    } else {
-      setErrorMessage("保存失败：数据已被修改或已被删除，存在版本冲突。草稿已保留，请核实后再试。");
+    try {
+      const success = await onSave({
+        mode,
+        baseBoard,
+        baseRevision,
+        taskData: {
+          id: taskId,
+          title: trimmedTitle,
+          description: description.trim(),
+          laneId,
+          projectId,
+          subtasks: sanitizedSubtasks,
+        },
+      });
+      setIsSaving(false);
+      if (success) {
+        onClose();
+      } else {
+        setErrorMessage("保存失败：数据已被修改或已被删除，存在版本冲突。草稿已保留，请核实后再试。");
+      }
+    } catch (err: unknown) {
+      const errStr = err instanceof Error ? err.message : String(err);
+      setIsSaving(false);
+      setErrorMessage(`保存发生异常: ${errStr}`);
     }
   };
 
@@ -406,11 +419,21 @@ export function TaskModal({
       icon={<Icon name="PanelsTopLeft" size={18} color={theme.colors.foreground} />}
       open={open}
       onOpenChange={(next) => {
-        if (!next && !isSaving) onClose();
+        if (!next && !isSaving) {
+          onClose();
+        }
       }}
     >
-      <Modal.Content style={{ backgroundColor: theme.colors.surface0 }}>
-        <View style={styles.container}>
+      <Modal.Content
+        scrollable={false}
+        style={{ backgroundColor: theme.colors.surface0 }}
+        contentContainerStyle={styles.modalBody}
+      >
+        <ScrollView
+          style={styles.scrollBody}
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+        >
           {errorMessage && (
             <View style={styles.errorBanner}>
               <Text style={styles.errorText}>{errorMessage}</Text>
@@ -561,24 +584,17 @@ export function TaskModal({
                 onChangeText={setNewSubtaskTitle}
                 onSubmitEditing={handleAddSubtask}
               />
-              <Pressable onPress={handleAddSubtask} style={styles.smallButton}>
+              <Pressable
+                accessibilityRole="button"
+                testID="kanban-add-subtask-button"
+                onPress={handleAddSubtask}
+                style={styles.smallButton}
+              >
                 <Text style={styles.smallButtonText}>添加</Text>
               </Pressable>
             </View>
           </View>
 
-          <View style={styles.buttonRow}>
-            <Pressable onPress={onClose} style={styles.cancelButton} disabled={isSaving}>
-              <Text style={styles.cancelButtonText}>取消</Text>
-            </Pressable>
-            <Pressable
-              onPress={handleSave}
-              style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
-              disabled={isSaving}
-            >
-              <Text style={styles.saveButtonText}>{isSaving ? "保存中..." : "保存"}</Text>
-            </Pressable>
-          </View>
 
           {mode === "edit" && task && onDelete && (
             <View style={styles.deleteSection}>
@@ -588,6 +604,8 @@ export function TaskModal({
                     确定删除该任务吗？
                   </Text>
                   <Pressable
+                    accessibilityRole="button"
+                    testID="kanban-confirm-delete-task-button"
                     onPress={handleDelete}
                     style={[styles.deleteButton, { backgroundColor: theme.colors.statusDanger }]}
                     disabled={isSaving}
@@ -597,6 +615,8 @@ export function TaskModal({
                     </Text>
                   </Pressable>
                   <Pressable
+                    accessibilityRole="button"
+                    testID="kanban-cancel-delete-task-button"
                     onPress={() => setShowDeleteConfirm(false)}
                     style={styles.cancelButton}
                   >
@@ -605,6 +625,8 @@ export function TaskModal({
                 </View>
               ) : (
                 <Pressable
+                  accessibilityRole="button"
+                  testID="kanban-delete-task-button"
                   onPress={() => setShowDeleteConfirm(true)}
                   style={styles.deleteButton}
                 >
@@ -613,7 +635,28 @@ export function TaskModal({
               )}
             </View>
           )}
-        </View>
+        </ScrollView>
+          <View style={styles.buttonRow}>
+            <Pressable
+              accessibilityRole="button"
+              testID="kanban-cancel-task-button"
+              onPress={onClose}
+              style={styles.cancelButton}
+              disabled={isSaving}
+            >
+              <Text style={styles.cancelButtonText}>取消</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="保存"
+              testID="kanban-save-task-button"
+              onPress={handleSave}
+              style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
+              disabled={isSaving}
+            >
+              <Text style={styles.saveButtonText}>{isSaving ? "保存中..." : "保存"}</Text>
+            </Pressable>
+          </View>
       </Modal.Content>
     </Modal>
   );

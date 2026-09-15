@@ -418,7 +418,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
         setActiveTaskSession(null);
       }
       return saved;
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Save task failed:", err);
       return false;
     }
