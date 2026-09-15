@@ -108,3 +108,30 @@ test("findHoveredLaneId: accounts for horizontal scroll offset correctly", () =>
   });
   assert.equal(hitScrolled, "in-progress", "Must correctly hit lane 2 after horizontal scroll");
 });
+
+test("findHoveredLaneId: moving over target lane then releasing in toolbar returns null", () => {
+  // Step 1: Pointer moved into in-progress lane
+  const hitInProgress = findHoveredLaneId({
+    pointerX: 340,
+    pointerY: 130,
+    containerBounds: mockContainer,
+    scrollX: 0,
+    lanes: mockLanes,
+  });
+  assert.equal(hitInProgress, "in-progress");
+
+  // Step 2: Pointer continues moving into top toolbar (pointerY = 30 < container.y = 80)
+  // On release, synchronous recalculation with final coordinates must return null
+  const finalReleaseHit = findHoveredLaneId({
+    pointerX: 340,
+    pointerY: 30,
+    containerBounds: mockContainer,
+    scrollX: 0,
+    lanes: mockLanes,
+  });
+  assert.equal(
+    finalReleaseHit,
+    null,
+    "Release in toolbar area must evaluate to null and prevent move"
+  );
+});

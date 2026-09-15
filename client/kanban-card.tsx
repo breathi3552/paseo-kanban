@@ -1,17 +1,17 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
   PanResponder,
-  type GestureResponderEvent,
-  type PanResponderGestureState,
 } from "react-native";
+import { Icon } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanTask, KanbanLane } from "../shared/kanban";
 
 type PluginTheme = PluginSurfaceProps["theme"];
+
 interface KanbanCardProps {
   task: KanbanTask;
   projectDisplayName: string | null;
@@ -21,9 +21,9 @@ interface KanbanCardProps {
   isDraggingThis: boolean;
   onPress: () => void;
   onMoveToLane: (targetLaneId: string) => void;
-  onDragStart: (taskId: string, laneId: string) => void;
-  onDragMove: (dx: number, dy: number, pageX: number, pageY: number) => void;
-  onDragEnd: (didDrag: boolean) => void;
+  onDragStart: (taskId: string, laneId: string, startX: number, startY: number) => void;
+  onDragMove: (dx: number, dy: number, moveX: number, moveY: number) => void;
+  onDragEnd: (didDrag: boolean, finalMoveX: number, finalMoveY: number) => void;
 }
 
 export function KanbanCard({
@@ -40,7 +40,12 @@ export function KanbanCard({
   onDragEnd,
 }: KanbanCardProps) {
   const [showMoveMenu, setShowMoveMenu] = useState(false);
-  const dragThresholdPassed = useRef(false);
+
+  // Sync ref to always hold latest callbacks and task, avoiding recreating PanResponder on re-renders
+  const callbacksRef = useRef({ onDragStart, onDragMove, onDragEnd, task });
+  useEffect(() => {
+    callbacksRef.current = { onDragStart, onDragMove, onDragEnd, task };
+  });
 
   const completedSubtasksCount = useMemo(
     () => task.subtasks.filter((s) => s.completed).length,
@@ -61,9 +66,14 @@ export function KanbanCard({
         },
         cardHeader: {
           flexDirection: "row",
-          justifyContent: "space-between",
           alignItems: "flex-start",
           gap: 6,
+        },
+        dragHandle: {
+          paddingHorizontal: 2,
+          paddingVertical: 2,
+          justifyContent: "center",
+          alignItems: "center",
         },
         title: {
           flex: 1,
@@ -140,49 +150,40 @@ export function KanbanCard({
     [theme, layout.compact, isDraggingThis, task.subtasks.length, completedSubtasksCount]
   );
 
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (
-          _e: GestureResponderEvent,
-          gestureState: PanResponderGestureState
-        ) => {
-          return Math.abs(gestureState.dx) > 6 || Math.abs(gestureState.dy) > 6;
-        },
-        onMoveShouldSetPanResponderCapture: (
-          _e: GestureResponderEvent,
-          gestureState: PanResponderGestureState
-        ) => {
-          return Math.abs(gestureState.dx) > 6 || Math.abs(gestureState.dy) > 6;
-        },
-        onPanResponderGrant: () => {
-          dragThresholdPassed.current = true;
-          onDragStart(task.id, task.laneId);
-        },
-        onPanResponderMove: (
-          _e: GestureResponderEvent,
-          gestureState: PanResponderGestureState
-        ) => {
-          onDragMove(
-            gestureState.dx,
-            gestureState.dy,
-            gestureState.moveX,
-            gestureState.moveY
-          );
-        },
-        onPanResponderRelease: () => {
-          const didDrag = dragThresholdPassed.current;
-          dragThresholdPassed.current = false;
-          onDragEnd(didDrag);
-        },
-        onPanResponderTerminate: () => {
-          dragThresholdPassed.current = false;
-          onDragEnd(false);
-        },
-      }),
-    [task.id, task.laneId, onDragStart, onDragMove, onDragEnd]
-  );
+  // PanResponder is created ONCE and never recreated during re-renders,
+  // reading all latest state and callbacks through callbacksRef.
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (_e, gestureState) => {
+        const { onDragStart, task: currentTask } = callbacksRef.current;
+        onDragStart(
+          currentTask.id,
+          currentTask.laneId,
+          gestureState.x0,
+          gestureState.y0
+        );
+      },
+      onPanResponderMove: (_e, gestureState) => {
+        const { onDragMove } = callbacksRef.current;
+        onDragMove(
+          gestureState.dx,
+          gestureState.dy,
+          gestureState.moveX,
+          gestureState.moveY
+        );
+      },
+      onPanResponderRelease: (_e, gestureState) => {
+        const { onDragEnd } = callbacksRef.current;
+        onDragEnd(true, gestureState.moveX, gestureState.moveY);
+      },
+      onPanResponderTerminate: () => {
+        const { onDragEnd } = callbacksRef.current;
+        onDragEnd(false, 0, 0);
+      },
+    })
+  ).current;
 
   const otherLanes = useMemo(
     () => lanes.filter((l) => l.id !== task.laneId),
@@ -190,19 +191,21 @@ export function KanbanCard({
   );
 
   return (
-    <Pressable
-      style={styles.card}
-      onPress={() => {
-        if (!dragThresholdPassed.current) {
-          onPress();
-        }
-      }}
-      {...panResponder.panHandlers}
-    >
+    <Pressable style={styles.card} onPress={onPress}>
       <View style={styles.cardHeader}>
+        <View
+          style={styles.dragHandle}
+          accessibilityRole="button"
+          accessibilityLabel="拖动手柄"
+          {...panResponder.panHandlers}
+        >
+          <Icon name="GripVertical" size={14} color={theme.colors.foregroundMuted} />
+        </View>
+
         <Text style={styles.title} numberOfLines={2}>
           {task.title}
         </Text>
+
         <Pressable
           onPress={(e) => {
             e.stopPropagation();

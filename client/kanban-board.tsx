@@ -56,6 +56,13 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [draggingSourceLaneId, setDraggingSourceLaneId] = useState<string | null>(null);
   const [hoveredLaneId, setHoveredLaneId] = useState<string | null>(null);
+  // Active drag session ref for synchronous tracking across re-renders and release recalculation
+  const activeDragSessionRef = useRef<{
+    taskId: string;
+    sourceLaneId: string;
+    lastMoveX: number;
+    lastMoveY: number;
+  } | null>(null);
 
   const laneLayouts = useRef<
     Record<string, { x: number; y: number; width: number; height: number }>
@@ -313,16 +320,24 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
       });
     }
   };
-
-  const handleDragStart = (taskId: string, laneId: string) => {
+  const handleDragStart = (taskId: string, laneId: string, startX: number, startY: number) => {
     updateContainerBounds();
+    activeDragSessionRef.current = {
+      taskId,
+      sourceLaneId: laneId,
+      lastMoveX: startX,
+      lastMoveY: startY,
+    };
     setDraggingTaskId(taskId);
     setDraggingSourceLaneId(laneId);
     setHoveredLaneId(laneId);
   };
 
   const handleDragMove = (_dx: number, _dy: number, moveX: number, moveY: number) => {
-    if (!board) return;
+    if (!activeDragSessionRef.current || !board) return;
+    activeDragSessionRef.current.lastMoveX = moveX;
+    activeDragSessionRef.current.lastMoveY = moveY;
+
     const laneItems = board.lanes.map((l) => ({
       id: l.id,
       rect: laneLayouts.current[l.id] ?? { x: 0, y: 0, width: 0, height: 0 },
@@ -339,24 +354,38 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
     setHoveredLaneId(hitLaneId);
   };
 
-  const handleDragEnd = async (didDrag: boolean) => {
-    const currentTaskId = draggingTaskId;
-    const currentSourceLaneId = draggingSourceLaneId;
-    const targetLane = hoveredLaneId;
-
+  const handleDragEnd = async (didDrag: boolean, finalMoveX?: number, finalMoveY?: number) => {
+    const session = activeDragSessionRef.current;
+    activeDragSessionRef.current = null;
     setDraggingTaskId(null);
     setDraggingSourceLaneId(null);
     setHoveredLaneId(null);
 
+    if (!didDrag || !session || !board) return;
+
+    const finalX = typeof finalMoveX === "number" && finalMoveX > 0 ? finalMoveX : session.lastMoveX;
+    const finalY = typeof finalMoveY === "number" && finalMoveY > 0 ? finalMoveY : session.lastMoveY;
+
+    const laneItems = board.lanes.map((l) => ({
+      id: l.id,
+      rect: laneLayouts.current[l.id] ?? { x: 0, y: 0, width: 0, height: 0 },
+    }));
+
+    // Synchronously recompute hit test on release using exact final pointer coordinates
+    const finalTargetLane = findHoveredLaneId({
+      pointerX: finalX,
+      pointerY: finalY,
+      containerBounds: containerBoundsRef.current,
+      scrollX: scrollOffsetRef.current,
+      lanes: laneItems,
+    });
+
     if (
-      didDrag &&
-      currentTaskId &&
-      targetLane &&
-      targetLane !== currentSourceLaneId &&
-      board
+      finalTargetLane &&
+      finalTargetLane !== session.sourceLaneId
     ) {
       try {
-        const nextBoard = moveTask(board, currentTaskId, targetLane);
+        const nextBoard = moveTask(board, session.taskId, finalTargetLane);
         await settings.save(nextBoard, revision);
       } catch (err) {
         console.error("Move task failed:", err);
