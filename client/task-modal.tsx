@@ -2,36 +2,55 @@ import { useState, useEffect, useMemo } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Modal, TextInput, Icon } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-
-type PluginTheme = PluginSurfaceProps["theme"];
-import type { KanbanLane, KanbanTask, KanbanSubtask } from "../shared/kanban";
+import type { KanbanLane, KanbanTask, KanbanSubtask, KanbanBoard } from "../shared/kanban";
 import type { ProjectItem } from "./use-projects";
 
-interface TaskModalProps {
-  open: boolean;
-  onClose: () => void;
-  task: KanbanTask | null;
-  defaultLaneId: string;
-  defaultProjectId: string | null;
-  lanes: KanbanLane[];
-  projects: ProjectItem[];
-  theme: PluginTheme;
-  layout: { compact: boolean; platform: "ios" | "android" | "web" };
-  onSave: (taskData: {
+type PluginTheme = PluginSurfaceProps["theme"];
+
+export interface TaskSaveSession {
+  mode: "create" | "edit";
+  baseBoard: KanbanBoard;
+  baseRevision: string;
+  taskData: {
     id: string;
     title: string;
     description: string;
     laneId: string;
     projectId: string | null;
     subtasks: KanbanSubtask[];
-  }) => Promise<boolean>;
-  onDelete?: (taskId: string) => Promise<boolean>;
+  };
+}
+
+export interface TaskDeleteSession {
+  baseBoard: KanbanBoard;
+  baseRevision: string;
+  taskId: string;
+}
+
+interface TaskModalProps {
+  open: boolean;
+  onClose: () => void;
+  mode: "create" | "edit";
+  task: KanbanTask | null;
+  baseBoard: KanbanBoard | null;
+  baseRevision: string;
+  defaultLaneId: string;
+  defaultProjectId: string | null;
+  lanes: KanbanLane[];
+  projects: ProjectItem[];
+  theme: PluginTheme;
+  layout: { compact: boolean; platform: "ios" | "android" | "web" };
+  onSave: (session: TaskSaveSession) => Promise<boolean>;
+  onDelete?: (session: TaskDeleteSession) => Promise<boolean>;
 }
 
 export function TaskModal({
   open,
   onClose,
+  mode,
   task,
+  baseBoard,
+  baseRevision,
   defaultLaneId,
   defaultProjectId,
   lanes,
@@ -53,12 +72,12 @@ export function TaskModal({
 
   useEffect(() => {
     if (open) {
-      if (task) {
+      if (mode === "edit" && task) {
         setTitle(task.title);
         setDescription(task.description);
         setLaneId(task.laneId);
         setProjectId(task.projectId);
-        setSubtasks([...task.subtasks]);
+        setSubtasks(task.subtasks.map((s) => ({ ...s })));
       } else {
         setTitle("");
         setDescription("");
@@ -71,7 +90,7 @@ export function TaskModal({
       setShowDeleteConfirm(false);
       setIsSaving(false);
     }
-  }, [open, task, defaultLaneId, defaultProjectId]);
+  }, [open, mode, task, defaultLaneId, defaultProjectId]);
 
   const styles = useMemo(
     () =>
@@ -143,8 +162,8 @@ export function TaskModal({
           borderBottomColor: theme.colors.border,
         },
         subtaskCheck: {
-          width: 20,
-          height: 20,
+          width: 22,
+          height: 22,
           borderRadius: 4,
           borderWidth: 1,
           borderColor: theme.colors.border,
@@ -156,14 +175,21 @@ export function TaskModal({
           backgroundColor: theme.colors.accent,
           borderColor: theme.colors.accent,
         },
-        subtaskTitle: {
+        subtaskInput: {
           flex: 1,
           fontSize: 13,
           color: theme.colors.foreground,
+          backgroundColor: theme.colors.surface2,
+          paddingHorizontal: 8,
+          paddingVertical: 4,
+          borderRadius: 6,
+          borderWidth: 1,
+          borderColor: theme.colors.border,
         },
-        subtaskTitleCompleted: {
+        subtaskInputCompleted: {
           textDecorationLine: "line-through",
           color: theme.colors.foregroundMuted,
+          opacity: 0.8,
         },
         subtaskDeleteBtn: {
           paddingHorizontal: 8,
@@ -273,13 +299,23 @@ export function TaskModal({
 
   const handleAddSubtask = () => {
     const trimmed = newSubtaskTitle.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      setErrorMessage("新增子步骤内容不能为空");
+      return;
+    }
     const subtaskId = `sub_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
     setSubtasks((prev) => [
       ...prev,
       { id: subtaskId, title: trimmed, completed: false },
     ]);
     setNewSubtaskTitle("");
+    setErrorMessage(null);
+  };
+
+  const handleUpdateSubtaskTitle = (id: string, newText: string) => {
+    setSubtasks((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, title: newText } : s))
+    );
   };
 
   const handleToggleSubtask = (id: string) => {
@@ -299,46 +335,74 @@ export function TaskModal({
       return;
     }
 
+    for (let i = 0; i < subtasks.length; i++) {
+      if (!subtasks[i].title.trim()) {
+        setErrorMessage(`第 ${i + 1} 个子步骤标题不能为空，请修改或删除该步骤`);
+        return;
+      }
+    }
+
+    if (!baseBoard) {
+      setErrorMessage("会话基准数据未就绪，无法保存");
+      return;
+    }
+
     setIsSaving(true);
     setErrorMessage(null);
 
     const taskId =
-      task?.id ??
-      `task_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+      mode === "edit" && task
+        ? task.id
+        : `task_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+
+    const sanitizedSubtasks = subtasks.map((s) => ({
+      id: s.id,
+      title: s.title.trim(),
+      completed: s.completed,
+    }));
 
     const success = await onSave({
-      id: taskId,
-      title: trimmedTitle,
-      description: description.trim(),
-      laneId,
-      projectId,
-      subtasks,
+      mode,
+      baseBoard,
+      baseRevision,
+      taskData: {
+        id: taskId,
+        title: trimmedTitle,
+        description: description.trim(),
+        laneId,
+        projectId,
+        subtasks: sanitizedSubtasks,
+      },
     });
 
     setIsSaving(false);
     if (success) {
       onClose();
     } else {
-      setErrorMessage("保存失败：数据可能已被修改或存在冲突，请检查后再试");
+      setErrorMessage("保存失败：数据已被修改或已被删除，存在版本冲突。草稿已保留，请核实后再试。");
     }
   };
 
   const handleDelete = async () => {
-    if (!task || !onDelete) return;
+    if (!task || !onDelete || !baseBoard) return;
     setIsSaving(true);
     setErrorMessage(null);
-    const success = await onDelete(task.id);
+    const success = await onDelete({
+      baseBoard,
+      baseRevision,
+      taskId: task.id,
+    });
     setIsSaving(false);
     if (success) {
       onClose();
     } else {
-      setErrorMessage("删除失败：数据已被修改或存在冲突");
+      setErrorMessage("删除失败：数据已被其他会话修改，存在版本冲突。");
     }
   };
 
   return (
     <Modal
-      title={task ? "编辑任务" : "创建任务"}
+      title={mode === "edit" ? "编辑任务" : "创建任务"}
       icon={<Icon name="PanelsTopLeft" size={18} color={theme.colors.foreground} />}
       open={open}
       onOpenChange={(next) => {
@@ -360,7 +424,10 @@ export function TaskModal({
               placeholder="输入任务标题"
               placeholderTextColor={theme.colors.foregroundMuted}
               value={title}
-              onChangeText={setTitle}
+              onChangeText={(t) => {
+                setTitle(t);
+                if (errorMessage) setErrorMessage(null);
+              }}
             />
           </View>
 
@@ -450,7 +517,9 @@ export function TaskModal({
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>子步骤 ({subtasks.filter((s) => s.completed).length}/{subtasks.length})</Text>
+            <Text style={styles.label}>
+              子步骤 ({subtasks.filter((s) => s.completed).length}/{subtasks.length})
+            </Text>
             {subtasks.map((subtask) => (
               <View key={subtask.id} style={styles.subtaskItem}>
                 <Pressable
@@ -464,14 +533,16 @@ export function TaskModal({
                     <Icon name="Check" size={12} color={theme.colors.accentForeground} />
                   )}
                 </Pressable>
-                <Text
+                <TextInput
                   style={[
-                    styles.subtaskTitle,
-                    subtask.completed && styles.subtaskTitleCompleted,
+                    styles.subtaskInput,
+                    subtask.completed && styles.subtaskInputCompleted,
                   ]}
-                >
-                  {subtask.title}
-                </Text>
+                  value={subtask.title}
+                  onChangeText={(t) => handleUpdateSubtaskTitle(subtask.id, t)}
+                  placeholder="子步骤标题"
+                  placeholderTextColor={theme.colors.foregroundMuted}
+                />
                 <Pressable
                   onPress={() => handleDeleteSubtask(subtask.id)}
                   style={styles.subtaskDeleteBtn}
@@ -509,7 +580,7 @@ export function TaskModal({
             </Pressable>
           </View>
 
-          {task && onDelete && (
+          {mode === "edit" && task && onDelete && (
             <View style={styles.deleteSection}>
               {showDeleteConfirm ? (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>

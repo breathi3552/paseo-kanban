@@ -222,3 +222,36 @@ test("Subtask operations: create, toggle completion, edit title, and delete", ()
   const s4 = deleteSubtask(s3, "task-1", "sub-1");
   assert.equal(s4.tasks[0].subtasks.length, 0);
 });
+
+test("Task operations: updateTask supports immutable subtasks replacement with validation", () => {
+  const initial = KanbanBoardSchema.parse({});
+  const b1 = addTask(initial, {
+    id: "task-1",
+    title: "Task 1",
+    laneId: "to-plan",
+    subtasks: [{ id: "s1", title: "Sub 1", completed: false }],
+  });
+
+  const b2 = updateTask(b1, "task-1", {
+    subtasks: [
+      { id: "s1", title: "Renamed Sub 1", completed: true },
+      { id: "s2", title: "New Sub 2", completed: false },
+    ],
+  });
+
+  assert.equal(b2.tasks[0].subtasks.length, 2);
+  assert.equal(b2.tasks[0].subtasks[0].title, "Renamed Sub 1");
+  assert.equal(b2.tasks[0].subtasks[0].completed, true);
+
+  // Rejects duplicate subtask IDs in patch
+  assert.throws(
+    () =>
+      updateTask(b1, "task-1", {
+        subtasks: [
+          { id: "dup", title: "A", completed: false },
+          { id: "dup", title: "B", completed: false },
+        ],
+      }),
+    /Duplicate subtask ID/
+  );
+});

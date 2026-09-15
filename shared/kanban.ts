@@ -234,6 +234,7 @@ export function updateTask(
     description?: string;
     laneId?: string;
     projectId?: string | null;
+    subtasks?: KanbanSubtask[];
   }
 ): KanbanBoard {
   let found = false;
@@ -253,6 +254,7 @@ export function updateTask(
         description: patch.description !== undefined ? patch.description : task.description,
         laneId: patch.laneId !== undefined ? patch.laneId : task.laneId,
         projectId: patch.projectId !== undefined ? patch.projectId : task.projectId,
+        subtasks: patch.subtasks !== undefined ? patch.subtasks : task.subtasks,
       };
     }
     return task;

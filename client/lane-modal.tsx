@@ -2,26 +2,45 @@ import { useState, useEffect, useMemo } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Modal, TextInput, Icon } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
+import type { KanbanLane, KanbanBoard } from "../shared/kanban";
 
 type PluginTheme = PluginSurfaceProps["theme"];
-import type { KanbanLane } from "../shared/kanban";
+
+export interface LaneSaveSession {
+  mode: "create" | "edit";
+  baseBoard: KanbanBoard;
+  baseRevision: string;
+  laneData: { id: string; title: string };
+}
+
+export interface LaneDeleteSession {
+  baseBoard: KanbanBoard;
+  baseRevision: string;
+  laneId: string;
+}
 
 interface LaneModalProps {
   open: boolean;
   onClose: () => void;
+  mode: "create" | "edit";
   lane: KanbanLane | null;
+  baseBoard: KanbanBoard | null;
+  baseRevision: string;
   lanesCount: number;
   tasksInLaneCount: number;
   theme: PluginTheme;
   layout: { compact: boolean };
-  onSave: (laneData: { id: string; title: string }) => Promise<boolean>;
-  onDelete?: (laneId: string) => Promise<boolean>;
+  onSave: (session: LaneSaveSession) => Promise<boolean>;
+  onDelete?: (session: LaneDeleteSession) => Promise<boolean>;
 }
 
 export function LaneModal({
   open,
   onClose,
+  mode,
   lane,
+  baseBoard,
+  baseRevision,
   lanesCount,
   tasksInLaneCount,
   theme,
@@ -36,12 +55,12 @@ export function LaneModal({
 
   useEffect(() => {
     if (open) {
-      setTitle(lane ? lane.title : "");
+      setTitle(mode === "edit" && lane ? lane.title : "");
       setErrorMessage(null);
       setIsSaving(false);
       setShowDeleteConfirm(false);
     }
-  }, [open, lane]);
+  }, [open, mode, lane]);
 
   const styles = useMemo(
     () =>
@@ -156,42 +175,57 @@ export function LaneModal({
       return;
     }
 
+    if (!baseBoard) {
+      setErrorMessage("会话基准数据未就绪，无法保存");
+      return;
+    }
+
     setIsSaving(true);
     setErrorMessage(null);
 
     const laneId =
-      lane?.id ??
-      `lane_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+      mode === "edit" && lane
+        ? lane.id
+        : `lane_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
     const success = await onSave({
-      id: laneId,
-      title: trimmedTitle,
+      mode,
+      baseBoard,
+      baseRevision,
+      laneData: {
+        id: laneId,
+        title: trimmedTitle,
+      },
     });
 
     setIsSaving(false);
     if (success) {
       onClose();
     } else {
-      setErrorMessage("保存失败：数据可能已被修改或存在冲突，请检查后再试");
+      setErrorMessage("保存失败：数据可能已被其他会话修改或已被删除，存在版本冲突。草稿已保留。");
     }
   };
 
   const handleDelete = async () => {
-    if (!lane || !onDelete || !canDelete) return;
+    if (!lane || !onDelete || !canDelete || !baseBoard) return;
     setIsSaving(true);
     setErrorMessage(null);
-    const success = await onDelete(lane.id);
+    const success = await onDelete({
+      baseBoard,
+      baseRevision,
+      laneId: lane.id,
+    });
     setIsSaving(false);
     if (success) {
       onClose();
     } else {
-      setErrorMessage("删除失败：数据已被修改或存在冲突");
+      setErrorMessage("删除失败：数据已被其他会话修改，存在版本冲突。");
     }
   };
 
   return (
     <Modal
-      title={lane ? "编辑泳道" : "添加泳道"}
+      title={mode === "edit" ? "编辑泳道" : "添加泳道"}
       icon={<Icon name="PanelsTopLeft" size={18} color={theme.colors.foreground} />}
       open={open}
       onOpenChange={(next) => {
@@ -213,12 +247,15 @@ export function LaneModal({
               placeholder="例如：待测试、发布中"
               placeholderTextColor={theme.colors.foregroundMuted}
               value={title}
-              onChangeText={setTitle}
+              onChangeText={(t) => {
+                setTitle(t);
+                if (errorMessage) setErrorMessage(null);
+              }}
               onSubmitEditing={handleSave}
             />
           </View>
 
-          {lane && !canDelete && (
+          {mode === "edit" && lane && !canDelete && (
             <View style={styles.warningBanner}>
               {lanesCount <= 1 ? (
                 <Text style={styles.warningText}>
@@ -245,7 +282,7 @@ export function LaneModal({
             </Pressable>
           </View>
 
-          {lane && onDelete && (
+          {mode === "edit" && lane && onDelete && (
             <View style={styles.deleteSection}>
               {canDelete ? (
                 showDeleteConfirm ? (
