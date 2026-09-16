@@ -26,22 +26,43 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 
 ---
 
-## Quick Start / Installation
+## Installation & Usage
 
-### Load as a Local Plugin in Paseo
+### Quick Install (Recommended)
 
-You can link this repository directly into your local Paseo instance:
+No manual build or git cloning needed. Install directly via the Paseo CLI:
 
 ```bash
-# Link this directory as a local plugin
-paseo plugin link .
-
-# Or specify by absolute path
-paseo plugin link /path/to/paseo-kanban
+paseo plugin add breathi3552/paseo-kanban
 ```
 
-Once linked, open Paseo. You will see the **Kanban** item in the sidebar (icon: `PanelsTopLeft`). Click it to open the board surface.
+To explicitly track the latest updates on the `main` branch:
 
+```bash
+paseo plugin add breathi3552/paseo-kanban --ref main
+```
+
+Verify that the plugin is running:
+
+```bash
+paseo plugin ls
+```
+
+Once active, open Paseo. The **Kanban** icon (`PanelsTopLeft`) will appear in the sidebar. Click it to launch the board.
+
+### Local Development
+
+To contribute or debug locally:
+
+```bash
+# 1. Clone repository and install dependencies
+git clone https://github.com/breathi3552/paseo-kanban.git
+cd paseo-kanban
+npm install
+
+# 2. Link this directory into your local Paseo daemon
+paseo plugin link .
+```
 ---
 
 ## Development & Testing

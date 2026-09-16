@@ -26,22 +26,43 @@
 
 ---
 
-## 快速上手 / 本地安装
+## 安装使用
 
-### 在 Paseo 中作为本地插件载入
+### 快速安装（推荐）
 
-可直接将本工程链接至本地正在运行的 Paseo 守护进程中：
+无需克隆源码或手动编译，直接使用 Paseo CLI 从 GitHub 一键安装：
 
 ```bash
-# 将当前目录链接为本地插件
-paseo plugin link .
-
-# 或指定绝对路径链接
-paseo plugin link C:/Users/breathi/Desktop/paseo-kanban
+paseo plugin add breathi3552/paseo-kanban
 ```
 
-链接完成后打开 Paseo 界面，侧边栏将出现 **看板** 入口（图标：`PanelsTopLeft`），点击即可直接打开看板主界面。
+若需显式跟踪 `main` 分支最新更新：
 
+```bash
+paseo plugin add breathi3552/paseo-kanban --ref main
+```
+
+安装后可通过以下命令检查运行状态：
+
+```bash
+paseo plugin ls
+```
+
+状态显示为 `running` 后打开 Paseo，侧边栏将出现 **看板** 入口（图标：`PanelsTopLeft`），点击即可进入看板。
+
+### 本地开发与调试
+
+如需进行本地源码调试或二次开发：
+
+```bash
+# 1. 克隆代码仓库并安装依赖
+git clone https://github.com/breathi3552/paseo-kanban.git
+cd paseo-kanban
+npm install
+
+# 2. 将当前开发目录软链接至本地 Paseo 守护进程
+paseo plugin link .
+```
 ---
 
 ## 开发与测试
