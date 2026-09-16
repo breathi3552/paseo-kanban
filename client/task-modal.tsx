@@ -2,69 +2,38 @@ import { useState, useEffect, useMemo } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Modal, TextInput, Icon, ScrollView } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import type { KanbanLane, KanbanTask, KanbanSubtask, KanbanBoard } from "../shared/kanban";
+import type { KanbanLane, KanbanSubtask } from "../shared/kanban";
 import type { ProjectItem } from "./use-projects";
+import type { TaskEditSession } from "./kanban-session";
 
 type PluginTheme = PluginSurfaceProps["theme"];
-
-export interface TaskSaveSession {
-  mode: "create" | "edit";
-  baseBoard: KanbanBoard;
-  baseRevision: string;
-  taskData: {
-    id: string;
-    title: string;
-    description: string;
-    laneId: string;
-    projectId: string | null;
-    subtasks: KanbanSubtask[];
-  };
-}
-
-export interface TaskDeleteSession {
-  baseBoard: KanbanBoard;
-  baseRevision: string;
-  taskId: string;
-}
 
 interface TaskModalProps {
   open: boolean;
   onClose: () => void;
-  mode: "create" | "edit";
-  task: KanbanTask | null;
-  baseBoard: KanbanBoard | null;
-  baseRevision: string;
-  defaultLaneId: string;
-  defaultProjectId: string | null;
+  session: TaskEditSession;
   lanes: KanbanLane[];
   projects: ProjectItem[];
   theme: PluginTheme;
   layout: { compact: boolean; platform: "ios" | "android" | "web" };
-  onSave: (session: TaskSaveSession) => Promise<boolean>;
-  onDelete?: (session: TaskDeleteSession) => Promise<boolean>;
 }
 
 export function TaskModal({
   open,
   onClose,
-  mode,
-  task,
-  baseBoard,
-  baseRevision,
-  defaultLaneId,
-  defaultProjectId,
+  session,
   lanes,
   projects,
   theme,
   layout,
-  onSave,
-  onDelete,
 }: TaskModalProps) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [laneId, setLaneId] = useState(defaultLaneId);
-  const [projectId, setProjectId] = useState<string | null>(defaultProjectId);
-  const [subtasks, setSubtasks] = useState<KanbanSubtask[]>([]);
+  const [title, setTitle] = useState(session.initialValues.title);
+  const [description, setDescription] = useState(session.initialValues.description);
+  const [laneId, setLaneId] = useState(session.initialValues.laneId);
+  const [projectId, setProjectId] = useState<string | null>(session.initialValues.projectId);
+  const [subtasks, setSubtasks] = useState<KanbanSubtask[]>(
+    session.initialValues.subtasks.map((s) => ({ ...s }))
+  );
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -72,25 +41,17 @@ export function TaskModal({
 
   useEffect(() => {
     if (open) {
-      if (mode === "edit" && task) {
-        setTitle(task.title);
-        setDescription(task.description);
-        setLaneId(task.laneId);
-        setProjectId(task.projectId);
-        setSubtasks(task.subtasks.map((s) => ({ ...s })));
-      } else {
-        setTitle("");
-        setDescription("");
-        setLaneId(defaultLaneId);
-        setProjectId(defaultProjectId);
-        setSubtasks([]);
-      }
+      setTitle(session.initialValues.title);
+      setDescription(session.initialValues.description);
+      setLaneId(session.initialValues.laneId);
+      setProjectId(session.initialValues.projectId);
+      setSubtasks(session.initialValues.subtasks.map((s) => ({ ...s })));
       setNewSubtaskTitle("");
       setErrorMessage(null);
       setShowDeleteConfirm(false);
       setIsSaving(false);
     }
-  }, [open, mode, task, defaultLaneId, defaultProjectId]);
+  }, [open, session]);
 
   const styles = useMemo(
     () =>
@@ -351,17 +312,8 @@ export function TaskModal({
       }
     }
 
-    if (!baseBoard) {
-      setErrorMessage("会话基准数据未就绪，无法保存");
-      return;
-    }
-
     setIsSaving(true);
     setErrorMessage(null);
-    const taskId =
-      mode === "edit" && task
-        ? task.id
-        : `task_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
     const sanitizedSubtasks = subtasks.map((s) => ({
       id: s.id,
@@ -370,24 +322,18 @@ export function TaskModal({
     }));
 
     try {
-      const success = await onSave({
-        mode,
-        baseBoard,
-        baseRevision,
-        taskData: {
-          id: taskId,
-          title: trimmedTitle,
-          description: description.trim(),
-          laneId,
-          projectId,
-          subtasks: sanitizedSubtasks,
-        },
+      const result = await session.saveDraft({
+        title: trimmedTitle,
+        description: description.trim(),
+        laneId,
+        projectId,
+        subtasks: sanitizedSubtasks,
       });
       setIsSaving(false);
-      if (success) {
+      if (result.success) {
         onClose();
       } else {
-        setErrorMessage("保存失败：数据已被修改或已被删除，存在版本冲突。草稿已保留，请核实后再试。");
+        setErrorMessage(result.error);
       }
     } catch (err: unknown) {
       const errStr = err instanceof Error ? err.message : String(err);
@@ -397,25 +343,27 @@ export function TaskModal({
   };
 
   const handleDelete = async () => {
-    if (!task || !onDelete || !baseBoard) return;
+    if (session.mode !== "edit") return;
     setIsSaving(true);
     setErrorMessage(null);
-    const success = await onDelete({
-      baseBoard,
-      baseRevision,
-      taskId: task.id,
-    });
-    setIsSaving(false);
-    if (success) {
-      onClose();
-    } else {
-      setErrorMessage("删除失败：数据已被其他会话修改，存在版本冲突。");
+    try {
+      const result = await session.deleteTask();
+      setIsSaving(false);
+      if (result.success) {
+        onClose();
+      } else {
+        setErrorMessage(result.error);
+      }
+    } catch (err: unknown) {
+      const errStr = err instanceof Error ? err.message : String(err);
+      setIsSaving(false);
+      setErrorMessage(`删除发生异常: ${errStr}`);
     }
   };
 
   return (
     <Modal
-      title={mode === "edit" ? "编辑任务" : "创建任务"}
+      title={session.mode === "edit" ? "编辑任务" : "创建任务"}
       icon={<Icon name="PanelsTopLeft" size={18} color={theme.colors.foreground} />}
       open={open}
       onOpenChange={(next) => {
@@ -596,7 +544,7 @@ export function TaskModal({
           </View>
 
 
-          {mode === "edit" && task && onDelete && (
+          {session.mode === "edit" && (
             <View style={styles.deleteSection}>
               {showDeleteConfirm ? (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>

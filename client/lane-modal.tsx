@@ -2,65 +2,38 @@ import { useState, useEffect, useMemo } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Modal, TextInput, Icon } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import type { KanbanLane, KanbanBoard } from "../shared/kanban";
+import type { LaneEditSession } from "./kanban-session";
 
 type PluginTheme = PluginSurfaceProps["theme"];
-
-export interface LaneSaveSession {
-  mode: "create" | "edit";
-  baseBoard: KanbanBoard;
-  baseRevision: string;
-  laneData: { id: string; title: string };
-}
-
-export interface LaneDeleteSession {
-  baseBoard: KanbanBoard;
-  baseRevision: string;
-  laneId: string;
-}
 
 interface LaneModalProps {
   open: boolean;
   onClose: () => void;
-  mode: "create" | "edit";
-  lane: KanbanLane | null;
-  baseBoard: KanbanBoard | null;
-  baseRevision: string;
-  lanesCount: number;
-  tasksInLaneCount: number;
+  session: LaneEditSession;
   theme: PluginTheme;
   layout: { compact: boolean };
-  onSave: (session: LaneSaveSession) => Promise<boolean>;
-  onDelete?: (session: LaneDeleteSession) => Promise<boolean>;
 }
 
 export function LaneModal({
   open,
   onClose,
-  mode,
-  lane,
-  baseBoard,
-  baseRevision,
-  lanesCount,
-  tasksInLaneCount,
+  session,
   theme,
   layout,
-  onSave,
-  onDelete,
 }: LaneModalProps) {
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(session.initialValues.title);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setTitle(mode === "edit" && lane ? lane.title : "");
+      setTitle(session.initialValues.title);
       setErrorMessage(null);
       setIsSaving(false);
       setShowDeleteConfirm(false);
     }
-  }, [open, mode, lane]);
+  }, [open, session]);
 
   const styles = useMemo(
     () =>
@@ -166,7 +139,7 @@ export function LaneModal({
     [theme, layout.compact]
   );
 
-  const canDelete = lanesCount > 1 && tasksInLaneCount === 0;
+  const canDelete = session.canDelete;
 
   const handleSave = async () => {
     const trimmedTitle = title.trim();
@@ -175,57 +148,49 @@ export function LaneModal({
       return;
     }
 
-    if (!baseBoard) {
-      setErrorMessage("会话基准数据未就绪，无法保存");
-      return;
-    }
-
     setIsSaving(true);
     setErrorMessage(null);
 
-    const laneId =
-      mode === "edit" && lane
-        ? lane.id
-        : `lane_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-
-    const success = await onSave({
-      mode,
-      baseBoard,
-      baseRevision,
-      laneData: {
-        id: laneId,
+    try {
+      const result = await session.saveDraft({
         title: trimmedTitle,
-      },
-    });
+      });
 
-    setIsSaving(false);
-    if (success) {
-      onClose();
-    } else {
-      setErrorMessage("保存失败：数据可能已被其他会话修改或已被删除，存在版本冲突。草稿已保留。");
+      setIsSaving(false);
+      if (result.success) {
+        onClose();
+      } else {
+        setErrorMessage(result.error);
+      }
+    } catch (err: unknown) {
+      const errStr = err instanceof Error ? err.message : String(err);
+      setIsSaving(false);
+      setErrorMessage(`保存发生异常: ${errStr}`);
     }
   };
 
   const handleDelete = async () => {
-    if (!lane || !onDelete || !canDelete || !baseBoard) return;
+    if (session.mode !== "edit" || !canDelete) return;
     setIsSaving(true);
     setErrorMessage(null);
-    const success = await onDelete({
-      baseBoard,
-      baseRevision,
-      laneId: lane.id,
-    });
-    setIsSaving(false);
-    if (success) {
-      onClose();
-    } else {
-      setErrorMessage("删除失败：数据已被其他会话修改，存在版本冲突。");
+    try {
+      const result = await session.deleteLane();
+      setIsSaving(false);
+      if (result.success) {
+        onClose();
+      } else {
+        setErrorMessage(result.error);
+      }
+    } catch (err: unknown) {
+      const errStr = err instanceof Error ? err.message : String(err);
+      setIsSaving(false);
+      setErrorMessage(`删除发生异常: ${errStr}`);
     }
   };
 
   return (
     <Modal
-      title={mode === "edit" ? "编辑泳道" : "添加泳道"}
+      title={session.mode === "edit" ? "编辑泳道" : "添加泳道"}
       icon={<Icon name="PanelsTopLeft" size={18} color={theme.colors.foreground} />}
       open={open}
       onOpenChange={(next) => {
@@ -255,15 +220,15 @@ export function LaneModal({
             />
           </View>
 
-          {mode === "edit" && lane && !canDelete && (
+          {session.mode === "edit" && !canDelete && (
             <View style={styles.warningBanner}>
-              {lanesCount <= 1 ? (
+              {session.lanesCount <= 1 ? (
                 <Text style={styles.warningText}>
                   看板必须至少保留一条泳道，无法删除最后一条泳道。
                 </Text>
               ) : (
                 <Text style={styles.warningText}>
-                  当前泳道内仍有 {tasksInLaneCount} 个任务。请先将任务移动至其他泳道或删除任务，然后才能删除此泳道。
+                  当前泳道内仍有 {session.tasksInLaneCount} 个任务。请先将任务移动至其他泳道或删除任务，然后才能删除此泳道。
                 </Text>
               )}
             </View>
@@ -282,7 +247,7 @@ export function LaneModal({
             </Pressable>
           </View>
 
-          {mode === "edit" && lane && onDelete && (
+          {session.mode === "edit" && (
             <View style={styles.deleteSection}>
               {canDelete ? (
                 showDeleteConfirm ? (

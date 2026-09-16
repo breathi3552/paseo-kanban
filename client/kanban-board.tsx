@@ -11,12 +11,6 @@ import { useSettings } from "@getpaseo/plugin/client";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import {
   kanbanSettings,
-  addLane,
-  updateLane,
-  deleteLane,
-  addTask,
-  updateTask,
-  deleteTask,
   moveTask,
   type KanbanTask,
   type KanbanLane,
@@ -24,33 +18,23 @@ import {
 } from "../shared/kanban";
 import { useProjects, getProjectDisplayName } from "./use-projects";
 import { KanbanCard } from "./kanban-card";
-import { TaskModal, type TaskSaveSession, type TaskDeleteSession } from "./task-modal";
-import { LaneModal, type LaneSaveSession, type LaneDeleteSession } from "./lane-modal";
+import { TaskModal } from "./task-modal";
+import { LaneModal } from "./lane-modal";
 import { findHoveredLaneId } from "./drag-hit-test";
-
-interface ActiveTaskSession {
-  mode: "create" | "edit";
-  task: KanbanTask | null;
-  baseBoard: KanbanBoard;
-  baseRevision: string;
-  defaultLaneId: string;
-  defaultProjectId: string | null;
-}
-
-interface ActiveLaneSession {
-  mode: "create" | "edit";
-  lane: KanbanLane | null;
-  baseBoard: KanbanBoard;
-  baseRevision: string;
-}
+import {
+  openTaskSession,
+  openLaneSession,
+  type TaskEditSession,
+  type LaneEditSession,
+} from "./kanban-session";
 
 export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
   const settings = useSettings(kanbanSettings);
   const { projects, isError: projectsError } = useProjects();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
-  const [activeTaskSession, setActiveTaskSession] = useState<ActiveTaskSession | null>(null);
-  const [activeLaneSession, setActiveLaneSession] = useState<ActiveLaneSession | null>(null);
+  const [activeTaskSession, setActiveTaskSession] = useState<TaskEditSession | null>(null);
+  const [activeLaneSession, setActiveLaneSession] = useState<LaneEditSession | null>(null);
 
   // Drag state
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
@@ -392,57 +376,6 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
       }
     }
   };
-  // State operations with session baseline locking
-  const handleSaveTask = async (session: TaskSaveSession): Promise<boolean> => {
-    const { mode, baseBoard, baseRevision, taskData } = session;
-    try {
-      let nextBoard: KanbanBoard;
-      if (mode === "create") {
-        nextBoard = addTask(baseBoard, taskData);
-      } else {
-        const existsInBase = baseBoard.tasks.some((t) => t.id === taskData.id);
-        if (!existsInBase) {
-          return false;
-        }
-        nextBoard = updateTask(baseBoard, taskData.id, {
-          title: taskData.title,
-          description: taskData.description,
-          laneId: taskData.laneId,
-          projectId: taskData.projectId,
-          subtasks: taskData.subtasks,
-        });
-      }
-
-      const saved = await settings.save(nextBoard, baseRevision);
-      if (saved) {
-        setActiveTaskSession(null);
-      }
-      return saved;
-    } catch (err: unknown) {
-      console.error("Save task failed:", err);
-      return false;
-    }
-  };
-
-  const handleDeleteTask = async (session: TaskDeleteSession): Promise<boolean> => {
-    const { baseBoard, baseRevision, taskId } = session;
-    try {
-      const existsInBase = baseBoard.tasks.some((t) => t.id === taskId);
-      if (!existsInBase) {
-        return false;
-      }
-      const nextBoard = deleteTask(baseBoard, taskId);
-      const saved = await settings.save(nextBoard, baseRevision);
-      if (saved) {
-        setActiveTaskSession(null);
-      }
-      return saved;
-    } catch (err) {
-      console.error("Delete task failed:", err);
-      return false;
-    }
-  };
-
   const handleMoveTaskDirectly = async (taskId: string, targetLaneId: string) => {
     if (!board) return;
     try {
@@ -450,50 +383,6 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
       await settings.save(nextBoard, revision);
     } catch (err) {
       console.error("Direct move task failed:", err);
-    }
-  };
-
-  const handleSaveLane = async (session: LaneSaveSession): Promise<boolean> => {
-    const { mode, baseBoard, baseRevision, laneData } = session;
-    try {
-      let nextBoard: KanbanBoard;
-      if (mode === "create") {
-        nextBoard = addLane(baseBoard, laneData);
-      } else {
-        const existsInBase = baseBoard.lanes.some((l) => l.id === laneData.id);
-        if (!existsInBase) {
-          return false;
-        }
-        nextBoard = updateLane(baseBoard, laneData.id, { title: laneData.title });
-      }
-
-      const saved = await settings.save(nextBoard, baseRevision);
-      if (saved) {
-        setActiveLaneSession(null);
-      }
-      return saved;
-    } catch (err) {
-      console.error("Save lane failed:", err);
-      return false;
-    }
-  };
-
-  const handleDeleteLane = async (session: LaneDeleteSession): Promise<boolean> => {
-    const { baseBoard, baseRevision, laneId } = session;
-    try {
-      const existsInBase = baseBoard.lanes.some((l) => l.id === laneId);
-      if (!existsInBase) {
-        return false;
-      }
-      const nextBoard = deleteLane(baseBoard, laneId);
-      const saved = await settings.save(nextBoard, baseRevision);
-      if (saved) {
-        setActiveLaneSession(null);
-      }
-      return saved;
-    } catch (err) {
-      console.error("Delete lane failed:", err);
-      return false;
     }
   };
 
@@ -560,12 +449,14 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
             <Pressable
               onPress={() => {
                 if (!board) return;
-                setActiveLaneSession({
-                  mode: "create",
-                  lane: null,
-                  baseBoard: board,
-                  baseRevision: revision,
-                });
+                setActiveLaneSession(
+                  openLaneSession({
+                    mode: "create",
+                    baseBoard: board,
+                    baseRevision: revision,
+                    save: (b, r) => settings.save(b, r),
+                  })
+                );
               }}
               style={styles.secondaryButton}
             >
@@ -575,17 +466,19 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
             <Pressable
               onPress={() => {
                 if (!board) return;
-                setActiveTaskSession({
-                  mode: "create",
-                  task: null,
-                  baseBoard: board,
-                  baseRevision: revision,
-                  defaultLaneId: board.lanes[0]?.id ?? "",
-                  defaultProjectId:
-                    selectedProjectId === "all" || selectedProjectId === "unassigned"
-                      ? null
-                      : selectedProjectId,
-                });
+                setActiveTaskSession(
+                  openTaskSession({
+                    mode: "create",
+                    baseBoard: board,
+                    baseRevision: revision,
+                    save: (b, r) => settings.save(b, r),
+                    defaultLaneId: board.lanes[0]?.id ?? "",
+                    defaultProjectId:
+                      selectedProjectId === "all" || selectedProjectId === "unassigned"
+                        ? null
+                        : selectedProjectId,
+                  })
+                );
               }}
               style={styles.primaryButton}
             >
@@ -721,17 +614,19 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                   <Pressable
                     onPress={() => {
                       if (!board) return;
-                      setActiveTaskSession({
-                        mode: "create",
-                        task: null,
-                        baseBoard: board,
-                        baseRevision: revision,
-                        defaultLaneId: lane.id,
-                        defaultProjectId:
-                          selectedProjectId === "all" || selectedProjectId === "unassigned"
-                            ? null
-                            : selectedProjectId,
-                      });
+                      setActiveTaskSession(
+                        openTaskSession({
+                          mode: "create",
+                          baseBoard: board,
+                          baseRevision: revision,
+                          save: (b, r) => settings.save(b, r),
+                          defaultLaneId: lane.id,
+                          defaultProjectId:
+                            selectedProjectId === "all" || selectedProjectId === "unassigned"
+                              ? null
+                              : selectedProjectId,
+                        })
+                      );
                     }}
                     style={styles.laneHeaderBtn}
                     hitSlop={6}
@@ -742,12 +637,15 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                   <Pressable
                     onPress={() => {
                       if (!board) return;
-                      setActiveLaneSession({
-                        mode: "edit",
-                        lane,
-                        baseBoard: board,
-                        baseRevision: revision,
-                      });
+                      setActiveLaneSession(
+                        openLaneSession({
+                          mode: "edit",
+                          laneId: lane.id,
+                          baseBoard: board,
+                          baseRevision: revision,
+                          save: (b, r) => settings.save(b, r),
+                        })
+                      );
                     }}
                     style={styles.laneHeaderBtn}
                     hitSlop={6}
@@ -770,14 +668,15 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                       isDraggingThis={draggingTaskId === task.id}
                       onPress={() => {
                         if (!board) return;
-                        setActiveTaskSession({
-                          mode: "edit",
-                          task,
-                          baseBoard: board,
-                          baseRevision: revision,
-                          defaultLaneId: task.laneId,
-                          defaultProjectId: task.projectId,
-                        });
+                        setActiveTaskSession(
+                          openTaskSession({
+                            mode: "edit",
+                            taskId: task.id,
+                            baseBoard: board,
+                            baseRevision: revision,
+                            save: (b, r) => settings.save(b, r),
+                          })
+                        );
                       }}
                       onMoveToLane={(targetId: string) => handleMoveTaskDirectly(task.id, targetId)}
                       onDragStart={handleDragStart}
@@ -805,18 +704,11 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
         <TaskModal
           open={activeTaskSession !== null}
           onClose={() => setActiveTaskSession(null)}
-          mode={activeTaskSession.mode}
-          task={activeTaskSession.task}
-          baseBoard={activeTaskSession.baseBoard}
-          baseRevision={activeTaskSession.baseRevision}
-          defaultLaneId={activeTaskSession.defaultLaneId}
-          defaultProjectId={activeTaskSession.defaultProjectId}
+          session={activeTaskSession}
           lanes={activeTaskSession.baseBoard.lanes}
           projects={projects}
           theme={theme}
           layout={layout}
-          onSave={handleSaveTask}
-          onDelete={handleDeleteTask}
         />
       )}
 
@@ -824,20 +716,9 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
         <LaneModal
           open={activeLaneSession !== null}
           onClose={() => setActiveLaneSession(null)}
-          mode={activeLaneSession.mode}
-          lane={activeLaneSession.lane}
-          baseBoard={activeLaneSession.baseBoard}
-          baseRevision={activeLaneSession.baseRevision}
-          lanesCount={activeLaneSession.baseBoard.lanes.length}
-          tasksInLaneCount={
-            activeLaneSession.lane
-              ? activeLaneSession.baseBoard.tasks.filter((t) => t.laneId === activeLaneSession.lane!.id).length
-              : 0
-          }
+          session={activeLaneSession}
           theme={theme}
           layout={layout}
-          onSave={handleSaveLane}
-          onDelete={handleDeleteLane}
         />
       )}
     </View>
