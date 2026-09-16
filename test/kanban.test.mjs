@@ -9,10 +9,6 @@ import {
   addTask,
   updateTask,
   deleteTask,
-  moveTask,
-  addSubtask,
-  updateSubtask,
-  deleteSubtask,
 } from "../shared/kanban.ts";
 
 test("KanbanBoardSchema: parses empty object into default lanes and empty tasks", () => {
@@ -131,7 +127,7 @@ test("Lane operations: add, rename, and protect against non-empty or last lane d
   );
 
   // Move task away, then delete succeeds
-  const moved = moveTask(withTask, "task-1", "done");
+  const moved = updateTask(withTask, "task-1", { laneId: "done" });
   const deleted = deleteLane(moved, "testing");
   assert.equal(deleted.lanes.length, 3);
   assert.equal(deleted.lanes.some((l) => l.id === "testing"), false);
@@ -171,12 +167,12 @@ test("Task operations: create, update, delete, cross-lane movement, and project 
   assert.equal(b2.tasks[0].projectId, "proj_real_456");
 
   // Cross-lane move
-  const b3 = moveTask(b2, "task-a", "in-progress");
+  const b3 = updateTask(b2, "task-a", { laneId: "in-progress" });
   assert.equal(b3.tasks[0].laneId, "in-progress");
 
   // Reject move to invalid lane
   assert.throws(
-    () => moveTask(b3, "task-a", "ghost-lane"),
+    () => updateTask(b3, "task-a", { laneId: "ghost-lane" }),
     /Target lane "ghost-lane" does not exist/
   );
 
@@ -186,41 +182,6 @@ test("Task operations: create, update, delete, cross-lane movement, and project 
 
   // Original board is immutable
   assert.equal(initial.tasks.length, 0);
-});
-
-test("Subtask operations: create, toggle completion, edit title, and delete", () => {
-  const initial = KanbanBoardSchema.parse({});
-  const withTask = addTask(initial, {
-    id: "task-1",
-    title: "Implement auth",
-    laneId: "to-plan",
-  });
-
-  // Add subtask
-  const s1 = addSubtask(withTask, "task-1", {
-    id: "sub-1",
-    title: "Design token format",
-  });
-  assert.equal(s1.tasks[0].subtasks.length, 1);
-  assert.equal(s1.tasks[0].subtasks[0].completed, false);
-
-  // Toggle completed
-  const s2 = updateSubtask(s1, "task-1", "sub-1", { completed: true });
-  assert.equal(s2.tasks[0].subtasks[0].completed, true);
-
-  // Rename subtask
-  const s3 = updateSubtask(s2, "task-1", "sub-1", { title: "Design JWT format" });
-  assert.equal(s3.tasks[0].subtasks[0].title, "Design JWT format");
-
-  // Reject duplicate subtask ID
-  assert.throws(
-    () => addSubtask(s3, "task-1", { id: "sub-1", title: "Duplicate" }),
-    /already exists in task/
-  );
-
-  // Delete subtask
-  const s4 = deleteSubtask(s3, "task-1", "sub-1");
-  assert.equal(s4.tasks[0].subtasks.length, 0);
 });
 
 test("Task operations: updateTask supports immutable subtasks replacement with validation", () => {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createKanbanDragController } from "../client/kanban-drag.ts";
+import { KanbanDragController } from "../client/kanban-drag.ts";
 
 const mockContainer = {
   x: 20,
@@ -16,7 +16,7 @@ const mockLanes = [
 ];
 
 function setupController(onMoveTask) {
-  const controller = createKanbanDragController({
+  const controller = new KanbanDragController({
     lanes: mockLanes.map((l) => ({ id: l.id })),
     onMoveTask,
   });
@@ -167,7 +167,7 @@ test("无效落点: 在泳道垂直范围外释放不产生移动请求", async 
 test("无效落点: 释放到已不在当前看板中的泳道不产生移动请求", async () => {
   const moveRequests = [];
   // Controller where "done" lane has layout registered, but is NOT in active lanes
-  const controller = createKanbanDragController({
+  const controller = new KanbanDragController({
     lanes: [{ id: "to-plan" }, { id: "in-progress" }], // "done" is excluded
     onMoveTask: (taskId, targetLaneId) => {
       moveRequests.push({ taskId, targetLaneId });

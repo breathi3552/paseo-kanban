@@ -29,18 +29,13 @@ export const LaneSchema = z.object({
 
 export const KanbanBoardSchema = z
   .object({
-    lanes: z.array(LaneSchema).default([...DEFAULT_LANES]),
+    lanes: z
+      .array(LaneSchema)
+      .min(1, "Kanban board must have at least one lane")
+      .default([...DEFAULT_LANES]),
     tasks: z.array(TaskSchema).default([]),
   })
   .superRefine((board, ctx) => {
-    if (board.lanes.length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Kanban board must have at least one lane",
-        path: ["lanes"],
-      });
-    }
-
     const laneIds = new Set<string>();
     for (let i = 0; i < board.lanes.length; i++) {
       const lane = board.lanes[i];
@@ -282,139 +277,5 @@ export function deleteTask(board: KanbanBoard, taskId: string): KanbanBoard {
   });
 }
 
-export function moveTask(
-  board: KanbanBoard,
-  taskId: string,
-  targetLaneId: string
-): KanbanBoard {
-  return updateTask(board, taskId, { laneId: targetLaneId });
-}
 
-export function addSubtask(
-  board: KanbanBoard,
-  taskId: string,
-  subtask: { id: string; title: string; completed?: boolean }
-): KanbanBoard {
-  const trimmedSubtaskId = subtask.id.trim();
-  const trimmedSubtaskTitle = subtask.title.trim();
-  if (!trimmedSubtaskId) {
-    throw new Error("Subtask ID cannot be empty");
-  }
-  if (!trimmedSubtaskTitle) {
-    throw new Error("Subtask title cannot be empty");
-  }
 
-  let taskFound = false;
-  const nextTasks = board.tasks.map((task) => {
-    if (task.id === taskId) {
-      taskFound = true;
-      if (task.subtasks.some((s) => s.id === trimmedSubtaskId)) {
-        throw new Error(
-          `Subtask with ID "${trimmedSubtaskId}" already exists in task "${taskId}"`
-        );
-      }
-      return {
-        ...task,
-        subtasks: [
-          ...task.subtasks,
-          {
-            id: trimmedSubtaskId,
-            title: trimmedSubtaskTitle,
-            completed: subtask.completed ?? false,
-          },
-        ],
-      };
-    }
-    return task;
-  });
-
-  if (!taskFound) {
-    throw new Error(`Task "${taskId}" not found`);
-  }
-
-  return KanbanBoardSchema.parse({
-    lanes: board.lanes,
-    tasks: nextTasks,
-  });
-}
-
-export function updateSubtask(
-  board: KanbanBoard,
-  taskId: string,
-  subtaskId: string,
-  patch: { title?: string; completed?: boolean }
-): KanbanBoard {
-  if (patch.title !== undefined && !patch.title.trim()) {
-    throw new Error("Subtask title cannot be empty");
-  }
-
-  let taskFound = false;
-  let subtaskFound = false;
-
-  const nextTasks = board.tasks.map((task) => {
-    if (task.id === taskId) {
-      taskFound = true;
-      const nextSubtasks = task.subtasks.map((s) => {
-        if (s.id === subtaskId) {
-          subtaskFound = true;
-          return {
-            ...s,
-            title: patch.title !== undefined ? patch.title.trim() : s.title,
-            completed: patch.completed !== undefined ? patch.completed : s.completed,
-          };
-        }
-        return s;
-      });
-      return { ...task, subtasks: nextSubtasks };
-    }
-    return task;
-  });
-
-  if (!taskFound) {
-    throw new Error(`Task "${taskId}" not found`);
-  }
-  if (!subtaskFound) {
-    throw new Error(`Subtask "${subtaskId}" not found in task "${taskId}"`);
-  }
-
-  return KanbanBoardSchema.parse({
-    lanes: board.lanes,
-    tasks: nextTasks,
-  });
-}
-
-export function deleteSubtask(
-  board: KanbanBoard,
-  taskId: string,
-  subtaskId: string
-): KanbanBoard {
-  let taskFound = false;
-  let subtaskFound = false;
-
-  const nextTasks = board.tasks.map((task) => {
-    if (task.id === taskId) {
-      taskFound = true;
-      const nextSubtasks = task.subtasks.filter((s) => {
-        if (s.id === subtaskId) {
-          subtaskFound = true;
-          return false;
-        }
-        return true;
-      });
-      return { ...task, subtasks: nextSubtasks };
-    }
-    return task;
-  });
-
-  if (!taskFound) {
-    throw new Error(`Task "${taskId}" not found`);
-  }
-  if (!subtaskFound) {
-    throw new Error(`Subtask "${subtaskId}" not found in task "${taskId}"`);
-  }
-
-  return KanbanBoardSchema.parse({
-    lanes: board.lanes,
-    tasks: nextTasks,
-  });
-}

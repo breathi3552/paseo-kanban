@@ -11,7 +11,7 @@ import { useSettings } from "@getpaseo/plugin/client";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import {
   kanbanSettings,
-  moveTask,
+  updateTask,
   type KanbanTask,
   type KanbanLane,
   type KanbanBoard,
@@ -43,7 +43,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
   const handleMoveTask = async (taskId: string, targetLaneId: string) => {
     if (!board) return;
     try {
-      const nextBoard = moveTask(board, taskId, targetLaneId);
+      const nextBoard = updateTask(board, taskId, { laneId: targetLaneId });
       await settings.save(nextBoard, revision);
     } catch (err) {
       console.error("Move task failed:", err);

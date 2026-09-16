@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { findHoveredLaneId } from "../client/drag-hit-test.ts";
+import { findHoveredLaneId } from "../client/kanban-drag.ts";
 
 const mockContainer = {
   x: 20,

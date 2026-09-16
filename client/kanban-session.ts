@@ -37,10 +37,8 @@ export interface TaskSessionInitialValues {
 
 export interface TaskEditSession {
   readonly mode: "create" | "edit";
-  readonly targetTaskId?: string;
   readonly baseBoard: KanbanBoard;
   readonly baseRevision: string;
-  readonly task: KanbanTask | null;
   readonly initialValues: TaskSessionInitialValues;
   saveDraft(draft: TaskDraft): Promise<SessionResult>;
   deleteTask(): Promise<SessionResult>;
@@ -58,10 +56,8 @@ export interface LaneSessionInitialValues {
 
 export interface LaneEditSession {
   readonly mode: "create" | "edit";
-  readonly targetLaneId?: string;
   readonly baseBoard: KanbanBoard;
   readonly baseRevision: string;
-  readonly lane: KanbanLane | null;
   readonly initialValues: LaneSessionInitialValues;
   readonly lanesCount: number;
   readonly tasksInLaneCount: number;
@@ -98,10 +94,8 @@ export function openTaskSession(options: OpenTaskSessionOptions): TaskEditSessio
 
   return {
     mode,
-    targetTaskId: mode === "edit" ? taskId : undefined,
     baseBoard,
     baseRevision,
-    task,
     initialValues,
     async saveDraft(draft: TaskDraft): Promise<SessionResult> {
       const trimmedTitle = draft.title.trim();
@@ -223,10 +217,8 @@ export function openLaneSession(options: OpenLaneSessionOptions): LaneEditSessio
 
   return {
     mode,
-    targetLaneId: mode === "edit" ? laneId : undefined,
     baseBoard,
     baseRevision,
-    lane,
     initialValues,
     lanesCount,
     tasksInLaneCount,

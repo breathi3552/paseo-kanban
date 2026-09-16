@@ -48,7 +48,6 @@ test("正常路径: 创建任务并完整保留标题、描述、泳道、项目
   });
 
   assert.equal(session.mode, "create");
-  assert.equal(session.task, null);
   assert.equal(session.initialValues.laneId, "to-plan");
 
   const result = await session.saveDraft({

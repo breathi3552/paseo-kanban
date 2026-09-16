@@ -1,6 +1,58 @@
 import { useRef, useSyncExternalStore } from "react";
-import type { Rect, LaneLayoutItem } from "./drag-hit-test.ts";
-import { findHoveredLaneId } from "./drag-hit-test.ts";
+
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface LaneLayoutItem {
+  id: string;
+  rect: Rect;
+}
+
+export interface DragHitTestOptions {
+  pointerX: number;
+  pointerY: number;
+  containerBounds: Rect | null;
+  scrollX: number;
+  lanes: LaneLayoutItem[];
+}
+
+export function findHoveredLaneId(options: DragHitTestOptions): string | null {
+  const { pointerX, pointerY, containerBounds, scrollX, lanes } = options;
+
+  if (containerBounds) {
+    if (
+      pointerX < containerBounds.x ||
+      pointerX > containerBounds.x + containerBounds.width ||
+      pointerY < containerBounds.y ||
+      pointerY > containerBounds.y + containerBounds.height
+    ) {
+      return null;
+    }
+  }
+
+  const containerOriginX = containerBounds ? containerBounds.x : 0;
+  const containerOriginY = containerBounds ? containerBounds.y : 0;
+  const contentX = pointerX - containerOriginX + scrollX;
+  const contentY = pointerY - containerOriginY;
+
+  for (const lane of lanes) {
+    const { x, y, width, height } = lane.rect;
+    if (
+      contentX >= x &&
+      contentX <= x + width &&
+      contentY >= y &&
+      contentY <= y + height
+    ) {
+      return lane.id;
+    }
+  }
+
+  return null;
+}
 
 export interface DragFeedback {
   readonly isDragging: boolean;
@@ -243,15 +295,11 @@ export class KanbanDragController {
   }
 }
 
-export function createKanbanDragController(options?: KanbanDragOptions): KanbanDragController {
-  return new KanbanDragController(options);
-}
-
 export function useKanbanDrag(options: KanbanDragOptions) {
   const { lanes = [], onMoveTask } = options;
   const controllerRef = useRef<KanbanDragController | null>(null);
   if (!controllerRef.current) {
-    controllerRef.current = createKanbanDragController({
+    controllerRef.current = new KanbanDragController({
       lanes,
       onMoveTask,
     });
