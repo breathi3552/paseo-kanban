@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Paseo Kanban 插件架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "runtime-entry",
+        "label": "运行时入口",
+        "focus": ["paseo-host", "plugin-entry", "kanban-board", "settings-api"],
+        "note": "从 Paseo 宿主加载插件，到看板读写版本化设置。"
+      },
+      {
+        "id": "board-editing",
+        "label": "看板编辑",
+        "focus": ["kanban-board", "domain-model", "interaction-ui"],
+        "note": "任务、泳道、子任务和拖拽交互都回到共享状态模型。"
+      },
+      {
+        "id": "project-filtering",
+        "label": "项目筛选",
+        "focus": ["project-api", "project-query", "kanban-board"],
+        "note": "项目变更通过订阅触发查询失效和筛选刷新。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "paseo-host",
+      "type": "external",
+      "label": "Paseo 宿主",
+      "sublabel": "插件运行时",
+      "pos": [40, 300],
+      "size": [180, 70]
+    },
+    {
+      "id": "plugin-entry",
+      "type": "frontend",
+      "label": "插件入口",
+      "sublabel": "index.client.tsx / index.server.ts",
+      "pos": [280, 300],
+      "size": [190, 70],
+      "tag": "注册 surface + settings"
+    },
+    {
+      "id": "kanban-board",
+      "type": "frontend",
+      "label": "看板界面",
+      "sublabel": "KanbanBoardView",
+      "pos": [530, 300],
+      "size": [190, 70],
+      "tag": "React Native UI"
+    },
+    {
+      "id": "settings-api",
+      "type": "external",
+      "label": "设置存储 API",
+      "sublabel": "useSettings / save(revision)",
+      "pos": [780, 300],
+      "size": [190, 70],
+      "tag": "版本化保存"
+    },
+    {
+      "id": "project-api",
+      "type": "external",
+      "label": "项目 API",
+      "sublabel": "paseo.projects",
+      "pos": [40, 520],
+      "size": [180, 70]
+    },
+    {
+      "id": "project-query",
+      "type": "frontend",
+      "label": "项目查询",
+      "sublabel": "useProjects + React Query",
+      "pos": [280, 520],
+      "size": [190, 70],
+      "tag": "订阅失效缓存"
+    },
+    {
+      "id": "domain-model",
+      "type": "backend",
+      "label": "共享领域模型",
+      "sublabel": "shared/kanban.ts",
+      "pos": [780, 520],
+      "size": [190, 70],
+      "tag": "Zod + 纯状态转换"
+    },
+    {
+      "id": "interaction-ui",
+      "type": "frontend",
+      "label": "交互组件",
+      "sublabel": "KanbanCard / TaskModal / LaneModal",
+      "pos": [530, 520],
+      "size": [190, 70],
+      "tag": "编辑 + 拖拽命中测试"
+    }
+  ],
+  "connections": [
+    { "id": "host-loads-plugin", "from": "paseo-host", "to": "plugin-entry", "label": "加载插件", "variant": "emphasis" },
+    { "id": "register-surface", "from": "plugin-entry", "to": "kanban-board", "label": "注册看板 surface", "labelDy": -22 },
+    { "id": "board-reads-settings", "from": "kanban-board", "to": "settings-api", "label": "读取 / 保存 board", "variant": "emphasis", "labelDy": -22 },
+    { "id": "host-project-api", "from": "paseo-host", "to": "project-api", "label": "提供项目服务", "variant": "dashed", "labelDy": 24 },
+    { "id": "project-list", "from": "project-api", "to": "project-query", "label": "list + subscribe", "labelDy": -29 },
+    { "id": "projects-to-board", "from": "project-query", "to": "kanban-board", "label": "项目筛选数据" },
+    { "id": "board-uses-domain", "from": "kanban-board", "to": "domain-model", "label": "调用状态转换" },
+    { "id": "board-renders-interactions", "from": "kanban-board", "to": "interaction-ui", "label": "渲染 + 交互回调", "labelDy": 24 }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "入口与运行时",
+      "items": ["client/server 入口分别注册 UI surface 和 host settings", "插件由 Paseo 宿主提供项目与设置 API"]
+    },
+    {
+      "dot": "emerald",
+      "title": "状态边界",
+      "items": ["KanbanBoardView 负责交互编排与并发修订", "shared/kanban.ts 负责 schema 校验和纯状态转换"]
+    },
+    {
+      "dot": "violet",
+      "title": "交互路径",
+      "items": ["项目订阅驱动筛选刷新", "卡片、弹窗和拖拽逻辑集中在客户端交互层"]
+    }
+  ]
+}
