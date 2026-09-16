@@ -20,7 +20,7 @@ import { useProjects, getProjectDisplayName } from "./use-projects";
 import { KanbanCard } from "./kanban-card";
 import { TaskModal } from "./task-modal";
 import { LaneModal } from "./lane-modal";
-import { findHoveredLaneId } from "./drag-hit-test";
+import { useKanbanDrag } from "./kanban-drag";
 import {
   openTaskSession,
   openLaneSession,
@@ -36,27 +36,24 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
   const [activeTaskSession, setActiveTaskSession] = useState<TaskEditSession | null>(null);
   const [activeLaneSession, setActiveLaneSession] = useState<LaneEditSession | null>(null);
 
-  // Drag state
-  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
-  const [draggingSourceLaneId, setDraggingSourceLaneId] = useState<string | null>(null);
-  const [hoveredLaneId, setHoveredLaneId] = useState<string | null>(null);
-  // Active drag session ref for synchronous tracking across re-renders and release recalculation
-  const activeDragSessionRef = useRef<{
-    taskId: string;
-    sourceLaneId: string;
-    lastMoveX: number;
-    lastMoveY: number;
-  } | null>(null);
-
-  const laneLayouts = useRef<
-    Record<string, { x: number; y: number; width: number; height: number }>
-  >({});
-  const containerBoundsRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
-  const containerRef = useRef<View | null>(null);
-  const scrollOffsetRef = useRef(0);
   const isReady = settings.status === "ready";
   const board = isReady ? settings.values : null;
   const revision = isReady ? settings.revision : "";
+
+  const handleMoveTask = async (taskId: string, targetLaneId: string) => {
+    if (!board) return;
+    try {
+      const nextBoard = moveTask(board, taskId, targetLaneId);
+      await settings.save(nextBoard, revision);
+    } catch (err) {
+      console.error("Move task failed:", err);
+    }
+  };
+
+  const drag = useKanbanDrag({
+    lanes: board?.lanes ?? [],
+    onMoveTask: handleMoveTask,
+  });
 
   const styles = useMemo(
     () =>
@@ -294,98 +291,6 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
     return board.tasks.filter((t) => t.projectId === selectedProjectId);
   }, [board, selectedProjectId]);
 
-  // Handle Drag Move & Hit Testing
-  const updateContainerBounds = () => {
-    if (containerRef.current?.measureInWindow) {
-      containerRef.current.measureInWindow((wx, wy, ww, wh) => {
-        if (ww > 0 && wh > 0) {
-          containerBoundsRef.current = { x: wx, y: wy, width: ww, height: wh };
-        }
-      });
-    }
-  };
-  const handleDragStart = (taskId: string, laneId: string, startX: number, startY: number) => {
-    updateContainerBounds();
-    activeDragSessionRef.current = {
-      taskId,
-      sourceLaneId: laneId,
-      lastMoveX: startX,
-      lastMoveY: startY,
-    };
-    setDraggingTaskId(taskId);
-    setDraggingSourceLaneId(laneId);
-    setHoveredLaneId(laneId);
-  };
-
-  const handleDragMove = (_dx: number, _dy: number, moveX: number, moveY: number) => {
-    if (!activeDragSessionRef.current || !board) return;
-    activeDragSessionRef.current.lastMoveX = moveX;
-    activeDragSessionRef.current.lastMoveY = moveY;
-
-    const laneItems = board.lanes.map((l) => ({
-      id: l.id,
-      rect: laneLayouts.current[l.id] ?? { x: 0, y: 0, width: 0, height: 0 },
-    }));
-
-    const hitLaneId = findHoveredLaneId({
-      pointerX: moveX,
-      pointerY: moveY,
-      containerBounds: containerBoundsRef.current,
-      scrollX: scrollOffsetRef.current,
-      lanes: laneItems,
-    });
-
-    setHoveredLaneId(hitLaneId);
-  };
-
-  const handleDragEnd = async (didDrag: boolean, finalMoveX?: number, finalMoveY?: number) => {
-    const session = activeDragSessionRef.current;
-    activeDragSessionRef.current = null;
-    setDraggingTaskId(null);
-    setDraggingSourceLaneId(null);
-    setHoveredLaneId(null);
-
-    if (!didDrag || !session || !board) return;
-
-    const finalX = typeof finalMoveX === "number" && finalMoveX > 0 ? finalMoveX : session.lastMoveX;
-    const finalY = typeof finalMoveY === "number" && finalMoveY > 0 ? finalMoveY : session.lastMoveY;
-
-    const laneItems = board.lanes.map((l) => ({
-      id: l.id,
-      rect: laneLayouts.current[l.id] ?? { x: 0, y: 0, width: 0, height: 0 },
-    }));
-
-    // Synchronously recompute hit test on release using exact final pointer coordinates
-    const finalTargetLane = findHoveredLaneId({
-      pointerX: finalX,
-      pointerY: finalY,
-      containerBounds: containerBoundsRef.current,
-      scrollX: scrollOffsetRef.current,
-      lanes: laneItems,
-    });
-
-    if (
-      finalTargetLane &&
-      finalTargetLane !== session.sourceLaneId
-    ) {
-      try {
-        const nextBoard = moveTask(board, session.taskId, finalTargetLane);
-        await settings.save(nextBoard, revision);
-      } catch (err) {
-        console.error("Move task failed:", err);
-      }
-    }
-  };
-  const handleMoveTaskDirectly = async (taskId: string, targetLaneId: string) => {
-    if (!board) return;
-    try {
-      const nextBoard = moveTask(board, taskId, targetLaneId);
-      await settings.save(nextBoard, revision);
-    } catch (err) {
-      console.error("Direct move task failed:", err);
-    }
-  };
-
   if (settings.status === "loading") {
     return (
       <View style={[styles.container, styles.centerBox]}>
@@ -569,36 +474,23 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
 
       {/* Main Board Lanes */}
       <ScrollView
-        ref={(r) => {
-          containerRef.current = r as unknown as View;
-        }}
+        ref={drag.bindContainerRef as unknown as (instance: ScrollView | null) => void}
         horizontal
         style={styles.lanesContainer}
         contentContainerStyle={styles.lanesContent}
-        onLayout={(e) => {
-          const { x, y, width, height } = e.nativeEvent.layout;
-          if (!containerBoundsRef.current) {
-            containerBoundsRef.current = { x, y, width, height };
-          }
-          updateContainerBounds();
-        }}
-        onScroll={(e) => {
-          scrollOffsetRef.current = e.nativeEvent.contentOffset.x;
-        }}
+        onLayout={(e) => drag.handleContainerLayout(e.nativeEvent.layout)}
+        onScroll={(e) => drag.handleScroll(e.nativeEvent.contentOffset.x)}
         scrollEventThrottle={16}
       >
         {board.lanes.map((lane) => {
           const laneTasks = filteredTasks.filter((t) => t.laneId === lane.id);
-          const isHovered = hoveredLaneId === lane.id && draggingTaskId !== null;
+          const isHovered = drag.isLaneHovered(lane.id);
 
           return (
             <View
               key={lane.id}
               style={[styles.laneColumn, isHovered && styles.laneColumnHovered]}
-              onLayout={(e) => {
-                const { x, y, width, height } = e.nativeEvent.layout;
-                laneLayouts.current[lane.id] = { x, y, width, height };
-              }}
+              onLayout={(e) => drag.registerLaneLayout(lane.id, e.nativeEvent.layout)}
             >
               <View style={styles.laneHeader}>
                 <View style={styles.laneTitleGroup}>
@@ -665,7 +557,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                       lanes={board.lanes}
                       theme={theme}
                       layout={layout}
-                      isDraggingThis={draggingTaskId === task.id}
+                      isDraggingThis={drag.isTaskDragging(task.id)}
                       onPress={() => {
                         if (!board) return;
                         setActiveTaskSession(
@@ -678,10 +570,11 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                           })
                         );
                       }}
-                      onMoveToLane={(targetId: string) => handleMoveTaskDirectly(task.id, targetId)}
-                      onDragStart={handleDragStart}
-                      onDragMove={handleDragMove}
-                      onDragEnd={handleDragEnd}
+                      onMoveToLane={(targetId: string) => handleMoveTask(task.id, targetId)}
+                      onDragStart={drag.startGesture}
+                      onDragMove={drag.moveGesture}
+                      onDragRelease={drag.releaseGesture}
+                      onDragCancel={drag.cancelGesture}
                     />
                   ))}
 

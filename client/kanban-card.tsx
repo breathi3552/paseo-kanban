@@ -22,8 +22,9 @@ interface KanbanCardProps {
   onPress: () => void;
   onMoveToLane: (targetLaneId: string) => void;
   onDragStart: (taskId: string, laneId: string, startX: number, startY: number) => void;
-  onDragMove: (dx: number, dy: number, moveX: number, moveY: number) => void;
-  onDragEnd: (didDrag: boolean, finalMoveX: number, finalMoveY: number) => void;
+  onDragMove: (moveX: number, moveY: number) => void;
+  onDragRelease: (moveX?: number, moveY?: number) => void;
+  onDragCancel: () => void;
 }
 
 export function KanbanCard({
@@ -37,14 +38,15 @@ export function KanbanCard({
   onMoveToLane,
   onDragStart,
   onDragMove,
-  onDragEnd,
+  onDragRelease,
+  onDragCancel,
 }: KanbanCardProps) {
   const [showMoveMenu, setShowMoveMenu] = useState(false);
 
   // Sync ref to always hold latest callbacks and task, avoiding recreating PanResponder on re-renders
-  const callbacksRef = useRef({ onDragStart, onDragMove, onDragEnd, task });
+  const callbacksRef = useRef({ onDragStart, onDragMove, onDragRelease, onDragCancel, task });
   useEffect(() => {
-    callbacksRef.current = { onDragStart, onDragMove, onDragEnd, task };
+    callbacksRef.current = { onDragStart, onDragMove, onDragRelease, onDragCancel, task };
   });
 
   const completedSubtasksCount = useMemo(
@@ -167,20 +169,15 @@ export function KanbanCard({
       },
       onPanResponderMove: (_e, gestureState) => {
         const { onDragMove } = callbacksRef.current;
-        onDragMove(
-          gestureState.dx,
-          gestureState.dy,
-          gestureState.moveX,
-          gestureState.moveY
-        );
+        onDragMove(gestureState.moveX, gestureState.moveY);
       },
       onPanResponderRelease: (_e, gestureState) => {
-        const { onDragEnd } = callbacksRef.current;
-        onDragEnd(true, gestureState.moveX, gestureState.moveY);
+        const { onDragRelease } = callbacksRef.current;
+        onDragRelease(gestureState.moveX, gestureState.moveY);
       },
       onPanResponderTerminate: () => {
-        const { onDragEnd } = callbacksRef.current;
-        onDragEnd(false, 0, 0);
+        const { onDragCancel } = callbacksRef.current;
+        onDragCancel();
       },
     })
   ).current;
