@@ -355,45 +355,46 @@ test("手势分流: 鼠标按住移动 < 5px 识别为点击，>= 5px 激活拖�
 });
 
 // ---------------------------------------------------------------------------
-// 9. 目标槽位计算与 12px 迟滞死区 (Hysteresis Buffer)
+// 9. 目标槽位计算与卡片间迟滞死区 (Hysteresis Buffer)
 // ---------------------------------------------------------------------------
-test("槽位与防抖: 目标卡片中线 12px 迟滞死区防止临界微颤", async () => {
+test("槽位与防抖: 重合卡片位置直接落位并使原卡片顺移，卡片分界迟滞死区防止临界微颤", async () => {
   const controller = setupController();
   // 注册 in-progress 泳道内 2 张现有卡片
   // container.y = 80, lane.y = 10, 因此卡片相对 containerOriginY:
-  // 卡片 1: y = 20, height = 60, 中线 midY = 50. windowY = 80 + 10 + 50 = 140
-  // 卡片 2: y = 90, height = 60, 中线 midY = 120. windowY = 80 + 10 + 120 = 210
+  // 卡片 1 (card-a): y = 20, height = 60. windowY = 110 ~ 170.
+  // 卡片 2 (card-b): y = 90, height = 60. windowY = 180 ~ 240.
+  // 两卡片间分界线: windowY = (170 + 180) / 2 = 175 (死区 167 ~ 183)
+  // card-b 底部边界: windowY = 240 + 4 = 244 (死区 236 ~ 252)
   controller.setLaneCardOrder("in-progress", ["card-a", "card-b"]);
   controller.registerCardLayout("in-progress", "card-a", { x: 10, y: 20, width: 260, height: 60 });
   controller.registerCardLayout("in-progress", "card-b", { x: 10, y: 90, width: 260, height: 60 });
 
   controller.startGesture("task-1", "to-plan", 70, 130, true);
 
-  // 移动到 in-progress，光标在 card-a 上方 (windowY = 110, relativeY = 20 < 50) -> index 0
+  // 移动到 in-progress，光标在 card-a 重合位置 (windowY = 110 < 167) -> index 0 (card-a 顺移)
   controller.moveGesture(340, 110);
   assert.equal(controller.getFeedback().hoveredLaneId, "in-progress");
   assert.equal(controller.getFeedback().targetIndex, 0);
 
-  // 移动到两张卡片中间 (windowY = 175, relativeY = 85, > 50 且 < 120) -> index 1
-  controller.moveGesture(340, 175);
+  // 移动到 card-b 重合位置 (windowY = 200, 处于 183 ~ 236 之间) -> index 1 (card-b 顺移)
+  controller.moveGesture(340, 200);
   assert.equal(controller.getFeedback().targetIndex, 1);
 
-  // 向下移动，进入 card-b 中线 12px 缓冲死区 (midY = 120, 死区 108 ~ 132; windowY = 210)
-  // 当 windowY = 218 (relativeY = 128, 仍处于死区 108~132 内)，保持 index = 1
-  controller.moveGesture(340, 218);
-  assert.equal(controller.getFeedback().targetIndex, 1, "死区内向上/向下微颤不切换槽位");
+  // 向下移动，进入 card-b 底部迟滞缓冲死区 (windowY = 240, 死区 236 ~ 252)
+  controller.moveGesture(340, 240);
+  assert.equal(controller.getFeedback().targetIndex, 1, "死区内微颤保持原有槽位 index 1");
 
-  // 向下突破迟滞死区 (relativeY = 135 > 132, windowY = 225) -> index 2
-  controller.moveGesture(340, 225);
+  // 向下突破底部迟滞死区 (windowY = 260 > 252) -> index 2 (落位末尾)
+  controller.moveGesture(340, 260);
   assert.equal(controller.getFeedback().targetIndex, 2);
 
-  // 向上轻微回退至 windowY = 218 (relativeY = 128，处于 108~132 死区)
+  // 向上轻微回退至 windowY = 240 (处于 236 ~ 252 死区)
   // 保持当前 index 2，不产生抖动！
-  controller.moveGesture(340, 218);
+  controller.moveGesture(340, 240);
   assert.equal(controller.getFeedback().targetIndex, 2, "回退在死区内保持已有 index 2");
 
-  // 向上突破死区上界 (relativeY = 100 < 108, windowY = 190) -> index 切回 1
-  controller.moveGesture(340, 190);
+  // 向上突破死区上界回到 card-b 重合区 (windowY = 210 < 236) -> index 切回 1
+  controller.moveGesture(340, 210);
   assert.equal(controller.getFeedback().targetIndex, 1);
 
   await controller.releaseGesture();
@@ -410,13 +411,13 @@ test("卡片坐标: 包含列表顶部偏移与纵向滚动，滚动后原地释
   }
   controller.startGesture("1", "to-plan", 100, 180);
   assert.equal(controller.getFeedback().draggedCardHeight, 96);
-  controller.moveGesture(100, 270);
+  controller.moveGesture(100, 200);
   assert.equal(controller.getFeedback().targetIndex, 0);
-  controller.moveGesture(100, 310);
+  controller.moveGesture(100, 280);
   assert.equal(controller.getFeedback().targetIndex, 1);
   controller.handleLaneScroll("to-plan", 100);
   assert.equal(controller.getFeedback().targetIndex, 2, "scrolling must recompute the slot without a pointer move");
-  await controller.releaseGesture(100, 310);
+  await controller.releaseGesture(100, 280);
   assert.deepEqual(requests, [["1", "to-plan", 2]]);
 });
 
@@ -452,6 +453,49 @@ test("占位动画不能反过来改变命中阈值", () => {
   controller.moveGesture(100, 230);
   assert.equal(controller.getFeedback().targetIndex, 1);
   controller.cancelGesture();
+});
+
+test("卡片重合定位: 挪到目标卡片重合区域释放时，拖拽卡片落位于重合卡片槽位，下方卡片顺移", async () => {
+  const requests = [];
+  const controller = setupController();
+  controller.setOnReorderTask((...args) => requests.push(args));
+  controller.setLaneCardOrder("in-progress", ["A", "B", "C"]);
+  // container.y = 80, lane.y = 10 -> origin = 90
+  // A: y = 0, h = 60 (window 90 ~ 150)
+  // B: y = 70, h = 60 (window 160 ~ 220)
+  // C: y = 140, h = 60 (window 230 ~ 290)
+  controller.registerCardLayout("in-progress", "A", { x: 10, y: 0, width: 260, height: 60 });
+  controller.registerCardLayout("in-progress", "B", { x: 10, y: 70, width: 260, height: 60 });
+  controller.registerCardLayout("in-progress", "C", { x: 10, y: 140, width: 260, height: 60 });
+
+  // 1. 跨泳道拖动到卡片 B 的重合位置 (windowY = 190，处于卡片 B 正中)
+  controller.startGesture("task-x", "to-plan", 70, 130, true);
+  controller.moveGesture(340, 190);
+  assert.equal(controller.getFeedback().hoveredLaneId, "in-progress");
+  assert.equal(controller.getFeedback().targetIndex, 1, "重合卡片 B 时落位于卡片 B 原槽位 index 1");
+  await controller.releaseGesture(340, 190);
+  assert.deepEqual(requests[0], ["task-x", "in-progress", 1]);
+
+  // 2. 同泳道从下方 (卡片 C) 拖动到卡片 B 的重合位置 (windowY = 190)
+  controller.startGesture("C", "in-progress", 340, 260, true);
+  controller.moveGesture(340, 190);
+  assert.equal(controller.getFeedback().targetIndex, 1, "从下方移到重合位置，落位于卡片 B 原槽位 index 1");
+  await controller.releaseGesture(340, 190);
+  assert.deepEqual(requests[1], ["C", "in-progress", 1]);
+
+  // 3. 同泳道从上方 (卡片 A) 拖动到卡片 B 的重合位置 (windowY = 190)
+  controller.startGesture("A", "in-progress", 340, 120, true);
+  controller.moveGesture(340, 190);
+  assert.equal(controller.getFeedback().targetIndex, 1, "从上方移到重合位置，卡片 A 占位卡片 B 原槽位 index 1");
+  await controller.releaseGesture(340, 190);
+  assert.deepEqual(requests[2], ["A", "in-progress", 1]);
+
+  // 4. 移动到所有卡片下方空白区域 (windowY = 320 > 290)
+  controller.startGesture("task-x", "to-plan", 70, 130, true);
+  controller.moveGesture(340, 320);
+  assert.equal(controller.getFeedback().targetIndex, 3, "移至底部空白区域时落位于泳道末尾 index 3");
+  await controller.releaseGesture(340, 320);
+  assert.deepEqual(requests[3], ["task-x", "in-progress", 3]);
 });
 
 test("同泳道释放: 顶部、中间、底部落位均与占位索引一致", async () => {

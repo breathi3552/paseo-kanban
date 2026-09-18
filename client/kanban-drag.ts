@@ -479,8 +479,13 @@ export class KanbanDragController {
   private computeTargetIndex(laneId: string, pointerY: number): number {
     const allCardIds = this.laneCardOrders.get(laneId) ?? [];
     const activeTaskId = this.activeSession?.taskId;
-    const cardIds = allCardIds.filter((id) => id !== activeTaskId);
-    if (cardIds.length === 0) return 0;
+    const isSourceLane = this.activeSession ? this.activeSession.sourceLaneId === laneId : false;
+
+    const remainingCount = isSourceLane && allCardIds.includes(activeTaskId ?? "")
+      ? Math.max(0, allCardIds.length - 1)
+      : allCardIds.length;
+
+    if (allCardIds.length === 0 || remainingCount === 0) return 0;
 
     const laneRect = this.laneLayouts.get(laneId);
     const containerOriginY = this.containerBounds?.y ?? 0;
@@ -493,30 +498,49 @@ export class KanbanDragController {
       ? this.activeSession?.currentTargetIndex ?? -1
       : -1;
 
-    for (let i = 0; i < cardIds.length; i++) {
-      const cardId = cardIds[i];
+    for (let i = 0; i < allCardIds.length; i++) {
+      const cardId = allCardIds[i];
       const cardRect = laneCardsMap?.get(cardId);
       if (!cardRect) continue;
 
-      const midWindowY = containerOriginY + laneOriginY + cardsOriginY - scrollY + cardRect.y + cardRect.height / 2;
-      const lowerBuffer = midWindowY - 12;
-      const upperBuffer = midWindowY + 12;
+      const cardTop = containerOriginY + laneOriginY + cardsOriginY - scrollY + cardRect.y;
+      const cardBottom = cardTop + cardRect.height;
+
+      // Determine the boundary below this card
+      let thresholdY: number;
+      if (i < allCardIds.length - 1) {
+        const nextCardId = allCardIds[i + 1];
+        const nextCardRect = laneCardsMap?.get(nextCardId);
+        if (nextCardRect) {
+          const nextCardTop = containerOriginY + laneOriginY + cardsOriginY - scrollY + nextCardRect.y;
+          thresholdY = (cardBottom + nextCardTop) / 2;
+        } else {
+          thresholdY = cardBottom + 4;
+        }
+      } else {
+        thresholdY = cardBottom + 4;
+      }
+
+      const lowerBuffer = thresholdY - 8;
+      const upperBuffer = thresholdY + 8;
 
       if (pointerY < lowerBuffer) {
-        return i;
+        return Math.min(i, remainingCount);
       }
       if (pointerY <= upperBuffer) {
         if (prevIndex === i) {
-          return i;
+          return Math.min(i, remainingCount);
         }
         if (prevIndex === i + 1) {
-          return i + 1;
+          return Math.min(i + 1, remainingCount);
         }
-        return pointerY >= midWindowY ? i + 1 : i;
+        return pointerY >= thresholdY
+          ? Math.min(i + 1, remainingCount)
+          : Math.min(i, remainingCount);
       }
     }
 
-    return cardIds.length;
+    return remainingCount;
   }
 
   private computeHit(pointerX: number, pointerY: number): string | null {
