@@ -573,8 +573,9 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
             const targetIndex = isHovered
               ? (drag.feedback.targetIndex ?? laneTasks.length)
               : -1;
-            const dropBeforeTaskId = laneTasks
-              .filter((task) => task.id !== drag.feedback.draggingTaskId)[targetIndex]?.id;
+            const dropBeforeTaskId = isHovered
+              ? laneTasks.filter((task) => task.id !== drag.feedback.draggingTaskId)[targetIndex]?.id
+              : undefined;
 
             return (
               <View
