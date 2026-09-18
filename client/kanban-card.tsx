@@ -87,6 +87,7 @@ export function KanbanCard({
     () =>
       StyleSheet.create({
         card: {
+          userSelect: "none",
           backgroundColor: theme.colors.surface2,
           borderColor: isDraggingThis ? theme.colors.accent : theme.colors.border,
           borderWidth: isDraggingThis ? 2 : 1,
@@ -112,6 +113,7 @@ export function KanbanCard({
           fontSize: layout.compact ? 13 : 14,
           fontWeight: "600",
           color: theme.colors.foreground,
+          userSelect: "none",
         },
         badgeRow: {
           flexDirection: "row",
@@ -282,6 +284,7 @@ export function KanbanCardPreview({
     () =>
       StyleSheet.create({
         previewCard: {
+          userSelect: "none",
           width: layout.compact ? 250 : 280,
           backgroundColor: theme.colors.surface2,
           borderColor: theme.colors.accent,
@@ -312,6 +315,7 @@ export function KanbanCardPreview({
           fontSize: layout.compact ? 13 : 14,
           fontWeight: "600",
           color: theme.colors.foreground,
+          userSelect: "none",
         },
         badgeRow: {
           flexDirection: "row",

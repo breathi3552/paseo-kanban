@@ -104,6 +104,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
         container: {
           flex: 1,
           backgroundColor: theme.colors.surface0,
+          userSelect: "none",
         },
         header: {
           paddingHorizontal: layout.compact ? 12 : 20,
@@ -219,6 +220,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
         lanesWrapper: {
           flex: 1,
           position: "relative",
+          userSelect: "none",
         },
         dragOverlay: {
           position: "absolute",
@@ -228,6 +230,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
         lanesContainer: {
           flex: 1,
           padding: layout.compact ? 10 : 16,
+          userSelect: "none",
         },
         lanesContent: {
           flexDirection: "row",
@@ -243,6 +246,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
           maxHeight: "100%",
           padding: 10,
           gap: 10,
+          userSelect: "none",
         },
         laneColumnHovered: {
           borderColor: theme.colors.accent,
@@ -267,6 +271,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
           fontSize: 14,
           fontWeight: "700",
           color: theme.colors.foreground,
+          userSelect: "none",
         },
         laneCountBadge: {
           backgroundColor: theme.colors.surface2,
@@ -316,6 +321,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
           color: theme.colors.foregroundMuted,
           textAlign: "center",
           paddingHorizontal: 12,
+          userSelect: "none",
         },
         centerBox: {
           flex: 1,
