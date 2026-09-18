@@ -44,6 +44,8 @@ test("有效移动: 开始拖拽、移动到另一泳道并释放，仅产生一
   assert.equal(startFeedback.draggingTaskId, "task-1");
   assert.equal(startFeedback.draggingSourceLaneId, "to-plan");
   assert.equal(startFeedback.hoveredLaneId, "to-plan");
+  assert.equal(startFeedback.pointerX, 70);
+  assert.equal(startFeedback.pointerY, 130);
 
   // Move pointer into "in-progress" lane: pointerX = 340, pointerY = 130
   controller.moveGesture(340, 130);
@@ -51,6 +53,8 @@ test("有效移动: 开始拖拽、移动到另一泳道并释放，仅产生一
   const moveFeedback = controller.getFeedback();
   assert.equal(moveFeedback.isDragging, true);
   assert.equal(moveFeedback.hoveredLaneId, "in-progress");
+  assert.equal(moveFeedback.pointerX, 340);
+  assert.equal(moveFeedback.pointerY, 130);
 
   // Release gesture in "in-progress" lane
   await controller.releaseGesture(340, 130);
@@ -65,6 +69,8 @@ test("有效移动: 开始拖拽、移动到另一泳道并释放，仅产生一
   assert.equal(endFeedback.draggingTaskId, null);
   assert.equal(endFeedback.draggingSourceLaneId, null);
   assert.equal(endFeedback.hoveredLaneId, null);
+  assert.equal(endFeedback.pointerX, undefined);
+  assert.equal(endFeedback.pointerY, undefined);
 
   // Duplicate termination events must not trigger another move request
   await controller.releaseGesture(340, 130);

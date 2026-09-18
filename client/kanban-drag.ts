@@ -59,6 +59,8 @@ export interface DragFeedback {
   readonly draggingTaskId: string | null;
   readonly draggingSourceLaneId: string | null;
   readonly hoveredLaneId: string | null;
+  readonly pointerX?: number;
+  readonly pointerY?: number;
 }
 
 export interface KanbanDragOptions {
@@ -174,6 +176,8 @@ export class KanbanDragController {
       draggingTaskId: taskId,
       draggingSourceLaneId: sourceLaneId,
       hoveredLaneId: initialHit ?? sourceLaneId,
+      pointerX,
+      pointerY,
     };
     this.notifyListeners();
   };
@@ -184,7 +188,14 @@ export class KanbanDragController {
       this.activeSession.lastPointerX = pointerX;
       this.activeSession.lastPointerY = pointerY;
     }
-    this.recomputeHover(pointerX, pointerY);
+    const hitLaneId = this.computeHit(this.activeSession.lastPointerX, this.activeSession.lastPointerY);
+    this.feedback = {
+      ...this.feedback,
+      hoveredLaneId: hitLaneId,
+      pointerX: this.activeSession.lastPointerX,
+      pointerY: this.activeSession.lastPointerY,
+    };
+    this.notifyListeners();
   };
 
   releaseGesture = async (pointerX?: number, pointerY?: number): Promise<void> => {
@@ -232,6 +243,10 @@ export class KanbanDragController {
       hoveredLaneId: null,
     };
     this.notifyListeners();
+  };
+
+  getContainerBounds = (): Rect | null => {
+    return this.containerBounds;
   };
 
   getFeedback = (): DragFeedback => {
@@ -320,6 +335,7 @@ export function useKanbanDrag(options: KanbanDragOptions) {
   return {
     controller,
     feedback,
+    getContainerBounds: controller.getContainerBounds,
     startGesture: controller.startGesture,
     moveGesture: controller.moveGesture,
     releaseGesture: controller.releaseGesture,

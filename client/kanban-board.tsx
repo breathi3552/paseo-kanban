@@ -17,7 +17,7 @@ import {
   type KanbanBoard,
 } from "../shared/kanban";
 import { useProjects, getProjectDisplayName } from "./use-projects";
-import { KanbanCard } from "./kanban-card";
+import { KanbanCard, KanbanCardPreview } from "./kanban-card";
 import { TaskModal } from "./task-modal";
 import { LaneModal } from "./lane-modal";
 import { useKanbanDrag } from "./kanban-drag";
@@ -173,6 +173,15 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
           borderWidth: 1,
           borderColor: theme.colors.border,
         },
+        lanesWrapper: {
+          flex: 1,
+          position: "relative",
+        },
+        dragOverlay: {
+          position: "absolute",
+          zIndex: 9999,
+          pointerEvents: "none",
+        },
         lanesContainer: {
           flex: 1,
           padding: layout.compact ? 10 : 16,
@@ -290,6 +299,16 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
     }
     return board.tasks.filter((t) => t.projectId === selectedProjectId);
   }, [board, selectedProjectId]);
+
+  const draggingTask = useMemo(() => {
+    if (!board || !drag.feedback.draggingTaskId) return null;
+    return board.tasks.find((t) => t.id === drag.feedback.draggingTaskId) ?? null;
+  }, [board, drag.feedback.draggingTaskId]);
+
+  const draggingTaskProjectName = useMemo(() => {
+    if (!draggingTask) return null;
+    return getProjectDisplayName(draggingTask.projectId, projects);
+  }, [draggingTask, projects]);
 
   if (settings.status === "loading") {
     return (
@@ -473,124 +492,152 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
       )}
 
       {/* Main Board Lanes */}
-      <ScrollView
-        ref={drag.bindContainerRef as unknown as (instance: ScrollView | null) => void}
-        horizontal
-        style={styles.lanesContainer}
-        contentContainerStyle={styles.lanesContent}
-        onLayout={(e) => drag.handleContainerLayout(e.nativeEvent.layout)}
-        onScroll={(e) => drag.handleScroll(e.nativeEvent.contentOffset.x)}
-        scrollEventThrottle={16}
-      >
-        {board.lanes.map((lane) => {
-          const laneTasks = filteredTasks.filter((t) => t.laneId === lane.id);
-          const isHovered = drag.isLaneHovered(lane.id);
+      <View style={styles.lanesWrapper}>
+        <ScrollView
+          ref={drag.bindContainerRef as unknown as (instance: ScrollView | null) => void}
+          horizontal
+          style={styles.lanesContainer}
+          contentContainerStyle={styles.lanesContent}
+          onLayout={(e) => drag.handleContainerLayout(e.nativeEvent.layout)}
+          onScroll={(e) => drag.handleScroll(e.nativeEvent.contentOffset.x)}
+          scrollEventThrottle={16}
+        >
+          {board.lanes.map((lane) => {
+            const laneTasks = filteredTasks.filter((t) => t.laneId === lane.id);
+            const isHovered = drag.isLaneHovered(lane.id);
 
-          return (
-            <View
-              key={lane.id}
-              style={[styles.laneColumn, isHovered && styles.laneColumnHovered]}
-              onLayout={(e) => drag.registerLaneLayout(lane.id, e.nativeEvent.layout)}
-            >
-              <View style={styles.laneHeader}>
-                <View style={styles.laneTitleGroup}>
-                  <Text style={styles.laneTitleText} numberOfLines={1}>
-                    {lane.title}
-                  </Text>
-                  <View style={styles.laneCountBadge}>
-                    <Text style={styles.laneCountText}>{laneTasks.length}</Text>
+            return (
+              <View
+                key={lane.id}
+                style={[styles.laneColumn, isHovered && styles.laneColumnHovered]}
+                onLayout={(e) => drag.registerLaneLayout(lane.id, e.nativeEvent.layout)}
+              >
+                <View style={styles.laneHeader}>
+                  <View style={styles.laneTitleGroup}>
+                    <Text style={styles.laneTitleText} numberOfLines={1}>
+                      {lane.title}
+                    </Text>
+                    <View style={styles.laneCountBadge}>
+                      <Text style={styles.laneCountText}>{laneTasks.length}</Text>
+                    </View>
                   </View>
-                </View>
 
-                <View style={styles.laneHeaderActions}>
-                  <Pressable
-                    onPress={() => {
-                      if (!board) return;
-                      setActiveTaskSession(
-                        openTaskSession({
-                          mode: "create",
-                          baseBoard: board,
-                          baseRevision: revision,
-                          save: (b, r) => settings.save(b, r),
-                          defaultLaneId: lane.id,
-                          defaultProjectId:
-                            selectedProjectId === "all" || selectedProjectId === "unassigned"
-                              ? null
-                              : selectedProjectId,
-                        })
-                      );
-                    }}
-                    style={styles.laneHeaderBtn}
-                    hitSlop={6}
-                  >
-                    <Text style={styles.laneHeaderBtnText}>+ 添加</Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => {
-                      if (!board) return;
-                      setActiveLaneSession(
-                        openLaneSession({
-                          mode: "edit",
-                          laneId: lane.id,
-                          baseBoard: board,
-                          baseRevision: revision,
-                          save: (b, r) => settings.save(b, r),
-                        })
-                      );
-                    }}
-                    style={styles.laneHeaderBtn}
-                    hitSlop={6}
-                  >
-                    <Text style={styles.laneHeaderBtnText}>管理</Text>
-                  </Pressable>
-                </View>
-              </View>
-
-              <ScrollView style={styles.cardsScroll} showsVerticalScrollIndicator={false}>
-                <View style={styles.cardsList}>
-                  {laneTasks.map((task) => (
-                    <KanbanCard
-                      key={task.id}
-                      task={task}
-                      projectDisplayName={getProjectDisplayName(task.projectId, projects)}
-                      lanes={board.lanes}
-                      theme={theme}
-                      layout={layout}
-                      isDraggingThis={drag.isTaskDragging(task.id)}
+                  <View style={styles.laneHeaderActions}>
+                    <Pressable
                       onPress={() => {
                         if (!board) return;
                         setActiveTaskSession(
                           openTaskSession({
+                            mode: "create",
+                            baseBoard: board,
+                            baseRevision: revision,
+                            save: (b, r) => settings.save(b, r),
+                            defaultLaneId: lane.id,
+                            defaultProjectId:
+                              selectedProjectId === "all" || selectedProjectId === "unassigned"
+                                ? null
+                                : selectedProjectId,
+                          })
+                        );
+                      }}
+                      style={styles.laneHeaderBtn}
+                      hitSlop={6}
+                    >
+                      <Text style={styles.laneHeaderBtnText}>+ 添加</Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() => {
+                        if (!board) return;
+                        setActiveLaneSession(
+                          openLaneSession({
                             mode: "edit",
-                            taskId: task.id,
+                            laneId: lane.id,
                             baseBoard: board,
                             baseRevision: revision,
                             save: (b, r) => settings.save(b, r),
                           })
                         );
                       }}
-                      onMoveToLane={(targetId: string) => handleMoveTask(task.id, targetId)}
-                      onDragStart={drag.startGesture}
-                      onDragMove={drag.moveGesture}
-                      onDragRelease={drag.releaseGesture}
-                      onDragCancel={drag.cancelGesture}
-                    />
-                  ))}
-
-                  {laneTasks.length === 0 && (
-                    <View style={styles.emptyLanePlaceholder}>
-                      <Text style={styles.emptyLaneText}>
-                        暂无卡片，可点击右上角添加或拖动卡片至此
-                      </Text>
-                    </View>
-                  )}
+                      style={styles.laneHeaderBtn}
+                      hitSlop={6}
+                    >
+                      <Text style={styles.laneHeaderBtnText}>管理</Text>
+                    </Pressable>
+                  </View>
                 </View>
-              </ScrollView>
-            </View>
-          );
-        })}
-      </ScrollView>
+
+                <ScrollView style={styles.cardsScroll} showsVerticalScrollIndicator={false}>
+                  <View style={styles.cardsList}>
+                    {laneTasks.map((task) => (
+                      <KanbanCard
+                        key={task.id}
+                        task={task}
+                        projectDisplayName={getProjectDisplayName(task.projectId, projects)}
+                        lanes={board.lanes}
+                        theme={theme}
+                        layout={layout}
+                        isDraggingThis={drag.isTaskDragging(task.id)}
+                        onPress={() => {
+                          if (!board) return;
+                          setActiveTaskSession(
+                            openTaskSession({
+                              mode: "edit",
+                              taskId: task.id,
+                              baseBoard: board,
+                              baseRevision: revision,
+                              save: (b, r) => settings.save(b, r),
+                            })
+                          );
+                        }}
+                        onMoveToLane={(targetId: string) => handleMoveTask(task.id, targetId)}
+                        onDragStart={drag.startGesture}
+                        onDragMove={drag.moveGesture}
+                        onDragRelease={drag.releaseGesture}
+                        onDragCancel={drag.cancelGesture}
+                      />
+                    ))}
+
+                    {laneTasks.length === 0 && (
+                      <View style={styles.emptyLanePlaceholder}>
+                        <Text style={styles.emptyLaneText}>
+                          暂无卡片，可点击右上角添加或拖动卡片至此
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </ScrollView>
+              </View>
+            );
+          })}
+        </ScrollView>
+
+        {drag.feedback.isDragging && draggingTask && typeof drag.feedback.pointerX === "number" && (
+          <View
+            pointerEvents="none"
+            style={[
+              styles.dragOverlay,
+              {
+                left:
+                  drag.feedback.pointerX -
+                  (drag.getContainerBounds()?.x ?? 0) -
+                  (layout.compact ? 125 : 140),
+                top:
+                  (drag.feedback.pointerY ?? 0) -
+                  (drag.getContainerBounds()?.y ?? 0) -
+                  20,
+              },
+            ]}
+          >
+            <KanbanCardPreview
+              task={draggingTask}
+              projectDisplayName={draggingTaskProjectName}
+              theme={theme}
+              layout={layout}
+            />
+          </View>
+        )}
+      </View>
 
       {/* Modals with Session Baseline Locking */}
       {activeTaskSession && (
