@@ -1,53 +1,82 @@
-import { useMemo, useRef, useState, useEffect } from "react";
+import { useMemo, useRef, useEffect } from "react";
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
   PanResponder,
+  Animated,
 } from "react-native";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import type { KanbanTask, KanbanLane } from "../shared/kanban";
+import type { KanbanTask } from "../shared/kanban";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 
 interface KanbanCardProps {
   task: KanbanTask;
   projectDisplayName: string | null;
-  lanes: KanbanLane[];
   theme: PluginTheme;
   layout: { compact: boolean };
   isDraggingThis: boolean;
+  isDragLocked: () => boolean;
   onPress: () => void;
-  onMoveToLane: (targetLaneId: string) => void;
-  onDragStart: (taskId: string, laneId: string, startX: number, startY: number) => void;
+  onDragStart: (
+    taskId: string,
+    laneId: string,
+    startX: number,
+    startY: number,
+    immediate?: boolean
+  ) => void;
   onDragMove: (moveX: number, moveY: number) => void;
   onDragRelease: (moveX?: number, moveY?: number) => void;
   onDragCancel: () => void;
+  onLayoutCard?: (
+    taskId: string,
+    layout: { x: number; y: number; width: number; height: number }
+  ) => void;
+  onUnmountCard?: (taskId: string) => void;
 }
 
 export function KanbanCard({
   task,
   projectDisplayName,
-  lanes,
   theme,
   layout,
   isDraggingThis,
+  isDragLocked,
   onPress,
-  onMoveToLane,
   onDragStart,
   onDragMove,
   onDragRelease,
   onDragCancel,
+  onLayoutCard,
+  onUnmountCard,
 }: KanbanCardProps) {
-  const [showMoveMenu, setShowMoveMenu] = useState(false);
-
-  // Sync ref to always hold latest callbacks and task, avoiding recreating PanResponder on re-renders
-  const callbacksRef = useRef({ onDragStart, onDragMove, onDragRelease, onDragCancel, task });
-  useEffect(() => {
-    callbacksRef.current = { onDragStart, onDragMove, onDragRelease, onDragCancel, task };
+  const callbacksRef = useRef({
+    onDragStart,
+    onDragMove,
+    onDragRelease,
+    onDragCancel,
+    task,
+    isDragLocked,
   });
+  useEffect(() => {
+    callbacksRef.current = {
+      onDragStart,
+      onDragMove,
+      onDragRelease,
+      onDragCancel,
+      task,
+      isDragLocked,
+    };
+  });
+
+  useEffect(() => {
+    return () => {
+      onUnmountCard?.(task.id);
+    };
+  }, [task.id, onUnmountCard]);
 
   const completedSubtasksCount = useMemo(
     () => task.subtasks.filter((s) => s.completed).length,
@@ -118,63 +147,34 @@ export function KanbanCard({
               : theme.colors.foregroundMuted,
           fontWeight: "500",
         },
-        moveButton: {
-          paddingHorizontal: 6,
-          paddingVertical: 2,
-          borderRadius: 4,
-          backgroundColor: theme.colors.surface1,
-        },
-        moveButtonText: {
-          fontSize: 11,
-          color: theme.colors.foregroundMuted,
-        },
-        moveMenu: {
-          marginTop: 6,
-          paddingTop: 6,
-          borderTopWidth: 1,
-          borderTopColor: theme.colors.border,
-          flexDirection: "row",
-          flexWrap: "wrap",
-          gap: 4,
-        },
-        moveOptionChip: {
-          paddingHorizontal: 8,
-          paddingVertical: 4,
-          borderRadius: 4,
-          backgroundColor: theme.colors.surface1,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-        },
-        moveOptionChipText: {
-          fontSize: 11,
-          color: theme.colors.foreground,
-        },
       }),
     [theme, layout.compact, isDraggingThis, task.subtasks.length, completedSubtasksCount]
   );
 
-  // PanResponder is created ONCE and never recreated during re-renders,
-  // reading all latest state and callbacks through callbacksRef.
-  const panResponder = useRef(
+  // Whole card pan responder: claims gesture when displacement >= 5px
+  const cardPanResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (_e, gestureState) => {
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_e, gs) => {
+        return Math.hypot(gs.dx, gs.dy) >= 5;
+      },
+      onPanResponderGrant: (_e, gs) => {
         const { onDragStart, task: currentTask } = callbacksRef.current;
         onDragStart(
           currentTask.id,
           currentTask.laneId,
-          gestureState.x0,
-          gestureState.y0
+          gs.x0,
+          gs.y0,
+          true
         );
       },
-      onPanResponderMove: (_e, gestureState) => {
+      onPanResponderMove: (_e, gs) => {
         const { onDragMove } = callbacksRef.current;
-        onDragMove(gestureState.moveX, gestureState.moveY);
+        onDragMove(gs.moveX, gs.moveY);
       },
-      onPanResponderRelease: (_e, gestureState) => {
+      onPanResponderRelease: (_e, gs) => {
         const { onDragRelease } = callbacksRef.current;
-        onDragRelease(gestureState.moveX, gestureState.moveY);
+        onDragRelease(gs.moveX, gs.moveY);
       },
       onPanResponderTerminate: () => {
         const { onDragCancel } = callbacksRef.current;
@@ -183,73 +183,82 @@ export function KanbanCard({
     })
   ).current;
 
-  const otherLanes = useMemo(
-    () => lanes.filter((l) => l.id !== task.laneId),
-    [lanes, task.laneId]
-  );
+  // Handle pan responder: claims gesture immediately without needing 5px threshold
+  const handlePanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (_e, gs) => {
+        const { onDragStart, task: currentTask } = callbacksRef.current;
+        onDragStart(
+          currentTask.id,
+          currentTask.laneId,
+          gs.x0,
+          gs.y0,
+          true
+        );
+      },
+      onPanResponderMove: (_e, gs) => {
+        const { onDragMove } = callbacksRef.current;
+        onDragMove(gs.moveX, gs.moveY);
+      },
+      onPanResponderRelease: (_e, gs) => {
+        const { onDragRelease } = callbacksRef.current;
+        onDragRelease(gs.moveX, gs.moveY);
+      },
+      onPanResponderTerminate: () => {
+        const { onDragCancel } = callbacksRef.current;
+        onDragCancel();
+      },
+    })
+  ).current;
 
   return (
-    <Pressable style={styles.card} onPress={onPress}>
-      <View style={styles.cardHeader}>
-        <View
-          style={styles.dragHandle}
-          accessibilityRole="button"
-          accessibilityLabel="拖动手柄"
-          {...panResponder.panHandlers}
-        >
-          <Icon name="GripVertical" size={14} color={theme.colors.foregroundMuted} />
+    <View
+      onLayout={(e) => onLayoutCard?.(task.id, e.nativeEvent.layout)}
+      {...cardPanResponder.panHandlers}
+    >
+      <Pressable
+        style={styles.card}
+        onPress={() => {
+          if (!callbacksRef.current.isDragLocked()) {
+            onPress();
+          }
+        }}
+      >
+        <View style={styles.cardHeader}>
+          <View
+            style={styles.dragHandle}
+            accessibilityRole="button"
+            accessibilityLabel="拖动手柄"
+            {...handlePanResponder.panHandlers}
+          >
+            <Icon name="GripVertical" size={14} color={theme.colors.foregroundMuted} />
+          </View>
+
+          <Text style={styles.title} numberOfLines={2}>
+            {task.title}
+          </Text>
         </View>
 
-        <Text style={styles.title} numberOfLines={2}>
-          {task.title}
-        </Text>
-
-        <Pressable
-          onPress={(e) => {
-            e.stopPropagation();
-            setShowMoveMenu((v) => !v);
-          }}
-          style={styles.moveButton}
-          hitSlop={8}
-        >
-          <Text style={styles.moveButtonText}>移动</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.badgeRow}>
-        {projectDisplayName && (
-          <View style={styles.projectBadge}>
-            <Text style={styles.projectBadgeText} numberOfLines={1}>
-              {projectDisplayName}
-            </Text>
-          </View>
-        )}
-        {task.subtasks.length > 0 && (
-          <View style={styles.subtaskBadge}>
-            <Text style={styles.subtaskBadgeText}>
-              子步骤 {completedSubtasksCount}/{task.subtasks.length}
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {showMoveMenu && otherLanes.length > 0 && (
-        <View style={styles.moveMenu}>
-          {otherLanes.map((lane) => (
-            <Pressable
-              key={lane.id}
-              onPress={() => {
-                setShowMoveMenu(false);
-                onMoveToLane(lane.id);
-              }}
-              style={styles.moveOptionChip}
-            >
-              <Text style={styles.moveOptionChipText}>至 {lane.title}</Text>
-            </Pressable>
-          ))}
+        <View style={styles.badgeRow}>
+          {projectDisplayName && (
+            <View style={styles.projectBadge}>
+              <Text style={styles.projectBadgeText} numberOfLines={1}>
+                {projectDisplayName}
+              </Text>
+            </View>
+          )}
+          {task.subtasks.length > 0 && (
+            <View style={styles.subtaskBadge}>
+              <Text style={styles.subtaskBadgeText}>
+                子步骤 {completedSubtasksCount}/{task.subtasks.length}
+              </Text>
+            </View>
+          )}
         </View>
-      )}
-    </Pressable>
+      </Pressable>
+    </View>
   );
 }
 
@@ -371,4 +380,41 @@ export function KanbanCardPreview({
       </View>
     </View>
   );
+}
+
+export function KanbanDropSpacer({
+  height,
+  theme,
+}: {
+  height?: number;
+  theme: PluginTheme;
+}) {
+  const animHeight = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const targetHeight = height && height > 0 ? height : 64;
+    Animated.timing(animHeight, {
+      toValue: targetHeight,
+      duration: 160,
+      useNativeDriver: false,
+    }).start();
+  }, [height, animHeight]);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        spacer: {
+          borderRadius: 8,
+          borderWidth: 2,
+          borderStyle: "dashed",
+          borderColor: theme.colors.accent,
+          backgroundColor: theme.colors.surface1,
+          opacity: 0.7,
+          marginVertical: 4,
+        },
+      }),
+    [theme]
+  );
+
+  return <Animated.View style={[styles.spacer, { height: animHeight }]} pointerEvents="none" />;
 }

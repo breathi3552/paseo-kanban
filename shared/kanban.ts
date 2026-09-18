@@ -277,5 +277,104 @@ export function deleteTask(board: KanbanBoard, taskId: string): KanbanBoard {
   });
 }
 
+export function reorderTask(
+  board: KanbanBoard,
+  taskId: string,
+  targetLaneId: string,
+  targetIndex?: number,
+  visibleTaskIds?: string[]
+): KanbanBoard {
+  const taskToMove = board.tasks.find((t) => t.id === taskId);
+  if (!taskToMove) {
+    throw new Error(`Task with ID "${taskId}" not found`);
+  }
+  if (!board.lanes.some((l) => l.id === targetLaneId)) {
+    throw new Error(`Target lane "${targetLaneId}" does not exist`);
+  }
+
+  const remainingTasks = board.tasks.filter((t) => t.id !== taskId);
+  const updatedTask: KanbanTask = {
+    ...taskToMove,
+    laneId: targetLaneId,
+  };
+
+  const targetLaneTasks = remainingTasks.filter((t) => t.laneId === targetLaneId);
+
+  let insertionGlobalIndex: number;
+
+  if (targetLaneTasks.length === 0) {
+    const targetLaneIdx = board.lanes.findIndex((l) => l.id === targetLaneId);
+    let insertAfterTask: KanbanTask | undefined;
+    for (let i = targetLaneIdx - 1; i >= 0; i--) {
+      const prevLaneId = board.lanes[i].id;
+      const prevLaneTasks = remainingTasks.filter((t) => t.laneId === prevLaneId);
+      if (prevLaneTasks.length > 0) {
+        insertAfterTask = prevLaneTasks[prevLaneTasks.length - 1];
+        break;
+      }
+    }
+    if (insertAfterTask) {
+      insertionGlobalIndex = remainingTasks.indexOf(insertAfterTask) + 1;
+    } else {
+      let insertBeforeTask: KanbanTask | undefined;
+      for (let i = targetLaneIdx + 1; i < board.lanes.length; i++) {
+        const nextLaneId = board.lanes[i].id;
+        const nextLaneTasks = remainingTasks.filter((t) => t.laneId === nextLaneId);
+        if (nextLaneTasks.length > 0) {
+          insertBeforeTask = nextLaneTasks[0];
+          break;
+        }
+      }
+      if (insertBeforeTask) {
+        insertionGlobalIndex = remainingTasks.indexOf(insertBeforeTask);
+      } else {
+        insertionGlobalIndex = remainingTasks.length;
+      }
+    }
+  } else {
+    let referenceTask: KanbanTask;
+    let insertBefore = true;
+
+    if (visibleTaskIds && visibleTaskIds.length > 0) {
+      const visibleTargetTasks = targetLaneTasks.filter((t) => visibleTaskIds.includes(t.id));
+      const clampedVisibleIdx = Math.max(0, Math.min(targetIndex ?? visibleTargetTasks.length, visibleTargetTasks.length));
+
+      if (visibleTargetTasks.length === 0) {
+        referenceTask = targetLaneTasks[targetLaneTasks.length - 1];
+        insertBefore = false;
+      } else if (clampedVisibleIdx >= visibleTargetTasks.length) {
+        referenceTask = visibleTargetTasks[visibleTargetTasks.length - 1];
+        insertBefore = false;
+      } else {
+        referenceTask = visibleTargetTasks[clampedVisibleIdx];
+        insertBefore = true;
+      }
+    } else {
+      const clampedLaneIdx = Math.max(0, Math.min(targetIndex ?? targetLaneTasks.length, targetLaneTasks.length));
+      if (clampedLaneIdx >= targetLaneTasks.length) {
+        referenceTask = targetLaneTasks[targetLaneTasks.length - 1];
+        insertBefore = false;
+      } else {
+        referenceTask = targetLaneTasks[clampedLaneIdx];
+        insertBefore = true;
+      }
+    }
+
+    const refGlobalIdx = remainingTasks.indexOf(referenceTask);
+    insertionGlobalIndex = insertBefore ? refGlobalIdx : refGlobalIdx + 1;
+  }
+
+  const nextTasks = [
+    ...remainingTasks.slice(0, insertionGlobalIndex),
+    updatedTask,
+    ...remainingTasks.slice(insertionGlobalIndex),
+  ];
+
+  return KanbanBoardSchema.parse({
+    lanes: board.lanes,
+    tasks: nextTasks,
+  });
+}
+
 
 

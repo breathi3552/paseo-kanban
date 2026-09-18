@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect, Fragment } from "react";
 import {
   View,
   Text,
@@ -12,12 +12,13 @@ import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import {
   kanbanSettings,
   updateTask,
+  reorderTask,
   type KanbanTask,
   type KanbanLane,
   type KanbanBoard,
 } from "../shared/kanban";
 import { useProjects, getProjectDisplayName } from "./use-projects";
-import { KanbanCard, KanbanCardPreview } from "./kanban-card";
+import { KanbanCard, KanbanCardPreview, KanbanDropSpacer } from "./kanban-card";
 import { TaskModal } from "./task-modal";
 import { LaneModal } from "./lane-modal";
 import { useKanbanDrag } from "./kanban-drag";
@@ -50,10 +51,52 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
     }
   };
 
+  const handleReorderTask = async (
+    taskId: string,
+    targetLaneId: string,
+    targetIndex: number
+  ) => {
+    if (!board) return;
+    try {
+      const visibleTaskIds =
+        selectedProjectId === "all"
+          ? undefined
+          : filteredTasks.filter((t) => t.laneId === targetLaneId).map((t) => t.id);
+      const nextBoard = reorderTask(
+        board,
+        taskId,
+        targetLaneId,
+        targetIndex,
+        visibleTaskIds
+      );
+      await settings.save(nextBoard, revision);
+    } catch (err) {
+      console.error("Reorder task failed:", err);
+    }
+  };
+
   const drag = useKanbanDrag({
     lanes: board?.lanes ?? [],
     onMoveTask: handleMoveTask,
+    onReorderTask: handleReorderTask,
   });
+
+  const scrollRef = useRef<ScrollView | null>(null);
+  const currentScrollX = useRef(0);
+
+  // Smooth edge auto-scroll when dragging near viewport boundaries
+  useEffect(() => {
+    const velocity = drag.feedback.autoScrollVelocity ?? 0;
+    if (!velocity || !drag.feedback.isDragging) return;
+
+    const timer = setInterval(() => {
+      const nextOffset = Math.max(0, currentScrollX.current + velocity * 14);
+      currentScrollX.current = nextOffset;
+      scrollRef.current?.scrollTo({ x: nextOffset, animated: false });
+    }, 16);
+
+    return () => clearInterval(timer);
+  }, [drag.feedback.autoScrollVelocity, drag.feedback.isDragging]);
 
   const styles = useMemo(
     () =>
@@ -310,6 +353,17 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
     return getProjectDisplayName(draggingTask.projectId, projects);
   }, [draggingTask, projects]);
 
+  // Keep drag controller aware of the card order within each lane for hit-testing
+  useEffect(() => {
+    if (!board) return;
+    for (const lane of board.lanes) {
+      const laneTaskIds = filteredTasks
+        .filter((t) => t.laneId === lane.id)
+        .map((t) => t.id);
+      drag.setLaneCardOrder(lane.id, laneTaskIds);
+    }
+  }, [board, filteredTasks, drag]);
+
   if (settings.status === "loading") {
     return (
       <View style={[styles.container, styles.centerBox]}>
@@ -494,17 +548,26 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
       {/* Main Board Lanes */}
       <View style={styles.lanesWrapper}>
         <ScrollView
-          ref={drag.bindContainerRef as unknown as (instance: ScrollView | null) => void}
+          ref={(instance) => {
+            scrollRef.current = instance;
+            drag.bindContainerRef(instance as unknown as Parameters<typeof drag.bindContainerRef>[0]);
+          }}
           horizontal
           style={styles.lanesContainer}
           contentContainerStyle={styles.lanesContent}
           onLayout={(e) => drag.handleContainerLayout(e.nativeEvent.layout)}
-          onScroll={(e) => drag.handleScroll(e.nativeEvent.contentOffset.x)}
+          onScroll={(e) => {
+            currentScrollX.current = e.nativeEvent.contentOffset.x;
+            drag.handleScroll(e.nativeEvent.contentOffset.x);
+          }}
           scrollEventThrottle={16}
         >
           {board.lanes.map((lane) => {
             const laneTasks = filteredTasks.filter((t) => t.laneId === lane.id);
             const isHovered = drag.isLaneHovered(lane.id);
+            const targetIndex = isHovered
+              ? (drag.feedback.targetIndex ?? laneTasks.length)
+              : -1;
 
             return (
               <View
@@ -569,36 +632,49 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
 
                 <ScrollView style={styles.cardsScroll} showsVerticalScrollIndicator={false}>
                   <View style={styles.cardsList}>
-                    {laneTasks.map((task) => (
-                      <KanbanCard
-                        key={task.id}
-                        task={task}
-                        projectDisplayName={getProjectDisplayName(task.projectId, projects)}
-                        lanes={board.lanes}
-                        theme={theme}
-                        layout={layout}
-                        isDraggingThis={drag.isTaskDragging(task.id)}
-                        onPress={() => {
-                          if (!board) return;
-                          setActiveTaskSession(
-                            openTaskSession({
-                              mode: "edit",
-                              taskId: task.id,
-                              baseBoard: board,
-                              baseRevision: revision,
-                              save: (b, r) => settings.save(b, r),
-                            })
-                          );
-                        }}
-                        onMoveToLane={(targetId: string) => handleMoveTask(task.id, targetId)}
-                        onDragStart={drag.startGesture}
-                        onDragMove={drag.moveGesture}
-                        onDragRelease={drag.releaseGesture}
-                        onDragCancel={drag.cancelGesture}
-                      />
+                    {laneTasks.map((task, idx) => (
+                      <Fragment key={task.id}>
+                        {isHovered && targetIndex === idx && (
+                          <KanbanDropSpacer theme={theme} />
+                        )}
+                        <KanbanCard
+                          task={task}
+                          projectDisplayName={getProjectDisplayName(task.projectId, projects)}
+                          theme={theme}
+                          layout={layout}
+                          isDraggingThis={drag.isTaskDragging(task.id)}
+                          isDragLocked={drag.isDragLocked}
+                          onPress={() => {
+                            if (!board) return;
+                            setActiveTaskSession(
+                              openTaskSession({
+                                mode: "edit",
+                                taskId: task.id,
+                                baseBoard: board,
+                                baseRevision: revision,
+                                save: (b, r) => settings.save(b, r),
+                              })
+                            );
+                          }}
+                          onDragStart={drag.startGesture}
+                          onDragMove={drag.moveGesture}
+                          onDragRelease={drag.releaseGesture}
+                          onDragCancel={drag.cancelGesture}
+                          onLayoutCard={(taskId, rect) =>
+                            drag.registerCardLayout(lane.id, taskId, rect)
+                          }
+                          onUnmountCard={(taskId) =>
+                            drag.unregisterCardLayout(lane.id, taskId)
+                          }
+                        />
+                      </Fragment>
                     ))}
 
-                    {laneTasks.length === 0 && (
+                    {isHovered && targetIndex >= laneTasks.length && (
+                      <KanbanDropSpacer theme={theme} />
+                    )}
+
+                    {laneTasks.length === 0 && !isHovered && (
                       <View style={styles.emptyLanePlaceholder}>
                         <Text style={styles.emptyLaneText}>
                           暂无卡片，可点击右上角添加或拖动卡片至此

@@ -310,3 +310,114 @@ test("重渲染稳定性: 更新泳道与回调不中断活动拖拽，并使用
   assert.equal(secondRequests.length, 1, "Latest callback must receive move request");
   assert.deepEqual(secondRequests[0], { taskId: "task-1", targetLaneId: "done" });
 });
+
+// ---------------------------------------------------------------------------
+// 8. 手势位移阈值 (5px slop threshold) 与互斥锁 (dragLock)
+// ---------------------------------------------------------------------------
+test("手势分流: 鼠标按住移动 < 5px 识别为点击，>= 5px 激活拖拽与互斥锁", async () => {
+  const reorderRequests = [];
+  const controller = new KanbanDragController({
+    lanes: mockLanes.map((l) => ({ id: l.id })),
+    onReorderTask: (taskId, targetLaneId, targetIndex) => {
+      reorderRequests.push({ taskId, targetLaneId, targetIndex });
+    },
+  });
+  controller.registerContainerBounds(mockContainer);
+  for (const lane of mockLanes) {
+    controller.registerLaneLayout(lane.id, lane.rect);
+  }
+
+  // 1. 小于 5px 位移 (桌面端按住不放只晃动 2px)
+  controller.startGesture("task-1", "to-plan", 70, 130, false /* immediate = false */);
+  assert.equal(controller.getFeedback().isDragging, false);
+  assert.equal(controller.isDragLocked(), false);
+
+  controller.moveGesture(72, 131); // sqrt(2^2 + 1^2) = 2.23px < 5px
+  assert.equal(controller.getFeedback().isDragging, false);
+  assert.equal(controller.isDragLocked(), false);
+
+  await controller.releaseGesture(72, 131);
+  assert.equal(reorderRequests.length, 0, "未达阈值释放不触发重排");
+  assert.equal(controller.isDragLocked(), false, "未达阈值释放不锁定点击");
+
+  // 2. 超过 5px 位移 (激活拖拽)
+  controller.startGesture("task-1", "to-plan", 70, 130, false);
+  controller.moveGesture(76, 135); // sqrt(6^2 + 5^2) = 7.81px >= 5px
+  assert.equal(controller.getFeedback().isDragging, true);
+  assert.equal(controller.isDragLocked(), true);
+
+  // 移入 in-progress 并释放
+  controller.moveGesture(340, 130);
+  await controller.releaseGesture(340, 130);
+  assert.equal(reorderRequests.length, 1);
+  assert.equal(reorderRequests[0].targetLaneId, "in-progress");
+  assert.equal(controller.isDragLocked(), true, "拖拽刚结束时互斥锁保持生效，防止松手误触发点击");
+});
+
+// ---------------------------------------------------------------------------
+// 9. 目标槽位计算与 12px 迟滞死区 (Hysteresis Buffer)
+// ---------------------------------------------------------------------------
+test("槽位与防抖: 目标卡片中线 12px 迟滞死区防止临界微颤", async () => {
+  const controller = setupController();
+  // 注册 in-progress 泳道内 2 张现有卡片
+  // container.y = 80, lane.y = 10, 因此卡片相对 containerOriginY:
+  // 卡片 1: y = 20, height = 60, 中线 midY = 50. windowY = 80 + 10 + 50 = 140
+  // 卡片 2: y = 90, height = 60, 中线 midY = 120. windowY = 80 + 10 + 120 = 210
+  controller.setLaneCardOrder("in-progress", ["card-a", "card-b"]);
+  controller.registerCardLayout("in-progress", "card-a", { x: 10, y: 20, width: 260, height: 60 });
+  controller.registerCardLayout("in-progress", "card-b", { x: 10, y: 90, width: 260, height: 60 });
+
+  controller.startGesture("task-1", "to-plan", 70, 130, true);
+
+  // 移动到 in-progress，光标在 card-a 上方 (windowY = 110, relativeY = 20 < 50) -> index 0
+  controller.moveGesture(340, 110);
+  assert.equal(controller.getFeedback().hoveredLaneId, "in-progress");
+  assert.equal(controller.getFeedback().targetIndex, 0);
+
+  // 移动到两张卡片中间 (windowY = 175, relativeY = 85, > 50 且 < 120) -> index 1
+  controller.moveGesture(340, 175);
+  assert.equal(controller.getFeedback().targetIndex, 1);
+
+  // 向下移动，进入 card-b 中线 12px 缓冲死区 (midY = 120, 死区 108 ~ 132; windowY = 210)
+  // 当 windowY = 218 (relativeY = 128, 仍处于死区 108~132 内)，保持 index = 1
+  controller.moveGesture(340, 218);
+  assert.equal(controller.getFeedback().targetIndex, 1, "死区内向上/向下微颤不切换槽位");
+
+  // 向下突破迟滞死区 (relativeY = 135 > 132, windowY = 225) -> index 2
+  controller.moveGesture(340, 225);
+  assert.equal(controller.getFeedback().targetIndex, 2);
+
+  // 向上轻微回退至 windowY = 218 (relativeY = 128，处于 108~132 死区)
+  // 保持当前 index 2，不产生抖动！
+  controller.moveGesture(340, 218);
+  assert.equal(controller.getFeedback().targetIndex, 2, "回退在死区内保持已有 index 2");
+
+  // 向上突破死区上界 (relativeY = 100 < 108, windowY = 190) -> index 切回 1
+  controller.moveGesture(340, 190);
+  assert.equal(controller.getFeedback().targetIndex, 1);
+
+  await controller.releaseGesture();
+});
+
+// ---------------------------------------------------------------------------
+// 10. 视口边缘感应平滑自动滚动 (Edge Auto-scroll)
+// ---------------------------------------------------------------------------
+test("边缘滚动: 接近看板视口左右 48px 边缘时输出定向速度矢量", async () => {
+  const controller = setupController();
+  controller.startGesture("task-1", "to-plan", 70, 130, true);
+
+  // mockContainer: x = 20, width = 800. 视口范围 20 ~ 820
+  // 左侧边缘区: 20 ~ 68. 指针在 x = 30 时进入左侧边缘
+  controller.moveGesture(30, 130);
+  assert.ok((controller.getFeedback().autoScrollVelocity ?? 0) < 0, "左侧边缘速度应为负");
+
+  // 中间安全区: x = 400
+  controller.moveGesture(400, 130);
+  assert.equal(controller.getFeedback().autoScrollVelocity ?? 0, 0, "中间安全区速度为 0");
+
+  // 右侧边缘区: 820 - 48 = 772 ~ 820. 指针在 x = 800 时进入右侧边缘
+  controller.moveGesture(800, 130);
+  assert.ok((controller.getFeedback().autoScrollVelocity ?? 0) > 0, "右侧边缘速度应为正");
+
+  await controller.releaseGesture();
+});
