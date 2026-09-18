@@ -241,7 +241,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
           width: layout.compact ? 270 : 300,
           backgroundColor: theme.colors.surface1,
           borderColor: theme.colors.border,
-          borderWidth: 1,
+          borderWidth: 2,
           borderRadius: 10,
           maxHeight: "100%",
           padding: 10,
@@ -250,7 +250,6 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
         },
         laneColumnHovered: {
           borderColor: theme.colors.accent,
-          borderWidth: 2,
           backgroundColor: theme.colors.surface2,
         },
         laneHeader: {
@@ -574,6 +573,8 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
             const targetIndex = isHovered
               ? (drag.feedback.targetIndex ?? laneTasks.length)
               : -1;
+            const dropBeforeTaskId = laneTasks
+              .filter((task) => task.id !== drag.feedback.draggingTaskId)[targetIndex]?.id;
 
             return (
               <View
@@ -636,12 +637,18 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                   </View>
                 </View>
 
-                <ScrollView style={styles.cardsScroll} showsVerticalScrollIndicator={false}>
+                <ScrollView
+                  style={styles.cardsScroll}
+                  showsVerticalScrollIndicator={false}
+                  onLayout={(e) => drag.registerCardsViewportLayout(lane.id, e.nativeEvent.layout)}
+                  onScroll={(e) => drag.handleLaneScroll(lane.id, e.nativeEvent.contentOffset.y)}
+                  scrollEventThrottle={16}
+                >
                   <View style={styles.cardsList}>
-                    {laneTasks.map((task, idx) => (
+                    {laneTasks.map((task) => (
                       <Fragment key={task.id}>
-                        {isHovered && targetIndex === idx && (
-                          <KanbanDropSpacer theme={theme} />
+                        {isHovered && dropBeforeTaskId === task.id && (
+                          <KanbanDropSpacer theme={theme} height={drag.feedback.draggedCardHeight} />
                         )}
                         <KanbanCard
                           task={task}
@@ -676,8 +683,8 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                       </Fragment>
                     ))}
 
-                    {isHovered && targetIndex >= laneTasks.length && (
-                      <KanbanDropSpacer theme={theme} />
+                    {isHovered && !dropBeforeTaskId && (
+                      <KanbanDropSpacer theme={theme} height={drag.feedback.draggedCardHeight} />
                     )}
 
                     {laneTasks.length === 0 && !isHovered && (

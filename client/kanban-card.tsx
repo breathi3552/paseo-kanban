@@ -60,6 +60,7 @@ export function KanbanCard({
     onDragCancel,
     task,
     isDragLocked,
+    onUnmountCard,
   });
   useEffect(() => {
     callbacksRef.current = {
@@ -69,14 +70,15 @@ export function KanbanCard({
       onDragCancel,
       task,
       isDragLocked,
+      onUnmountCard,
     };
   });
 
   useEffect(() => {
     return () => {
-      onUnmountCard?.(task.id);
+      callbacksRef.current.onUnmountCard?.(task.id);
     };
-  }, [task.id, onUnmountCard]);
+  }, [task.id]);
 
   const completedSubtasksCount = useMemo(
     () => task.subtasks.filter((s) => s.completed).length,
@@ -89,13 +91,11 @@ export function KanbanCard({
         card: {
           userSelect: "none",
           backgroundColor: theme.colors.surface2,
-          borderColor: isDraggingThis ? theme.colors.accent : theme.colors.border,
-          borderWidth: isDraggingThis ? 2 : 1,
-          borderStyle: isDraggingThis ? "dashed" : "solid",
+          borderColor: theme.colors.border,
+          borderWidth: 1,
           borderRadius: 8,
           padding: layout.compact ? 10 : 12,
           gap: 8,
-          opacity: isDraggingThis ? 0.35 : 1,
         },
         cardHeader: {
           flexDirection: "row",
@@ -217,6 +217,8 @@ export function KanbanCard({
 
   return (
     <View
+      // Keep the responder mounted, but let the single drop slot replace its space.
+      style={isDraggingThis ? { position: "absolute", left: 0, right: 0, opacity: 0 } : undefined}
       onLayout={(e) => onLayoutCard?.(task.id, e.nativeEvent.layout)}
       {...cardPanResponder.panHandlers}
     >
@@ -414,7 +416,6 @@ export function KanbanDropSpacer({
           borderColor: theme.colors.accent,
           backgroundColor: theme.colors.surface1,
           opacity: 0.7,
-          marginVertical: 4,
         },
       }),
     [theme]

@@ -60,6 +60,7 @@ export interface DragFeedback {
   readonly draggingSourceLaneId: string | null;
   readonly hoveredLaneId: string | null;
   readonly targetIndex?: number;
+  readonly draggedCardHeight?: number;
   readonly pointerX?: number;
   readonly pointerY?: number;
   readonly autoScrollVelocity?: number;
@@ -87,6 +88,7 @@ interface ActiveDragSession {
   lastPointerY: number;
   isActivated: boolean;
   currentTargetIndex?: number;
+  cardLayouts: Map<string, Map<string, Rect>>;
 }
 
 export class KanbanDragController {
@@ -95,6 +97,8 @@ export class KanbanDragController {
   private laneLayouts: Map<string, Rect> = new Map();
   private laneCardOrders: Map<string, string[]> = new Map();
   private cardLayouts: Map<string, Map<string, Rect>> = new Map();
+  private cardsViewportLayouts: Map<string, Rect> = new Map();
+  private laneScrollY: Map<string, number> = new Map();
   private containerBounds: Rect | null = null;
   private containerRef: ContainerRefTarget | null = null;
   private scrollX: number = 0;
@@ -207,6 +211,17 @@ export class KanbanDragController {
     this.laneLayouts.set(laneId, rect);
   };
 
+  registerCardsViewportLayout = (laneId: string, rect: Rect) => {
+    this.cardsViewportLayouts.set(laneId, rect);
+  };
+
+  handleLaneScroll = (laneId: string, scrollY: number) => {
+    this.laneScrollY.set(laneId, scrollY);
+    if (this.activeSession) {
+      this.recomputeHover(this.activeSession.lastPointerX, this.activeSession.lastPointerY);
+    }
+  };
+
   startGesture = (
     taskId: string,
     sourceLaneId: string,
@@ -234,6 +249,9 @@ export class KanbanDragController {
       lastPointerY: pointerY,
       isActivated,
       currentTargetIndex: undefined,
+      // Freeze pre-animation geometry so the slot cannot move its own hit threshold.
+      // ponytail: fixed for one gesture; cancel/re-measure if live resizing must be supported.
+      cardLayouts: new Map([...this.cardLayouts].map(([id, cards]) => [id, new Map(cards)])),
     };
 
     if (isActivated) {
@@ -249,6 +267,7 @@ export class KanbanDragController {
         draggingSourceLaneId: sourceLaneId,
         hoveredLaneId: targetLaneId,
         targetIndex,
+        draggedCardHeight: this.activeSession.cardLayouts.get(sourceLaneId)?.get(taskId)?.height,
         pointerX,
         pointerY,
         autoScrollVelocity,
@@ -306,6 +325,7 @@ export class KanbanDragController {
       draggingSourceLaneId: this.activeSession.sourceLaneId,
       hoveredLaneId: hitLaneId,
       targetIndex,
+      draggedCardHeight: this.activeSession.cardLayouts.get(this.activeSession.sourceLaneId)?.get(this.activeSession.taskId)?.height,
       pointerX: this.activeSession.lastPointerX,
       pointerY: this.activeSession.lastPointerY,
       autoScrollVelocity,
@@ -318,9 +338,8 @@ export class KanbanDragController {
     const session = this.activeSession;
     if (!session) return;
 
-    this.activeSession = null;
-
     if (!session.isActivated) {
+      this.activeSession = null;
       this.dragLock = false;
       this.feedback = {
         isDragging: false,
@@ -351,6 +370,8 @@ export class KanbanDragController {
       ? this.computeTargetIndex(finalTargetLaneId, finalY)
       : undefined;
 
+    // Keep the dragged task excluded, and retain hysteresis until the final hit test.
+    this.activeSession = null;
     this.dragLock = true;
     this.feedback = {
       isDragging: false,
@@ -423,7 +444,7 @@ export class KanbanDragController {
   };
 
   isTaskDragging = (taskId: string): boolean => {
-    return this.feedback.draggingTaskId === taskId;
+    return this.feedback.isDragging && this.feedback.draggingTaskId === taskId;
   };
 
   isLaneHovered = (laneId: string): boolean => {
@@ -464,16 +485,20 @@ export class KanbanDragController {
     const laneRect = this.laneLayouts.get(laneId);
     const containerOriginY = this.containerBounds?.y ?? 0;
     const laneOriginY = laneRect?.y ?? 0;
-    const laneCardsMap = this.cardLayouts.get(laneId);
+    const cardsOriginY = this.cardsViewportLayouts.get(laneId)?.y ?? 0;
+    const scrollY = this.laneScrollY.get(laneId) ?? 0;
+    const laneCardsMap = (this.activeSession?.cardLayouts ?? this.cardLayouts).get(laneId);
 
-    const prevIndex = this.activeSession?.currentTargetIndex ?? -1;
+    const prevIndex = this.feedback.hoveredLaneId === laneId
+      ? this.activeSession?.currentTargetIndex ?? -1
+      : -1;
 
     for (let i = 0; i < cardIds.length; i++) {
       const cardId = cardIds[i];
       const cardRect = laneCardsMap?.get(cardId);
       if (!cardRect) continue;
 
-      const midWindowY = containerOriginY + laneOriginY + cardRect.y + cardRect.height / 2;
+      const midWindowY = containerOriginY + laneOriginY + cardsOriginY - scrollY + cardRect.y + cardRect.height / 2;
       const lowerBuffer = midWindowY - 12;
       const upperBuffer = midWindowY + 12;
 
@@ -518,12 +543,15 @@ export class KanbanDragController {
   }
 
   private recomputeHover(pointerX: number, pointerY: number) {
-    if (!this.activeSession) return;
+    if (!this.activeSession?.isActivated) return;
     const hitLaneId = this.computeHit(pointerX, pointerY);
-    if (this.feedback.hoveredLaneId !== hitLaneId) {
+    const targetIndex = hitLaneId ? this.computeTargetIndex(hitLaneId, pointerY) : undefined;
+    this.activeSession.currentTargetIndex = targetIndex;
+    if (this.feedback.hoveredLaneId !== hitLaneId || this.feedback.targetIndex !== targetIndex) {
       this.feedback = {
         ...this.feedback,
         hoveredLaneId: hitLaneId,
+        targetIndex,
       };
       this.notifyListeners();
     }
@@ -569,6 +597,8 @@ export function useKanbanDrag(options: KanbanDragOptions) {
     handleContainerLayout: controller.handleContainerLayout,
     handleScroll: controller.handleScroll,
     registerLaneLayout: controller.registerLaneLayout,
+    registerCardsViewportLayout: controller.registerCardsViewportLayout,
+    handleLaneScroll: controller.handleLaneScroll,
     registerCardLayout: controller.registerCardLayout,
     unregisterCardLayout: controller.unregisterCardLayout,
     setLaneCardOrder: controller.setLaneCardOrder,

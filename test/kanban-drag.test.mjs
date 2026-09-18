@@ -399,6 +399,78 @@ test("槽位与防抖: 目标卡片中线 12px 迟滞死区防止临界微颤", 
   await controller.releaseGesture();
 });
 
+test("卡片坐标: 包含列表顶部偏移与纵向滚动，滚动后原地释放匹配新槽位", async () => {
+  const requests = [];
+  const controller = setupController();
+  controller.setOnReorderTask((...args) => requests.push(args));
+  controller.registerCardsViewportLayout("to-plan", { x: 12, y: 60, width: 260, height: 480 });
+  controller.setLaneCardOrder("to-plan", ["1", "2", "3"]);
+  for (const [id, y, height] of [["1", 0, 96], ["2", 104, 60], ["3", 172, 100]]) {
+    controller.registerCardLayout("to-plan", id, { x: 0, y, width: 260, height });
+  }
+  controller.startGesture("1", "to-plan", 100, 180);
+  assert.equal(controller.getFeedback().draggedCardHeight, 96);
+  controller.moveGesture(100, 270);
+  assert.equal(controller.getFeedback().targetIndex, 0);
+  controller.moveGesture(100, 310);
+  assert.equal(controller.getFeedback().targetIndex, 1);
+  controller.handleLaneScroll("to-plan", 100);
+  assert.equal(controller.getFeedback().targetIndex, 2, "scrolling must recompute the slot without a pointer move");
+  await controller.releaseGesture(100, 310);
+  assert.deepEqual(requests, [["1", "to-plan", 2]]);
+});
+
+test("横向滚动切换泳道时同时更新槽位，空泳道索引为零", async () => {
+  const requests = [];
+  const controller = setupController();
+  controller.setOnReorderTask((...args) => requests.push(args));
+  controller.setLaneCardOrder("to-plan", ["1", "2", "3"]);
+  for (const [i, id] of ["1", "2", "3"].entries()) {
+    controller.registerCardLayout("to-plan", id, { x: 10, y: i * 80, width: 260, height: 64 });
+  }
+  controller.startGesture("1", "to-plan", 100, 110);
+  controller.moveGesture(100, 400);
+  assert.equal(controller.getFeedback().targetIndex, 2);
+  controller.handleScroll(294);
+  assert.equal(controller.getFeedback().hoveredLaneId, "in-progress");
+  assert.equal(controller.getFeedback().targetIndex, 0);
+  await controller.releaseGesture(100, 400);
+  assert.deepEqual(requests, [["1", "in-progress", 0]]);
+});
+
+test("占位动画不能反过来改变命中阈值", () => {
+  const controller = setupController();
+  controller.setLaneCardOrder("to-plan", ["1", "2", "3"]);
+  for (const [i, id] of ["1", "2", "3"].entries()) {
+    controller.registerCardLayout("to-plan", id, { x: 10, y: i * 80, width: 260, height: 64 });
+  }
+  controller.startGesture("1", "to-plan", 100, 110);
+  controller.moveGesture(100, 230);
+  assert.equal(controller.getFeedback().targetIndex, 1);
+  // Source leaves flow; the slot expands. The same pointer must not oscillate.
+  controller.registerCardLayout("to-plan", "2", { x: 10, y: 160, width: 260, height: 64 });
+  controller.moveGesture(100, 230);
+  assert.equal(controller.getFeedback().targetIndex, 1);
+  controller.cancelGesture();
+});
+
+test("同泳道释放: 顶部、中间、底部落位均与占位索引一致", async () => {
+  for (const [y, expected] of [[110, 0], [230, 1], [400, 2]]) {
+    const requests = [];
+    const controller = setupController();
+    controller.setOnReorderTask((...args) => requests.push(args));
+    controller.setLaneCardOrder("to-plan", ["1", "2", "3"]);
+    for (const [i, id] of ["1", "2", "3"].entries()) {
+      controller.registerCardLayout("to-plan", id, { x: 10, y: i * 80, width: 260, height: 64 });
+    }
+    controller.startGesture("1", "to-plan", 100, 110);
+    controller.moveGesture(100, y);
+    assert.equal(controller.getFeedback().targetIndex, expected);
+    await controller.releaseGesture(100, y);
+    assert.deepEqual(requests, [["1", "to-plan", expected]]);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // 10. 视口边缘感应平滑自动滚动 (Edge Auto-scroll)
 // ---------------------------------------------------------------------------
