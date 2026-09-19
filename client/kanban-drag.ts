@@ -231,6 +231,10 @@ export class KanbanDragController {
     this.onReorderTask = fn;
   };
 
+  setGetTaskPreview = (fn?: (taskId: string) => TaskPreviewItem | null) => {
+    this.getTaskPreview = fn;
+  };
+
   setLaneCardOrder = (laneId: string, taskIds: string[]) => {
     this.laneCardOrders.set(laneId, taskIds);
   };
@@ -727,6 +731,13 @@ export class KanbanDragController {
           toY = targetSlot.y;
         }
       }
+    } else {
+      const sourceIndex = Math.max(0, this.laneCardOrders.get(session.sourceLaneId)?.indexOf(session.taskId) ?? 0);
+      const sourceSlot = this.getDropSlotPosition(session.sourceLaneId, sourceIndex);
+      if (sourceSlot) {
+        toX = sourceSlot.x;
+        toY = sourceSlot.y;
+      }
     }
 
     const preview = this.getTaskPreview ? this.getTaskPreview(session.taskId) : null;
@@ -748,6 +759,7 @@ export class KanbanDragController {
       releaseY: finalY,
     };
 
+    const savedCardHeight = this.feedback.draggedCardHeight;
     this.currentDroppingState = droppingState;
     this.activeSession = null;
     this.dragLock = true;
@@ -761,6 +773,7 @@ export class KanbanDragController {
       pointerY: undefined,
       autoScrollVelocity: 0,
       dragLock: true,
+      draggedCardHeight: savedCardHeight,
     };
     this.notifyListeners();
     this.notifyDropListeners();
@@ -774,9 +787,6 @@ export class KanbanDragController {
 
     const drop = this.currentDroppingState;
     this.currentOperationId = null;
-    this.currentDroppingState = null;
-    this.dropSpacerY = null;
-    this.notifyDropListeners();
 
     try {
       if (drop && drop.isDrop && this.validLaneSet.has(drop.targetLaneId)) {
@@ -787,6 +797,11 @@ export class KanbanDragController {
         }
       }
     } finally {
+      this.currentDroppingState = null;
+      this.dropSpacerY = null;
+      this.notifyDropListeners();
+      this.notifyListeners();
+
       if (this.dragLockTimeout) clearTimeout(this.dragLockTimeout);
       this.dragLockTimeout = setTimeout(() => {
         this.dragLock = false;
@@ -795,7 +810,7 @@ export class KanbanDragController {
           dragLock: false,
         };
         this.notifyListeners();
-      }, 150);
+      }, 60);
     }
   };
 
@@ -807,6 +822,7 @@ export class KanbanDragController {
     this.currentDroppingState = null;
     this.dropSpacerY = null;
     this.notifyDropListeners();
+    this.notifyListeners();
 
     if (this.dragLockTimeout) clearTimeout(this.dragLockTimeout);
     this.dragLockTimeout = setTimeout(() => {
@@ -816,7 +832,7 @@ export class KanbanDragController {
         dragLock: false,
       };
       this.notifyListeners();
-    }, 150);
+    }, 60);
   };
 
   cancelGesture = () => {
@@ -847,7 +863,7 @@ export class KanbanDragController {
           dragLock: false,
         };
         this.notifyListeners();
-      }, 150);
+      }, 60);
     }
   };
 
@@ -879,7 +895,10 @@ export class KanbanDragController {
     const laneCardsMap = (this.activeSession?.cardLayouts ?? this.cardLayouts).get(laneId);
 
     const slotX = laneRect.x - this.scrollX + (cardsViewport?.x ?? 12);
-    const activeTaskId = this.activeSession?.taskId ?? this.feedback.draggingTaskId;
+    const activeTaskId =
+      this.activeSession?.taskId ??
+      this.feedback.draggingTaskId ??
+      this.currentDroppingState?.taskId;
     const allCardIds = this.laneCardOrders.get(laneId) ?? [];
     const remainingCardIds = allCardIds.filter((id) => id !== activeTaskId);
 
@@ -918,10 +937,16 @@ export class KanbanDragController {
   };
 
   isTaskDragging = (taskId: string): boolean => {
+    if (this.currentDroppingState && this.currentDroppingState.taskId === taskId) {
+      return true;
+    }
     return this.feedback.isDragging && this.feedback.draggingTaskId === taskId;
   };
 
   isLaneHovered = (laneId: string): boolean => {
+    if (this.currentDroppingState) {
+      return this.currentDroppingState.targetLaneId === laneId;
+    }
     return this.feedback.hoveredLaneId === laneId && this.feedback.isDragging;
   };
 
@@ -957,12 +982,21 @@ export class KanbanDragController {
   }
 
   private checkAndNotifySlotState() {
+    const isDropping = this.currentDroppingState !== null;
     const nextSlotState: DragSlotState = {
-      isDragging: this.feedback.isDragging,
-      draggingTaskId: this.feedback.draggingTaskId,
-      draggingSourceLaneId: this.feedback.draggingSourceLaneId,
-      hoveredLaneId: this.feedback.hoveredLaneId,
-      targetIndex: this.feedback.targetIndex ?? 0,
+      isDragging: this.feedback.isDragging || isDropping,
+      draggingTaskId:
+        this.feedback.draggingTaskId ??
+        (isDropping ? this.currentDroppingState?.taskId ?? null : null),
+      draggingSourceLaneId:
+        this.feedback.draggingSourceLaneId ??
+        (isDropping ? this.currentDroppingState?.sourceLaneId ?? null : null),
+      hoveredLaneId:
+        this.feedback.hoveredLaneId ??
+        (isDropping ? this.currentDroppingState?.targetLaneId ?? null : null),
+      targetIndex:
+        this.feedback.targetIndex ??
+        (isDropping ? this.currentDroppingState?.targetIndex ?? 0 : 0),
       draggedCardHeight: this.feedback.draggedCardHeight,
       dragLock: this.feedback.dragLock,
     };
@@ -1135,6 +1169,7 @@ export interface UseKanbanDragReturn {
   commitDrop: () => Promise<void>;
   abortDrop: () => void;
   getTaskPreview?: (taskId: string) => TaskPreviewItem | null;
+  setGetTaskPreview?: (fn?: (taskId: string) => TaskPreviewItem | null) => void;
   bindLane: (laneId: string) => LaneDragBinding;
   bindContainerRef: (instance: any) => void;
   handleContainerLayout: (layout: Rect) => void;
@@ -1179,6 +1214,9 @@ export function useKanbanDrag(options: KanbanDragOptions = {}): UseKanbanDragRet
   }
   if (onReorderTask) {
     controller.setOnReorderTask(onReorderTask);
+  }
+  if (getTaskPreview) {
+    controller.setGetTaskPreview(getTaskPreview);
   }
 
   const slotState = useSyncExternalStore(
@@ -1328,6 +1366,7 @@ export function useKanbanDrag(options: KanbanDragOptions = {}): UseKanbanDragRet
     commitDrop,
     abortDrop,
     getTaskPreview,
+    setGetTaskPreview: controller.setGetTaskPreview,
     bindLane,
     bindContainerRef,
     handleContainerLayout,

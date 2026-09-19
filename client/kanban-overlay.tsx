@@ -30,11 +30,25 @@ function KanbanDragOverlayInner({
     drag.controller ? drag.controller.getFeedback : (() => drag.feedback)
   );
 
-  const curDropping = drag.droppingState;
+  const curDropping = useSyncExternalStore(
+    drag.controller ? drag.controller.subscribeDrop : (() => () => {}),
+    drag.controller ? drag.controller.getDroppingState : (() => drag.droppingState),
+    drag.controller ? drag.controller.getDroppingState : (() => drag.droppingState)
+  );
   const animPos = useRef(Animated?.ValueXY ? new Animated.ValueXY({ x: 0, y: 0 }) : null).current;
   const animRotate = useRef(Animated?.Value ? new Animated.Value(1) : null).current;
   const animScale = useRef(Animated?.Value ? new Animated.Value(1.03) : null).current;
   const droppingHandledRef = useRef<string | null>(null);
+  const lastOpIdRef = useRef<string | null>(null);
+
+  if (curDropping && animPos && animRotate && animScale && lastOpIdRef.current !== curDropping.operationId) {
+    lastOpIdRef.current = curDropping.operationId;
+    animPos.setValue({ x: curDropping.fromX, y: curDropping.fromY });
+    animRotate.setValue(1);
+    animScale.setValue(1.03);
+  } else if (!curDropping) {
+    lastOpIdRef.current = null;
+  }
 
   useEffect(() => {
     if (!curDropping) {
@@ -61,21 +75,23 @@ function KanbanDragOverlayInner({
       Animated.spring(animPos, {
         toValue: { x: curDropping.toX, y: curDropping.toY },
         useNativeDriver: false,
-        friction: 8,
-        tension: 50,
+        friction: 9,
+        tension: 90,
+        restDisplacementThreshold: 1,
+        restSpeedThreshold: 1,
       }),
       Animated.timing(animRotate, {
         toValue: 0,
-        duration: 180,
+        duration: 160,
         useNativeDriver: false,
       }),
       Animated.timing(animScale, {
         toValue: 1,
-        duration: 180,
+        duration: 160,
         useNativeDriver: false,
       }),
     ]).start((result) => {
-      if (result?.finished) {
+      if (result === undefined || result?.finished) {
         drag.commitDrop();
       } else {
         drag.abortDrop?.();
@@ -86,12 +102,18 @@ function KanbanDragOverlayInner({
   const activeTask =
     curDropping?.task ??
     propTask ??
+    (curDropping?.taskId && drag.getTaskPreview
+      ? drag.getTaskPreview(curDropping.taskId)?.task
+      : null) ??
     (liveFeedback.draggingTaskId && drag.getTaskPreview
       ? drag.getTaskPreview(liveFeedback.draggingTaskId)?.task
       : null);
   const activeProjectName =
     curDropping?.projectName ??
     propProjectName ??
+    (curDropping?.taskId && drag.getTaskPreview
+      ? drag.getTaskPreview(curDropping.taskId)?.projectDisplayName
+      : null) ??
     (liveFeedback.draggingTaskId && drag.getTaskPreview
       ? drag.getTaskPreview(liveFeedback.draggingTaskId)?.projectDisplayName
       : null);

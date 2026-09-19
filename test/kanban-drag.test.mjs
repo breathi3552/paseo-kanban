@@ -682,5 +682,58 @@ test("动画与事务闭环: 操作身份保护，仅完成落位提交一次，
   assert.equal(reorders.length, 1, "中断动画不得提交");
 });
 
+// ---------------------------------------------------------------------------
+// 15. 落位动画状态保持与任务快照动态解析
+// ---------------------------------------------------------------------------
+test("落位动画与提交流程: 动态预览更新、保存期间保持落位状态防止原位闪烁、快速释放互斥锁", async () => {
+  let saveStarted = false;
+  let saveCompleted = false;
+  let droppingStateDuringSave = null;
+
+  const controller = setupController();
+  // 初始为 null 的获取器（模拟初始化时 board 尚未加载）
+  controller.setGetTaskPreview?.(() => null);
+
+  // 随后数据就绪，动态注入真实获取器
+  if (controller.setGetTaskPreview) {
+    controller.setGetTaskPreview((taskId) => ({
+      task: { id: taskId, title: "Dynamic Task", subtasks: [] },
+      projectDisplayName: "Project Alpha",
+    }));
+  }
+
+  controller.setOnReorderTask(async () => {
+    saveStarted = true;
+    droppingStateDuringSave = controller.getDroppingState();
+    await new Promise((r) => setTimeout(r, 40));
+    saveCompleted = true;
+  });
+
+  const ctx = { taskId: "dyn-1", laneId: "to-plan", onPress: () => {} };
+  controller.handlePointerDown(ctx, { x: 50, y: 50 }, "handle");
+  controller.handlePointerMove({ x: 340, y: 100 });
+
+  const drop = await controller.beginDropAnimation({ x: 340, y: 100 });
+  assert.ok(drop, "必须生成落位动画状态");
+  assert.equal(drop.task?.title, "Dynamic Task", "必须使用动态注入的任务快照");
+  assert.equal(drop.projectName, "Project Alpha", "必须使用动态注入的项目名称");
+
+  // 发起提交
+  const reportPromise = controller.reportDropComplete(drop.operationId);
+  // 在保存过程中断言
+  assert.equal(saveStarted, true, "应当已经触发保存");
+  assert.ok(droppingStateDuringSave, "保存期间必须保留 droppingState，防止卡片闪回原位");
+  assert.equal(droppingStateDuringSave.taskId, "dyn-1");
+
+  await reportPromise;
+  assert.equal(saveCompleted, true, "保存已完成");
+  assert.equal(controller.getDroppingState(), null, "保存完成后清除 droppingState");
+
+  // 验证快速解锁（60ms 缓冲后即解锁，不超过 100ms）
+  await new Promise((r) => setTimeout(r, 90));
+  assert.equal(controller.isDragLocked(), false, "互斥锁必须在平滑缓冲后迅速解锁");
+});
+
+
 
 

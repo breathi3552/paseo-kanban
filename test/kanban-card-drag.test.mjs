@@ -264,3 +264,144 @@ test("long press grabs the card immediately, seamlessly continues dragging on mo
 
   renderer.unmount();
 });
+
+test("KanbanDragOverlay: 落位动画浮层渲染与动态预览任务快照绑定", () => {
+  let committed = false;
+  const mockAnimated = {
+    ValueXY: class {
+      constructor(v) { this.x = v.x; this.y = v.y; }
+      setValue(v) { this.x = v.x; this.y = v.y; }
+    },
+    Value: class {
+      constructor(v) { this.val = v; }
+      setValue(v) { this.val = v; }
+      interpolate() { return "0deg"; }
+    },
+    spring: () => ({ start: (cb) => cb && cb({ finished: true }) }),
+    timing: () => ({ start: (cb) => cb && cb({ finished: true }) }),
+    parallel: () => ({
+      start: (cb) => {
+        cb && cb({ finished: true });
+        committed = true;
+      },
+    }),
+    View: "AnimatedView",
+  };
+
+  const overlayRenderer = componentRenderer("kanban-overlay", "KanbanDragOverlay", {
+    "react-native": {
+      View: "View",
+      Text: "Text",
+      Pressable: "Pressable",
+      ScrollView: "ScrollView",
+      StyleSheet: { create: (s) => s },
+      Animated: mockAnimated,
+    },
+  });
+
+  const dragMock = {
+    feedback: { isDragging: false, draggingTaskId: null, pointerX: undefined, pointerY: undefined },
+    droppingState: {
+      operationId: "op-overlay-1",
+      taskId: "task-101",
+      task: null, // 模拟初始抓取为 null
+      projectName: null,
+      fromX: 100,
+      fromY: 200,
+      toX: 300,
+      toY: 400,
+      isDrop: true,
+    },
+    getTaskPreview: (taskId) => ({
+      task: { id: taskId, title: "Dynamic Drop Preview", subtasks: [] },
+      projectDisplayName: "Test Project",
+    }),
+    commitDrop: () => { committed = true; },
+    abortDrop: () => {},
+    controller: {
+      subscribe: () => () => {},
+      subscribeDrop: () => () => {},
+      getFeedback: () => ({ isDragging: false, draggingTaskId: null }),
+      getDroppingState: () => dragMock.droppingState,
+      getContainerBounds: () => ({ x: 0, y: 0, width: 800, height: 600 }),
+    },
+  };
+
+  const tree = overlayRenderer.render({
+    drag: dragMock,
+    theme: { colors: {} },
+    layout: { compact: false },
+  });
+
+  assert.ok(tree, "落位状态下必须渲染落位浮层，不得返回 null");
+  assert.equal(tree.props.style[1].left, 100, "必须从起点坐标 fromX 开始落位吸附");
+  assert.equal(tree.props.style[1].top, 200, "必须从起点坐标 fromY 开始落位吸附");
+  assert.equal(tree.props.children.props.task.title, "Dynamic Drop Preview", "必须成功解析出动态任务数据");
+  assert.equal(tree.props.children.props.projectDisplayName, "Test Project", "必须解析出关联项目名");
+  assert.equal(committed, true, "落位动画完成后必须调用 commitDrop 提交事务");
+
+  overlayRenderer.unmount();
+});
+
+test("落位动画期间卡片保持隐藏: 原位卡片不得在动画期间重新渲染复显", async () => {
+  const controller = new KanbanDragController({
+    lanes: ["lane-a", "lane-b"],
+  });
+  controller.registerContainerBounds({ x: 0, y: 0, width: 600, height: 600 });
+  controller.registerLaneLayout("lane-a", { x: 0, y: 0, width: 280, height: 600 });
+  controller.registerLaneLayout("lane-b", { x: 300, y: 0, width: 280, height: 600 });
+  controller.setLaneCardOrder("lane-a", ["card-1", "card-2"]);
+  controller.setLaneCardOrder("lane-b", ["card-3"]);
+
+  const renderer = componentRenderer();
+  const renderCard1 = () =>
+    renderer.render({
+      task: { id: "card-1", laneId: "lane-a", title: "Card 1", subtasks: [] },
+      projectDisplayName: null,
+      theme: { colors: {} },
+      layout: { compact: false },
+      binding: controller.bindCard("lane-a", "card-1"),
+    });
+
+  // 1. 静止状态: 卡片正常显示
+  const initialTree = renderCard1();
+  assert.equal(initialTree.props.style, undefined, "静止状态下卡片正常显示");
+
+  // 2. 拖拽激活状态: 卡片隐藏
+  controller.handlePointerDown(
+    { taskId: "card-1", laneId: "lane-a", onPress: () => {} },
+    { x: 50, y: 50 },
+    "handle"
+  );
+  controller.handlePointerMove({ x: 350, y: 100 });
+  assert.equal(controller.isTaskDragging("card-1"), true);
+  const draggingTree = renderCard1();
+  assert.equal(draggingTree.props.style.position, "absolute", "拖拽期间原位卡片必须隐藏");
+  assert.equal(draggingTree.props.style.opacity, 0, "拖拽期间原位卡片透明度为 0");
+
+  // 3. 进入落位动画阶段 (droppingState 激活，但尚未 commit 完成)
+  const droppingState = await controller.beginDropAnimation({ x: 350, y: 100 });
+  assert.ok(droppingState, "必须生成落位状态");
+  assert.equal(controller.isTaskDragging("card-1"), true, "落位动画期间控制器必须判定该卡片仍在处理中");
+
+  // 验证在落位动画阶段重新渲染原位卡片
+  const droppingTree = renderCard1();
+  assert.equal(
+    droppingTree.props.style?.position,
+    "absolute",
+    "落位动画期间原位卡片必须继续隐藏，严禁在原位置重新出现"
+  );
+  assert.equal(
+    droppingTree.props.style?.opacity,
+    0,
+    "落位动画期间原位卡片透明度必须维持 0"
+  );
+
+  // 4. 落位动画完成并持久化
+  await controller.reportDropComplete(droppingState.operationId);
+  assert.equal(controller.isTaskDragging("card-1"), false, "提交流程结束后恢复状态");
+
+  renderer.unmount();
+});
+
+
