@@ -645,3 +645,172 @@ test("排序操作: 保存适配器抛错被捕获并返回错误信息，不抛
   assert.match(result.error, /Disk full/);
 });
 
+// ---------------------------------------------------------------------------
+// 7. 加深编辑草稿会话 (TaskEditSession / LaneEditSession)
+// ---------------------------------------------------------------------------
+
+test("会话草稿: 字段修改驱动不可变快照更新与订阅通知", () => {
+  const store = createMockStore({});
+  const session = openTaskSession({
+    mode: "create",
+    baseBoard: store.values,
+    baseRevision: store.revision,
+    save: (b, r) => store.save(b, r),
+    defaultLaneId: "to-plan",
+  });
+
+  let notifications = 0;
+  session.subscribe(() => {
+    notifications++;
+  });
+
+  const snap0 = session.getSnapshot();
+  assert.equal(snap0.title, "");
+  assert.equal(snap0.laneId, "to-plan");
+
+  // 更新标题
+  session.setTitle("新功能设计");
+  assert.equal(notifications, 1);
+  const snap1 = session.getSnapshot();
+  assert.equal(snap1.title, "新功能设计");
+  assert.notEqual(snap0, snap1);
+
+  // 无变化时快照引用稳定
+  session.setTitle("新功能设计");
+  assert.equal(notifications, 1, "无变化时不触发多余通知");
+  assert.equal(session.getSnapshot(), snap1, "无变化时快照引用保持稳定");
+
+  // 更新描述与项目
+  session.setDescription("详细说明");
+  session.setProjectId("proj-x");
+  const snap2 = session.getSnapshot();
+  assert.equal(snap2.description, "详细说明");
+  assert.equal(snap2.projectId, "proj-x");
+});
+
+test("会话子步骤: 增删改与完成状态、稳定 ID 生成与碰撞防护", () => {
+  const store = createMockStore({});
+  let idCounter = 0;
+  const mockGenerator = () => `sub_${++idCounter}`;
+
+  const session = openTaskSession({
+    mode: "create",
+    baseBoard: store.values,
+    baseRevision: store.revision,
+    save: (b, r) => store.save(b, r),
+    idGenerator: mockGenerator,
+  });
+
+  // 1. 新增子步骤
+  const ok1 = session.addSubtask("检查网络配置");
+  assert.equal(ok1, true);
+  assert.equal(session.getSnapshot().subtasks.length, 1);
+  assert.equal(session.getSnapshot().subtasks[0].id, "sub_1");
+  assert.equal(session.getSnapshot().subtasks[0].title, "检查网络配置");
+  assert.equal(session.getSnapshot().subtasks[0].completed, false);
+
+  // 2. 空白子步骤拒绝新增并暴露错误
+  const okEmpty = session.addSubtask("   ");
+  assert.equal(okEmpty, false);
+  assert.equal(session.getSnapshot().subtasks.length, 1);
+  assert.match(session.getSnapshot().error ?? "", /子步骤内容不能为空/);
+
+  // 3. 修改子步骤内容与勾选完成
+  session.updateSubtask("sub_1", { completed: true, title: "检查网络配置 (已通过)" });
+  const sub1 = session.getSnapshot().subtasks[0];
+  assert.equal(sub1.id, "sub_1", "ID 必须稳定保留");
+  assert.equal(sub1.completed, true);
+  assert.equal(sub1.title, "检查网络配置 (已通过)");
+
+  // 4. 新增第二个子步骤并测试删除
+  session.addSubtask("验证证书");
+  assert.equal(session.getSnapshot().subtasks.length, 2);
+  session.removeSubtask("sub_1");
+  assert.equal(session.getSnapshot().subtasks.length, 1);
+  assert.equal(session.getSnapshot().subtasks[0].id, "sub_2");
+});
+
+test("会话并发与防护: 保存中拒绝草稿修改与重复提交，保存失败恢复可操作并保留草稿", async () => {
+  let saveResolvers = [];
+  const store = createMockStore({});
+  const slowSave = (b, r) =>
+    new Promise((resolve) => {
+      saveResolvers.push(() => resolve(store.save(b, r)));
+    });
+
+  const session = openTaskSession({
+    mode: "create",
+    baseBoard: store.values,
+    baseRevision: store.revision,
+    save: slowSave,
+  });
+
+  session.setTitle("初始任务草稿");
+  session.addSubtask("步骤1");
+
+  // 发起保存
+  const savePromise1 = session.save();
+  assert.equal(session.getSnapshot().isSaving, true, "保存中 isSaving 为 true");
+
+  // 保存期间拒绝草稿修改
+  session.setTitle("尝试在保存中修改");
+  assert.equal(session.getSnapshot().title, "初始任务草稿", "保存中草稿被保护");
+
+  // 保存期间拒绝重复提交
+  const savePromise2 = session.save();
+  const dupResult = await savePromise2;
+  assert.equal(dupResult.success, false);
+  assert.match(dupResult.error, /正在保存中/);
+
+  // 完成第一次保存
+  saveResolvers[0]();
+  const result1 = await savePromise1;
+  assert.equal(result1.success, true);
+  assert.equal(session.getSnapshot().isSaving, false);
+
+  // 验证保存失败恢复草稿:
+  // 使用过期的 revision 再次保存（模拟冲突）
+  const staleSession = openTaskSession({
+    mode: "create",
+    baseBoard: store.values,
+    baseRevision: "rev-expired",
+    save: (b, r) => store.save(b, r),
+  });
+  staleSession.setTitle("未同步的内容");
+  const failResult = await staleSession.save();
+  assert.equal(failResult.success, false);
+  assert.match(failResult.error, /保存失败|冲突/);
+  assert.equal(staleSession.getSnapshot().isSaving, false);
+  assert.equal(staleSession.getSnapshot().title, "未同步的内容", "失败必须完整保留草稿");
+});
+
+test("泳道会话: 快照包含保护判断，重复提交与删除拦截均被保护", async () => {
+  const store = createMockStore({
+    tasks: [{ id: "t1", title: "Task", laneId: "to-plan", projectId: null }],
+  });
+
+  const session = openLaneSession({
+    mode: "edit",
+    laneId: "to-plan",
+    baseBoard: store.values,
+    baseRevision: store.revision,
+    save: (b, r) => store.save(b, r),
+  });
+
+  const snap = session.getSnapshot();
+  assert.equal(snap.title, "待规划");
+  assert.equal(snap.canDelete, false, "有任务的泳道不能删除");
+  assert.equal(snap.tasksInLaneCount, 1);
+
+  session.setTitle("计划中");
+  assert.equal(session.getSnapshot().title, "计划中");
+
+  // 空白名称拦截
+  session.setTitle("   ");
+  const emptyRes = await session.save();
+  assert.equal(emptyRes.success, false);
+  assert.match(emptyRes.error, /泳道名称不能为空/);
+  assert.match(session.getSnapshot().error ?? "", /泳道名称不能为空/);
+});
+
+

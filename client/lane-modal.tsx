@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useSyncExternalStore } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Modal, TextInput, Icon } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
@@ -6,7 +6,7 @@ import type { LaneEditSession } from "./kanban-session";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 
-interface LaneModalProps {
+export interface LaneModalProps {
   open: boolean;
   onClose: () => void;
   session: LaneEditSession;
@@ -21,19 +21,23 @@ export function LaneModal({
   theme,
   layout,
 }: LaneModalProps) {
-  const [title, setTitle] = useState(session.initialValues.title);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+  const snapshot = useSyncExternalStore(
+    session.subscribe,
+    session.getSnapshot,
+    session.getSnapshot
+  );
+
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setTitle(session.initialValues.title);
-      setErrorMessage(null);
-      setIsSaving(false);
       setShowDeleteConfirm(false);
     }
   }, [open, session]);
+
+  const canDelete = snapshot.canDelete;
+  const isSaving = snapshot.isSaving;
+  const errorMessage = snapshot.error;
 
   const styles = useMemo(
     () =>
@@ -139,153 +143,117 @@ export function LaneModal({
     [theme, layout.compact]
   );
 
-  const canDelete = session.canDelete;
-
   const handleSave = async () => {
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
-      setErrorMessage("泳道名称不能为空");
-      return;
-    }
-
-    setIsSaving(true);
-    setErrorMessage(null);
-
-    try {
-      const result = await session.saveDraft({
-        title: trimmedTitle,
-      });
-
-      setIsSaving(false);
-      if (result.success) {
-        onClose();
-      } else {
-        setErrorMessage(result.error);
-      }
-    } catch (err: unknown) {
-      const errStr = err instanceof Error ? err.message : String(err);
-      setIsSaving(false);
-      setErrorMessage(`保存发生异常: ${errStr}`);
+    const result = await session.save();
+    if (result.success) {
+      onClose();
     }
   };
 
   const handleDelete = async () => {
-    if (session.mode !== "edit" || !canDelete) return;
-    setIsSaving(true);
-    setErrorMessage(null);
-    try {
-      const result = await session.deleteLane();
-      setIsSaving(false);
-      if (result.success) {
-        onClose();
-      } else {
-        setErrorMessage(result.error);
-      }
-    } catch (err: unknown) {
-      const errStr = err instanceof Error ? err.message : String(err);
-      setIsSaving(false);
-      setErrorMessage(`删除发生异常: ${errStr}`);
+    const result = await session.deleteLane();
+    if (result.success) {
+      onClose();
     }
   };
 
   return (
     <Modal
-      title={session.mode === "edit" ? "编辑泳道" : "添加泳道"}
-      icon={<Icon name="PanelsTopLeft" size={18} color={theme.colors.foreground} />}
+      title={session.mode === "edit" ? "管理泳道" : "新增泳道"}
+      icon={<Icon name="Columns3" size={18} color={theme.colors.foreground} />}
       open={open}
       onOpenChange={(next) => {
-        if (!next && !isSaving) onClose();
+        if (!next && !isSaving) {
+          onClose();
+        }
       }}
     >
-      <Modal.Content style={{ backgroundColor: theme.colors.surface0 }}>
-        <View style={styles.container}>
-          {errorMessage && (
-            <View style={styles.errorBanner}>
-              <Text style={styles.errorText}>{errorMessage}</Text>
-            </View>
-          )}
-
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>泳道名称 *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="例如：待测试、发布中"
-              placeholderTextColor={theme.colors.foregroundMuted}
-              value={title}
-              onChangeText={(t) => {
-                setTitle(t);
-                if (errorMessage) setErrorMessage(null);
-              }}
-              onSubmitEditing={handleSave}
-            />
+      <Modal.Content
+        style={{ backgroundColor: theme.colors.surface0 }}
+        contentContainerStyle={styles.container}
+      >
+        {errorMessage && (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{errorMessage}</Text>
           </View>
+        )}
 
-          {session.mode === "edit" && !canDelete && (
-            <View style={styles.warningBanner}>
-              {session.lanesCount <= 1 ? (
-                <Text style={styles.warningText}>
-                  看板必须至少保留一条泳道，无法删除最后一条泳道。
-                </Text>
-              ) : (
-                <Text style={styles.warningText}>
-                  当前泳道内仍有 {session.tasksInLaneCount} 个任务。请先将任务移动至其他泳道或删除任务，然后才能删除此泳道。
-                </Text>
-              )}
-            </View>
-          )}
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>泳道名称 *</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="例如：待测试、发布中..."
+            placeholderTextColor={theme.colors.foregroundMuted}
+            value={snapshot.title}
+            onChangeText={(t) => session.setTitle(t)}
+          />
+        </View>
 
-          <View style={styles.buttonRow}>
-            <Pressable onPress={onClose} style={styles.cancelButton} disabled={isSaving}>
-              <Text style={styles.cancelButtonText}>取消</Text>
-            </Pressable>
-            <Pressable
-              onPress={handleSave}
-              style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
-              disabled={isSaving}
-            >
-              <Text style={styles.saveButtonText}>{isSaving ? "保存中..." : "保存"}</Text>
-            </Pressable>
+        {session.mode === "edit" && !canDelete && (
+          <View style={styles.warningBanner}>
+            <Text style={styles.warningText}>
+              {snapshot.lanesCount <= 1
+                ? "看板必须至少保留一条泳道，无法删除此泳道。"
+                : `此泳道当前包含 ${snapshot.tasksInLaneCount} 个任务，需清空或移走任务后方可删除。`}
+            </Text>
           </View>
+        )}
 
-          {session.mode === "edit" && (
-            <View style={styles.deleteSection}>
-              {canDelete ? (
-                showDeleteConfirm ? (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                    <Text style={{ color: theme.colors.statusDanger, fontSize: 13 }}>
-                      确定删除该空泳道吗？
-                    </Text>
-                    <Pressable
-                      onPress={handleDelete}
-                      style={[styles.deleteButton, { backgroundColor: theme.colors.statusDanger }]}
-                      disabled={isSaving}
-                    >
-                      <Text style={{ color: theme.colors.accentForeground, fontSize: 13, fontWeight: "600" }}>
-                        确认删除
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => setShowDeleteConfirm(false)}
-                      style={styles.cancelButton}
-                    >
-                      <Text style={styles.cancelButtonText}>取消</Text>
-                    </Pressable>
-                  </View>
-                ) : (
-                  <Pressable
-                    onPress={() => setShowDeleteConfirm(true)}
-                    style={styles.deleteButton}
-                  >
-                    <Text style={styles.deleteButtonText}>删除泳道</Text>
-                  </Pressable>
-                )
-              ) : (
-                <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
-                  受保护不可删除
+        {/* Delete Lane Section for Edit Mode */}
+        {session.mode === "edit" && canDelete && (
+          <View style={styles.deleteSection}>
+            {!showDeleteConfirm ? (
+              <Pressable
+                onPress={() => setShowDeleteConfirm(true)}
+                style={styles.deleteButton}
+                disabled={isSaving}
+              >
+                <Text style={styles.deleteButtonText}>删除此泳道</Text>
+              </Pressable>
+            ) : (
+              <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                <Text style={{ fontSize: 13, color: theme.colors.statusDanger }}>
+                  确认删除？
                 </Text>
-              )}
-            </View>
-          )}
+                <Pressable
+                  onPress={handleDelete}
+                  style={[styles.deleteButton, { backgroundColor: theme.colors.statusDanger }]}
+                  disabled={isSaving}
+                >
+                  <Text style={[styles.deleteButtonText, { color: "#fff" }]}>
+                    确认删除
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setShowDeleteConfirm(false)}
+                  style={styles.cancelButton}
+                >
+                  <Text style={styles.cancelButtonText}>取消</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Action Buttons */}
+        <View style={styles.buttonRow}>
+          <Pressable
+            onPress={onClose}
+            style={styles.cancelButton}
+            disabled={isSaving}
+          >
+            <Text style={styles.cancelButtonText}>取消</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={handleSave}
+            style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
+            disabled={isSaving}
+          >
+            <Text style={styles.saveButtonText}>
+              {isSaving ? "保存中..." : session.mode === "edit" ? "保存修改" : "添加泳道"}
+            </Text>
+          </Pressable>
         </View>
       </Modal.Content>
     </Modal>

@@ -84,6 +84,61 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
     getTaskPreview,
   });
 
+  const openNewTask = (defaultLaneId?: string) => {
+    if (drag.isDragLocked() || !board) return;
+    setActiveTaskSession(
+      openTaskSession({
+        mode: "create",
+        baseBoard: board,
+        baseRevision: revision,
+        save: (b, r) => settings.save(b, r),
+        defaultLaneId: defaultLaneId ?? board.lanes[0]?.id ?? "",
+        defaultProjectId:
+          selectedProjectId === "all" || selectedProjectId === "unassigned"
+            ? null
+            : selectedProjectId,
+      })
+    );
+  };
+
+  const openEditTask = (taskId: string) => {
+    if (drag.isDragLocked() || !board) return;
+    setActiveTaskSession(
+      openTaskSession({
+        mode: "edit",
+        taskId,
+        baseBoard: board,
+        baseRevision: revision,
+        save: (b, r) => settings.save(b, r),
+      })
+    );
+  };
+
+  const openNewLane = () => {
+    if (drag.isDragLocked() || !board) return;
+    setActiveLaneSession(
+      openLaneSession({
+        mode: "create",
+        baseBoard: board,
+        baseRevision: revision,
+        save: (b, r) => settings.save(b, r),
+      })
+    );
+  };
+
+  const openEditLane = (laneId: string) => {
+    if (drag.isDragLocked() || !board) return;
+    setActiveLaneSession(
+      openLaneSession({
+        mode: "edit",
+        laneId,
+        baseBoard: board,
+        baseRevision: revision,
+        save: (b, r) => settings.save(b, r),
+      })
+    );
+  };
+
   const styles = useMemo(
     () =>
       StyleSheet.create({
@@ -304,39 +359,14 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
 
           <View style={styles.headerActions}>
             <Pressable
-              onPress={() => {
-                if (drag.isDragLocked() || !board) return;
-                setActiveLaneSession(
-                  openLaneSession({
-                    mode: "create",
-                    baseBoard: board,
-                    baseRevision: revision,
-                    save: (b, r) => settings.save(b, r),
-                  })
-                );
-              }}
+              onPress={openNewLane}
               style={styles.secondaryButton}
             >
               <Text style={styles.secondaryButtonText}>+ 新增泳道</Text>
             </Pressable>
 
             <Pressable
-              onPress={() => {
-                if (drag.isDragLocked() || !board) return;
-                setActiveTaskSession(
-                  openTaskSession({
-                    mode: "create",
-                    baseBoard: board,
-                    baseRevision: revision,
-                    save: (b, r) => settings.save(b, r),
-                    defaultLaneId: board.lanes[0]?.id ?? "",
-                    defaultProjectId:
-                      selectedProjectId === "all" || selectedProjectId === "unassigned"
-                        ? null
-                        : selectedProjectId,
-                  })
-                );
-              }}
+              onPress={() => openNewTask()}
               style={styles.primaryButton}
             >
               <Text style={styles.primaryButtonText}>+ 新建任务</Text>
@@ -463,46 +493,9 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                 theme={theme}
                 layout={layout}
                 dragBinding={drag.bindLane(lane.id)}
-                onAddTask={(laneId) => {
-                  if (drag.isDragLocked() || !board) return;
-                  setActiveTaskSession(
-                    openTaskSession({
-                      mode: "create",
-                      baseBoard: board,
-                      baseRevision: revision,
-                      save: (b, r) => settings.save(b, r),
-                      defaultLaneId: laneId,
-                      defaultProjectId:
-                        selectedProjectId === "all" || selectedProjectId === "unassigned"
-                          ? null
-                          : selectedProjectId,
-                    })
-                  );
-                }}
-                onManageLane={(laneId) => {
-                  if (drag.isDragLocked() || !board) return;
-                  setActiveLaneSession(
-                    openLaneSession({
-                      mode: "edit",
-                      laneId,
-                      baseBoard: board,
-                      baseRevision: revision,
-                      save: (b, r) => settings.save(b, r),
-                    })
-                  );
-                }}
-                onSelectTask={(task) => {
-                  if (drag.isDragLocked() || !board) return;
-                  setActiveTaskSession(
-                    openTaskSession({
-                      mode: "edit",
-                      taskId: task.id,
-                      baseBoard: board,
-                      baseRevision: revision,
-                      save: (b, r) => settings.save(b, r),
-                    })
-                  );
-                }}
+                onAddTask={(laneId) => openNewTask(laneId)}
+                onManageLane={(laneId) => openEditLane(laneId)}
+                onSelectTask={(task) => openEditTask(task.id)}
               />
             );
           })}
@@ -521,7 +514,6 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
           open={activeTaskSession !== null}
           onClose={() => setActiveTaskSession(null)}
           session={activeTaskSession}
-          lanes={activeTaskSession.baseBoard.lanes}
           projects={projects}
           theme={theme}
           layout={layout}

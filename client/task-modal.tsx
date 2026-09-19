@@ -1,18 +1,18 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useSyncExternalStore } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Modal, TextInput, Icon, ScrollView } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import type { KanbanLane, KanbanSubtask } from "../shared/kanban";
+import type { KanbanLane } from "../shared/kanban";
 import type { ProjectItem } from "./use-projects";
 import type { TaskEditSession } from "./kanban-session";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 
-interface TaskModalProps {
+export interface TaskModalProps {
   open: boolean;
   onClose: () => void;
   session: TaskEditSession;
-  lanes: KanbanLane[];
+  lanes?: KanbanLane[];
   projects: ProjectItem[];
   theme: PluginTheme;
   layout: { compact: boolean; platform: "ios" | "android" | "web" };
@@ -22,36 +22,30 @@ export function TaskModal({
   open,
   onClose,
   session,
-  lanes,
+  lanes: propLanes,
   projects,
   theme,
   layout,
 }: TaskModalProps) {
-  const [title, setTitle] = useState(session.initialValues.title);
-  const [description, setDescription] = useState(session.initialValues.description);
-  const [laneId, setLaneId] = useState(session.initialValues.laneId);
-  const [projectId, setProjectId] = useState<string | null>(session.initialValues.projectId);
-  const [subtasks, setSubtasks] = useState<KanbanSubtask[]>(
-    session.initialValues.subtasks.map((s) => ({ ...s }))
+  const snapshot = useSyncExternalStore(
+    session.subscribe,
+    session.getSnapshot,
+    session.getSnapshot
   );
+
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setTitle(session.initialValues.title);
-      setDescription(session.initialValues.description);
-      setLaneId(session.initialValues.laneId);
-      setProjectId(session.initialValues.projectId);
-      setSubtasks(session.initialValues.subtasks.map((s) => ({ ...s })));
       setNewSubtaskTitle("");
-      setErrorMessage(null);
       setShowDeleteConfirm(false);
-      setIsSaving(false);
     }
   }, [open, session]);
+
+  const lanes = propLanes ?? snapshot.lanes;
+  const isSaving = snapshot.isSaving;
+  const errorMessage = snapshot.error;
 
   const styles = useMemo(
     () =>
@@ -148,54 +142,11 @@ export function TaskModal({
           flex: 1,
           fontSize: 13,
           color: theme.colors.foreground,
-          backgroundColor: theme.colors.surface2,
-          paddingHorizontal: 8,
           paddingVertical: 4,
-          borderRadius: 6,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
         },
         subtaskInputCompleted: {
           textDecorationLine: "line-through",
           color: theme.colors.foregroundMuted,
-          opacity: 0.8,
-        },
-        subtaskDeleteBtn: {
-          paddingHorizontal: 8,
-          paddingVertical: 4,
-        },
-        subtaskDeleteText: {
-          fontSize: 12,
-          color: theme.colors.statusDanger,
-        },
-        addSubtaskRow: {
-          flexDirection: "row",
-          gap: 8,
-          marginTop: 6,
-        },
-        addSubtaskInput: {
-          flex: 1,
-          backgroundColor: theme.colors.surface2,
-          color: theme.colors.foreground,
-          borderColor: theme.colors.border,
-          borderWidth: 1,
-          borderRadius: 6,
-          paddingHorizontal: 10,
-          paddingVertical: 6,
-          fontSize: 13,
-        },
-        smallButton: {
-          backgroundColor: theme.colors.accent,
-          paddingHorizontal: 12,
-          paddingVertical: 6,
-          borderRadius: 6,
-          alignItems: "center",
-          justifyContent: "center",
-        },
-        smallButtonText: {
-          color: theme.colors.accentForeground,
-          fontSize: 13,
-          fontWeight: "600",
         },
         errorBanner: {
           backgroundColor: theme.colors.surface2,
@@ -213,7 +164,6 @@ export function TaskModal({
           justifyContent: "flex-end",
           gap: 10,
           marginTop: 10,
-          flexShrink: 0,
         },
         cancelButton: {
           paddingHorizontal: 16,
@@ -268,96 +218,23 @@ export function TaskModal({
   );
 
   const handleAddSubtask = () => {
-    const trimmed = newSubtaskTitle.trim();
-    if (!trimmed) {
-      setErrorMessage("新增子步骤内容不能为空");
-      return;
+    const ok = session.addSubtask(newSubtaskTitle);
+    if (ok) {
+      setNewSubtaskTitle("");
     }
-    const subtaskId = `sub_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-    setSubtasks((prev) => [
-      ...prev,
-      { id: subtaskId, title: trimmed, completed: false },
-    ]);
-    setNewSubtaskTitle("");
-    setErrorMessage(null);
-  };
-
-  const handleUpdateSubtaskTitle = (id: string, newText: string) => {
-    setSubtasks((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, title: newText } : s))
-    );
-  };
-
-  const handleToggleSubtask = (id: string) => {
-    setSubtasks((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, completed: !s.completed } : s))
-    );
-  };
-
-  const handleDeleteSubtask = (id: string) => {
-    setSubtasks((prev) => prev.filter((s) => s.id !== id));
   };
 
   const handleSave = async () => {
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
-      setErrorMessage("任务标题不能为空");
-      return;
-    }
-
-    for (let i = 0; i < subtasks.length; i++) {
-      if (!subtasks[i].title.trim()) {
-        setErrorMessage(`第 ${i + 1} 个子步骤标题不能为空，请修改或删除该步骤`);
-        return;
-      }
-    }
-
-    setIsSaving(true);
-    setErrorMessage(null);
-
-    const sanitizedSubtasks = subtasks.map((s) => ({
-      id: s.id,
-      title: s.title.trim(),
-      completed: s.completed,
-    }));
-
-    try {
-      const result = await session.saveDraft({
-        title: trimmedTitle,
-        description: description.trim(),
-        laneId,
-        projectId,
-        subtasks: sanitizedSubtasks,
-      });
-      setIsSaving(false);
-      if (result.success) {
-        onClose();
-      } else {
-        setErrorMessage(result.error);
-      }
-    } catch (err: unknown) {
-      const errStr = err instanceof Error ? err.message : String(err);
-      setIsSaving(false);
-      setErrorMessage(`保存发生异常: ${errStr}`);
+    const result = await session.save();
+    if (result.success) {
+      onClose();
     }
   };
 
   const handleDelete = async () => {
-    if (session.mode !== "edit") return;
-    setIsSaving(true);
-    setErrorMessage(null);
-    try {
-      const result = await session.deleteTask();
-      setIsSaving(false);
-      if (result.success) {
-        onClose();
-      } else {
-        setErrorMessage(result.error);
-      }
-    } catch (err: unknown) {
-      const errStr = err instanceof Error ? err.message : String(err);
-      setIsSaving(false);
-      setErrorMessage(`删除发生异常: ${errStr}`);
+    const result = await session.deleteTask();
+    if (result.success) {
+      onClose();
     }
   };
 
@@ -394,11 +271,8 @@ export function TaskModal({
               style={styles.input}
               placeholder="输入任务标题"
               placeholderTextColor={theme.colors.foregroundMuted}
-              value={title}
-              onChangeText={(t) => {
-                setTitle(t);
-                if (errorMessage) setErrorMessage(null);
-              }}
+              value={snapshot.title}
+              onChangeText={(t) => session.setTitle(t)}
             />
           </View>
 
@@ -406,11 +280,11 @@ export function TaskModal({
             <Text style={styles.label}>所属泳道</Text>
             <View style={styles.selectorRow}>
               {lanes.map((lane) => {
-                const isSelected = lane.id === laneId;
+                const isSelected = lane.id === snapshot.laneId;
                 return (
                   <Pressable
                     key={lane.id}
-                    onPress={() => setLaneId(lane.id)}
+                    onPress={() => session.setLaneId(lane.id)}
                     style={[
                       styles.optionChip,
                       isSelected && styles.optionChipSelected,
@@ -434,27 +308,27 @@ export function TaskModal({
             <Text style={styles.label}>关联项目</Text>
             <View style={styles.selectorRow}>
               <Pressable
-                onPress={() => setProjectId(null)}
+                onPress={() => session.setProjectId(null)}
                 style={[
                   styles.optionChip,
-                  projectId === null && styles.optionChipSelected,
+                  snapshot.projectId === null && styles.optionChipSelected,
                 ]}
               >
                 <Text
                   style={[
                     styles.optionChipText,
-                    projectId === null && styles.optionChipTextSelected,
+                    snapshot.projectId === null && styles.optionChipTextSelected,
                   ]}
                 >
                   未关联项目
                 </Text>
               </Pressable>
               {projects.map((proj) => {
-                const isSelected = proj.projectId === projectId;
+                const isSelected = proj.projectId === snapshot.projectId;
                 return (
                   <Pressable
                     key={proj.projectId}
-                    onPress={() => setProjectId(proj.projectId)}
+                    onPress={() => session.setProjectId(proj.projectId)}
                     style={[
                       styles.optionChip,
                       isSelected && styles.optionChipSelected,
@@ -475,136 +349,140 @@ export function TaskModal({
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>详细描述</Text>
+            <Text style={styles.label}>描述</Text>
             <TextInput
               style={styles.multilineInput}
-              placeholder="添加详细任务描述（支持换行）"
-              placeholderTextColor={theme.colors.foregroundMuted}
-              value={description}
-              onChangeText={setDescription}
               multiline
-              numberOfLines={4}
+              numberOfLines={3}
+              placeholder="可选的任务补充描述..."
+              placeholderTextColor={theme.colors.foregroundMuted}
+              value={snapshot.description}
+              onChangeText={(t) => session.setDescription(t)}
             />
           </View>
 
+          {/* Subtasks Section */}
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>
-              子步骤 ({subtasks.filter((s) => s.completed).length}/{subtasks.length})
+              子步骤 ({snapshot.subtasks.filter((s) => s.completed).length}/{snapshot.subtasks.length})
             </Text>
-            {subtasks.map((subtask) => (
+
+            {snapshot.subtasks.map((subtask) => (
               <View key={subtask.id} style={styles.subtaskItem}>
                 <Pressable
-                  onPress={() => handleToggleSubtask(subtask.id)}
+                  onPress={() =>
+                    session.updateSubtask(subtask.id, { completed: !subtask.completed })
+                  }
                   style={[
                     styles.subtaskCheck,
                     subtask.completed && styles.subtaskCheckCompleted,
                   ]}
                 >
                   {subtask.completed && (
-                    <Icon name="Check" size={12} color={theme.colors.accentForeground} />
+                    <Icon name="Check" size={14} color={theme.colors.accentForeground} />
                   )}
                 </Pressable>
+
                 <TextInput
                   style={[
                     styles.subtaskInput,
                     subtask.completed && styles.subtaskInputCompleted,
                   ]}
                   value={subtask.title}
-                  onChangeText={(t) => handleUpdateSubtaskTitle(subtask.id, t)}
-                  placeholder="子步骤标题"
+                  onChangeText={(txt) =>
+                    session.updateSubtask(subtask.id, { title: txt })
+                  }
+                  placeholder="子步骤内容"
                   placeholderTextColor={theme.colors.foregroundMuted}
                 />
+
                 <Pressable
-                  onPress={() => handleDeleteSubtask(subtask.id)}
-                  style={styles.subtaskDeleteBtn}
+                  onPress={() => session.removeSubtask(subtask.id)}
+                  hitSlop={8}
                 >
-                  <Text style={styles.subtaskDeleteText}>删除</Text>
+                  <Icon name="Trash2" size={14} color={theme.colors.statusDanger} />
                 </Pressable>
               </View>
             ))}
 
-            <View style={styles.addSubtaskRow}>
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
               <TextInput
-                style={styles.addSubtaskInput}
-                placeholder="新增子步骤内容"
+                style={[styles.input, { flex: 1 }]}
+                placeholder="添加新的子步骤..."
                 placeholderTextColor={theme.colors.foregroundMuted}
                 value={newSubtaskTitle}
-                onChangeText={setNewSubtaskTitle}
+                onChangeText={(t) => setNewSubtaskTitle(t)}
                 onSubmitEditing={handleAddSubtask}
               />
               <Pressable
-                accessibilityRole="button"
-                testID="kanban-add-subtask-button"
                 onPress={handleAddSubtask}
-                style={styles.smallButton}
+                style={[
+                  styles.optionChip,
+                  { backgroundColor: theme.colors.surface2, justifyContent: "center" },
+                ]}
               >
-                <Text style={styles.smallButtonText}>添加</Text>
+                <Text style={styles.optionChipText}>添加步骤</Text>
               </Pressable>
             </View>
           </View>
 
-
+          {/* Delete Task Section for Edit Mode */}
           {session.mode === "edit" && (
             <View style={styles.deleteSection}>
-              {showDeleteConfirm ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <Text style={{ color: theme.colors.statusDanger, fontSize: 13 }}>
-                    确定删除该任务吗？
+              {!showDeleteConfirm ? (
+                <Pressable
+                  onPress={() => setShowDeleteConfirm(true)}
+                  style={styles.deleteButton}
+                  disabled={isSaving}
+                >
+                  <Text style={styles.deleteButtonText}>删除此任务</Text>
+                </Pressable>
+              ) : (
+                <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                  <Text style={{ fontSize: 13, color: theme.colors.statusDanger }}>
+                    确定删除？
                   </Text>
                   <Pressable
-                    accessibilityRole="button"
-                    testID="kanban-confirm-delete-task-button"
                     onPress={handleDelete}
                     style={[styles.deleteButton, { backgroundColor: theme.colors.statusDanger }]}
                     disabled={isSaving}
                   >
-                    <Text style={{ color: theme.colors.accentForeground, fontSize: 13, fontWeight: "600" }}>
+                    <Text style={[styles.deleteButtonText, { color: "#fff" }]}>
                       确认删除
                     </Text>
                   </Pressable>
                   <Pressable
-                    accessibilityRole="button"
-                    testID="kanban-cancel-delete-task-button"
                     onPress={() => setShowDeleteConfirm(false)}
-                    style={styles.cancelButton}
+                    style={[styles.optionChip, { backgroundColor: theme.colors.surface2 }]}
                   >
-                    <Text style={styles.cancelButtonText}>取消</Text>
+                    <Text style={styles.optionChipText}>取消</Text>
                   </Pressable>
                 </View>
-              ) : (
-                <Pressable
-                  accessibilityRole="button"
-                  testID="kanban-delete-task-button"
-                  onPress={() => setShowDeleteConfirm(true)}
-                  style={styles.deleteButton}
-                >
-                  <Text style={styles.deleteButtonText}>删除任务</Text>
-                </Pressable>
               )}
             </View>
           )}
-        </ScrollView>
+
+          {/* Action Buttons */}
           <View style={styles.buttonRow}>
             <Pressable
-              accessibilityRole="button"
-              testID="kanban-cancel-task-button"
               onPress={onClose}
               style={styles.cancelButton}
               disabled={isSaving}
             >
               <Text style={styles.cancelButtonText}>取消</Text>
             </Pressable>
+
             <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="保存"
-              testID="kanban-save-task-button"
               onPress={handleSave}
               style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
               disabled={isSaving}
             >
-              <Text style={styles.saveButtonText}>{isSaving ? "保存中..." : "保存"}</Text>
+              <Text style={styles.saveButtonText}>
+                {isSaving ? "保存中..." : session.mode === "edit" ? "保存修改" : "创建"}
+              </Text>
             </Pressable>
           </View>
+        </ScrollView>
       </Modal.Content>
     </Modal>
   );
