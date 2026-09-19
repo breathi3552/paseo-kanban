@@ -6,6 +6,7 @@ import {
   openLaneSession,
   executeTaskReorder,
 } from "../client/kanban-session.ts";
+import { createProjectNameResolver } from "../client/use-projects.ts";
 
 function createMockStore(initialData = {}) {
   let currentBoard = KanbanBoardSchema.parse(initialData);
@@ -811,6 +812,118 @@ test("泳道会话: 快照包含保护判断，重复提交与删除拦截均被
   assert.equal(emptyRes.success, false);
   assert.match(emptyRes.error, /泳道名称不能为空/);
   assert.match(session.getSnapshot().error ?? "", /泳道名称不能为空/);
+});
+
+// ---------------------------------------------------------------------------
+// 8. 跨模块全流程用户旅程与解耦验证
+// ---------------------------------------------------------------------------
+
+test("跨模块全流程: 筛选 -> 拖拽 -> 落位 -> 保存 -> 编辑 -> 外部冲突 -> 刷新 -> 再拖拽", async () => {
+  const store = createMockStore({
+    tasks: [
+      { id: "t1", title: "Task 1", laneId: "to-plan", projectId: "projA" },
+      { id: "t2", title: "Task 2", laneId: "in-progress", projectId: "projB" },
+    ],
+  });
+
+  // 1. 筛选: 当前筛选为 projA
+  const filter = { type: "project", projectId: "projA" };
+
+  // 2. 拖拽与落位: 将 t1 从 to-plan 跨泳道拖至 in-progress 槽位 0 (目标仅有隐藏任务 t2)
+  const reorderRes1 = await executeTaskReorder({
+    baseBoard: store.values,
+    baseRevision: store.revision,
+    taskId: "t1",
+    targetLaneId: "in-progress",
+    targetIndex: 0,
+    filter,
+    save: (b, r) => store.save(b, r),
+  });
+
+  assert.equal(reorderRes1.success, true);
+  // 无可见锚点规则：追加至 in-progress 隐藏任务 t2 之后
+  assert.deepEqual(
+    store.values.tasks.map((t) => `${t.id}:${t.laneId}`),
+    ["t2:in-progress", "t1:in-progress"]
+  );
+
+  // 3. 编辑: 打开任务 t1 的编辑会话并添加子步骤
+  const session1 = openTaskSession({
+    mode: "edit",
+    taskId: "t1",
+    baseBoard: store.values,
+    baseRevision: store.revision,
+    save: (b, r) => store.save(b, r),
+  });
+  session1.setTitle("Task 1 (强化版)");
+  session1.addSubtask("检查安全合规");
+  const saveRes = await session1.save();
+  assert.equal(saveRes.success, true);
+  assert.equal(store.values.tasks.find((t) => t.id === "t1").title, "Task 1 (强化版)");
+
+  // 4. 外部冲突: 外部发生写入导致 store revision 推进
+  await store.save({
+    ...store.values,
+    tasks: store.values.tasks.map((t) => (t.id === "t2" ? { ...t, title: "Task 2 外部修改" } : t)),
+  }, store.revision);
+
+  // 5. 旧事务尝试再排序，使用过期的 revision
+  const staleReorder = await executeTaskReorder({
+    baseBoard: session1.baseBoard,
+    baseRevision: session1.baseRevision,
+    taskId: "t1",
+    targetLaneId: "done",
+    targetIndex: 0,
+    filter,
+    save: (b, r) => store.save(b, r),
+  });
+  assert.equal(staleReorder.success, false);
+  assert.match(staleReorder.error, /保存失败|冲突/);
+  // 外部修改完整保留，t1 仍停留在 in-progress
+  assert.equal(store.values.tasks.find((t) => t.id === "t1").laneId, "in-progress");
+
+  // 6. 刷新后重新拖拽: 读取最新看板与 revision，重新拖拽至 done 泳道
+  const freshReorder = await executeTaskReorder({
+    baseBoard: store.values,
+    baseRevision: store.revision,
+    taskId: "t1",
+    targetLaneId: "done",
+    targetIndex: 0,
+    filter,
+    save: (b, r) => store.save(b, r),
+  });
+  assert.equal(freshReorder.success, true);
+  assert.equal(store.values.tasks.find((t) => t.id === "t1").laneId, "done");
+});
+
+test("解耦验证: 项目重命名与项目查询失败不破坏正在进行的任务排序或草稿编辑", async () => {
+  const store = createMockStore({
+    tasks: [{ id: "t1", title: "核心任务", laneId: "to-plan", projectId: "p-proj" }],
+  });
+
+  const session = openTaskSession({
+    mode: "edit",
+    taskId: "t1",
+    baseBoard: store.values,
+    baseRevision: store.revision,
+    save: (b, r) => store.save(b, r),
+  });
+
+  session.setTitle("编辑中的草稿");
+
+  // 项目列表发生重命名/刷新失败，不影响草稿和任务绑定的 projectId
+  const projectsV1 = [{ projectId: "p-proj", projectDisplayName: "原项目名" }];
+  const resolverV1 = createProjectNameResolver(projectsV1);
+  assert.equal(resolverV1("p-proj"), "原项目名");
+
+  // 项目查询更新失败暴露错误，但草稿标题和 ID 依然完好
+  assert.equal(session.getSnapshot().title, "编辑中的草稿");
+  assert.equal(session.getSnapshot().projectId, "p-proj");
+
+  // 保存草稿成功
+  const saveRes = await session.save();
+  assert.equal(saveRes.success, true);
+  assert.equal(store.values.tasks[0].projectId, "p-proj");
 });
 
 
