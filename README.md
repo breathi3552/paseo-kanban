@@ -26,7 +26,7 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 
 ---
 
-## Installation & Usage
+## Installation
 
 ### Quick Install (Recommended)
 
