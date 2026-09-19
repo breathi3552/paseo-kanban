@@ -305,7 +305,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
           <View style={styles.headerActions}>
             <Pressable
               onPress={() => {
-                if (!board) return;
+                if (drag.isDragLocked() || !board) return;
                 setActiveLaneSession(
                   openLaneSession({
                     mode: "create",
@@ -322,7 +322,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
 
             <Pressable
               onPress={() => {
-                if (!board) return;
+                if (drag.isDragLocked() || !board) return;
                 setActiveTaskSession(
                   openTaskSession({
                     mode: "create",
@@ -349,7 +349,10 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
           <View style={styles.filterRow}>
             <Text style={styles.filterLabel}>项目筛选:</Text>
             <Pressable
-              onPress={() => setSelectedProjectId("all")}
+              onPress={() => {
+                if (drag.isDragLocked()) return;
+                setSelectedProjectId("all");
+              }}
               style={[
                 styles.filterChip,
                 selectedProjectId === "all" && styles.filterChipSelected,
@@ -366,7 +369,10 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
             </Pressable>
 
             <Pressable
-              onPress={() => setSelectedProjectId("unassigned")}
+              onPress={() => {
+                if (drag.isDragLocked()) return;
+                setSelectedProjectId("unassigned");
+              }}
               style={[
                 styles.filterChip,
                 selectedProjectId === "unassigned" && styles.filterChipSelected,
@@ -387,7 +393,10 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
               return (
                 <Pressable
                   key={proj.projectId}
-                  onPress={() => setSelectedProjectId(proj.projectId)}
+                  onPress={() => {
+                    if (drag.isDragLocked()) return;
+                    setSelectedProjectId(proj.projectId);
+                  }}
                   style={[
                     styles.filterChip,
                     isSelected && styles.filterChipSelected,
@@ -455,7 +464,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                 layout={layout}
                 dragBinding={drag.bindLane(lane.id)}
                 onAddTask={(laneId) => {
-                  if (!board) return;
+                  if (drag.isDragLocked() || !board) return;
                   setActiveTaskSession(
                     openTaskSession({
                       mode: "create",
@@ -471,7 +480,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                   );
                 }}
                 onManageLane={(laneId) => {
-                  if (!board) return;
+                  if (drag.isDragLocked() || !board) return;
                   setActiveLaneSession(
                     openLaneSession({
                       mode: "edit",
@@ -483,7 +492,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                   );
                 }}
                 onSelectTask={(task) => {
-                  if (!board) return;
+                  if (drag.isDragLocked() || !board) return;
                   setActiveTaskSession(
                     openTaskSession({
                       mode: "edit",

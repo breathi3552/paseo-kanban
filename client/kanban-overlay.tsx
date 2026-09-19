@@ -42,7 +42,7 @@ function KanbanDragOverlayInner({
       return;
     }
 
-    const dropKey = `${curDropping.taskId}_${curDropping.targetLaneId}_${curDropping.targetIndex}`;
+    const dropKey = curDropping.operationId || `${curDropping.taskId}_${curDropping.targetLaneId}_${curDropping.targetIndex}`;
     if (droppingHandledRef.current === dropKey) {
       return;
     }
@@ -58,10 +58,11 @@ function KanbanDragOverlayInner({
     animScale.setValue(1.03);
 
     Animated.parallel([
-      Animated.timing(animPos, {
+      Animated.spring(animPos, {
         toValue: { x: curDropping.toX, y: curDropping.toY },
-        duration: 180,
         useNativeDriver: false,
+        friction: 8,
+        tension: 50,
       }),
       Animated.timing(animRotate, {
         toValue: 0,
@@ -73,8 +74,12 @@ function KanbanDragOverlayInner({
         duration: 180,
         useNativeDriver: false,
       }),
-    ]).start(() => {
-      drag.commitDrop();
+    ]).start((result) => {
+      if (result?.finished) {
+        drag.commitDrop();
+      } else {
+        drag.abortDrop?.();
+      }
     });
   }, [curDropping, drag, animPos, animRotate, animScale]);
 

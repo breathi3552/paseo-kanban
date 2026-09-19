@@ -610,4 +610,77 @@ test("共同输入入口: 轻点分流、手柄立即激活与主体位移升级
   assert.equal(reorders.length, 2, "手柄释放触发排序");
 });
 
+// ---------------------------------------------------------------------------
+// 13. 触屏 220ms 长按抓起与快速滑动让渡滚动
+// ---------------------------------------------------------------------------
+test("触屏输入: 220ms 长按抓起，长按前快速滑动让渡滚动且不触发拖拽与轻点", async () => {
+  let clicks = 0;
+  const reorders = [];
+  const controller = setupController();
+  controller.setOnReorderTask((...args) => reorders.push(args));
+  const ctx = { taskId: "t1", laneId: "to-plan", onPress: () => { clicks++; } };
+
+  // 1. 触屏在 220ms 前快速滑动 (移动 >= 5px): 应取消手势，不升级拖拽，不触发轻点
+  controller.handlePointerDown(ctx, { x: 100, y: 100 }, "body", "touch");
+  controller.handlePointerMove({ x: 100, y: 120 }); // 滑动 20px
+  assert.equal(controller.getFeedback().isDragging, false, "快速滑动不得升级为拖拽");
+  await controller.handlePointerUp({ x: 100, y: 120 });
+  assert.equal(clicks, 0, "快速滑动不得误触详情弹窗");
+  assert.equal(reorders.length, 0);
+
+  // 等待稳定窗口
+  await new Promise((resolve) => setTimeout(resolve, 180));
+
+  // 2. 触屏长按 220ms: 成功抓起卡片
+  controller.handlePointerDown(ctx, { x: 100, y: 100 }, "body", "touch");
+  assert.equal(controller.getFeedback().isDragging, false, "按下未满 220ms 前未激活");
+
+  // 等待 230ms 触屏长按到时
+  await new Promise((resolve) => setTimeout(resolve, 230));
+  assert.equal(controller.getFeedback().isDragging, true, "触屏长按 220ms 后激活拖拽");
+
+  // 后续滑动正常跟随
+  controller.handlePointerMove({ x: 340, y: 100 });
+  await controller.handlePointerUp({ x: 340, y: 100 });
+  assert.equal(clicks, 0);
+  assert.equal(reorders.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// 14. 操作身份与动画生命周期闭环
+// ---------------------------------------------------------------------------
+test("动画与事务闭环: 操作身份保护，仅完成落位提交一次，重复上报与中断零提交", async () => {
+  const reorders = [];
+  const controller = setupController();
+  controller.setOnReorderTask((...args) => reorders.push(args));
+  const ctx = { taskId: "t1", laneId: "to-plan", onPress: () => {} };
+
+  // 1. 正常落位与可控动画完成上报
+  controller.handlePointerDown(ctx, { x: 50, y: 50 }, "handle");
+  controller.handlePointerMove({ x: 340, y: 100 });
+  const droppingState = await controller.beginDropAnimation({ x: 340, y: 100 });
+  assert.ok(droppingState, "必须生成落位动画状态");
+  assert.ok(droppingState.operationId, "必须包含操作唯一标识");
+  assert.equal(droppingState.targetLaneId, "in-progress");
+  assert.equal(reorders.length, 0, "未完成动画前不得提交");
+
+  // 上报完成: 触发唯一一次提交
+  await controller.reportDropComplete(droppingState.operationId);
+  assert.equal(reorders.length, 1, "动画完成后提交一次");
+
+  // 重复上报过期/旧 operationId: 不得产生二次写入
+  await controller.reportDropComplete(droppingState.operationId);
+  assert.equal(reorders.length, 1, "重复完成通知不得重复写入");
+
+  await new Promise((resolve) => setTimeout(resolve, 180));
+
+  // 2. 动画中断: 调用 abortDrop，零提交
+  controller.handlePointerDown(ctx, { x: 50, y: 50 }, "handle");
+  controller.handlePointerMove({ x: 340, y: 100 });
+  const droppingState2 = await controller.beginDropAnimation({ x: 340, y: 100 });
+  controller.abortDrop(droppingState2.operationId);
+  assert.equal(reorders.length, 1, "中断动画不得提交");
+});
+
+
 

@@ -170,12 +170,18 @@ export class KanbanDragController {
   private pendingOnPress: (() => void) | null = null;
   private listeners: Set<() => void> = new Set();
   private slotListeners: Set<() => void> = new Set();
+  private dropListeners: Set<() => void> = new Set();
   private dropSpacerY: number | null = null;
   private releaseHandler?: (releaseX?: number, releaseY?: number) => Promise<void>;
   private cancelHandler?: () => void;
   private panResponderFactory: PanResponderFactory | null = null;
   private cardCallbacks: Map<string, () => void> = new Map();
   private cardResponders: Map<string, { body: any; handle: any }> = new Map();
+  private pendingInputKind: "mouse" | "touch" = "mouse";
+  private operationSeq: number = 0;
+  private currentOperationId: string | null = null;
+  private currentDroppingState: DroppingState | null = null;
+  private getTaskPreview?: (taskId: string) => TaskPreviewItem | null;
 
   private feedback: DragFeedback = {
     isDragging: false,
@@ -203,6 +209,9 @@ export class KanbanDragController {
     }
     if (options?.onReorderTask) {
       this.setOnReorderTask(options.onReorderTask);
+    }
+    if (options?.getTaskPreview) {
+      this.getTaskPreview = options.getTaskPreview;
     }
   }
 
@@ -408,13 +417,15 @@ export class KanbanDragController {
     context: { taskId: string; laneId: string; onPress?: () => void },
     point: { x: number; y: number },
     source: "handle" | "body" = "body",
-    _inputKind?: "mouse" | "touch"
+    inputKind?: "mouse" | "touch"
   ) => {
     if (this.dragLock) return;
     if (this.activeSession?.isActivated) return;
+    if (this.currentDroppingState) return;
 
     this.clearPendingTimer();
     this.pendingOnPress = context.onPress ?? null;
+    this.pendingInputKind = inputKind ?? "mouse";
 
     if (source === "handle") {
       this.startGesture(context.taskId, context.laneId, point.x, point.y, true);
@@ -423,7 +434,7 @@ export class KanbanDragController {
 
     this.startGesture(context.taskId, context.laneId, point.x, point.y, false);
 
-    const longPressDuration = 260;
+    const longPressDuration = inputKind === "touch" ? 220 : 260;
     this.pendingTimer = setTimeout(() => {
       this.pendingTimer = null;
       if (this.dragLock) return;
@@ -463,6 +474,18 @@ export class KanbanDragController {
       point.x - this.activeSession.startX,
       point.y - this.activeSession.startY
     );
+
+    // If unactivated touch gesture and user moved >= 5px before 220ms:
+    // User is scrolling! Cancel pending gesture, do NOT activate drag, do NOT trigger tap!
+    if (!this.activeSession.isActivated && this.pendingInputKind === "touch") {
+      if (dist >= 5) {
+        this.clearPendingTimer();
+        this.pendingOnPress = null;
+        this.cancelGesture();
+        return;
+      }
+    }
+
     if (dist >= 5) {
       this.clearPendingTimer();
     }
@@ -639,20 +662,93 @@ export class KanbanDragController {
       return;
     }
 
+    const drop = await this.beginDropAnimation({
+      x: pointerX ?? session.lastPointerX,
+      y: pointerY ?? session.lastPointerY,
+    });
+
+    if (drop) {
+      await this.reportDropComplete(drop.operationId);
+    }
+  };
+
+  beginDropAnimation = async (point?: { x?: number; y?: number }): Promise<DroppingState | null> => {
+    const session = this.activeSession;
+    if (!session || !session.isActivated) {
+      this.clearPendingTimer();
+      this.cancelGesture();
+      return null;
+    }
+
     const finalX =
-      typeof pointerX === "number" && !isNaN(pointerX) && pointerX > 0
-        ? pointerX
+      typeof point?.x === "number" && !isNaN(point.x) && point.x > 0
+        ? point.x
         : session.lastPointerX;
     const finalY =
-      typeof pointerY === "number" && !isNaN(pointerY) && pointerY > 0
-        ? pointerY
+      typeof point?.y === "number" && !isNaN(point.y) && point.y > 0
+        ? point.y
         : session.lastPointerY;
 
-    const finalTargetLaneId = this.computeHit(finalX, finalY);
-    const targetIndex = finalTargetLaneId
-      ? this.computeTargetIndex(finalTargetLaneId, finalY)
-      : undefined;
+    const hitLaneId = this.computeHit(finalX, finalY);
+    const targetLaneId = hitLaneId ?? session.sourceLaneId;
+    const targetIndex = this.computeTargetIndex(targetLaneId, finalY);
 
+    const isValidTarget = Boolean(hitLaneId && this.validLaneSet.has(hitLaneId));
+    const isDrop = isValidTarget;
+
+    const opId = `op_${++this.operationSeq}_${Date.now()}`;
+    this.currentOperationId = opId;
+
+    const containerX = this.containerBounds?.x ?? 0;
+    const containerY = this.containerBounds?.y ?? 0;
+    const cardHalfWidth = 140;
+
+    const fromX = finalX - containerX - cardHalfWidth;
+    const fromY = finalY - containerY - 20;
+
+    let toX = fromX;
+    let toY = fromY;
+
+    if (isDrop) {
+      const targetSlot = this.getDropSlotPosition(targetLaneId, targetIndex);
+      if (targetSlot) {
+        toX = targetSlot.x;
+        const laneScroll = this.getLaneScroll(targetLaneId);
+        const laneLayout = this.getLaneLayout(targetLaneId);
+        const cardsViewport = this.getCardsViewportLayout(targetLaneId);
+        const dropSpacerY = this.getDropSpacerY();
+        if (dropSpacerY !== null && hitLaneId === targetLaneId) {
+          toY =
+            (laneLayout?.y ?? 0) +
+            (cardsViewport?.y ?? 0) -
+            laneScroll +
+            dropSpacerY;
+        } else {
+          toY = targetSlot.y;
+        }
+      }
+    }
+
+    const preview = this.getTaskPreview ? this.getTaskPreview(session.taskId) : null;
+
+    const droppingState: DroppingState = {
+      operationId: opId,
+      taskId: session.taskId,
+      sourceLaneId: session.sourceLaneId,
+      task: preview?.task ?? null,
+      projectName: preview?.projectDisplayName ?? null,
+      targetLaneId,
+      targetIndex,
+      isDrop,
+      fromX,
+      fromY,
+      toX,
+      toY,
+      releaseX: finalX,
+      releaseY: finalY,
+    };
+
+    this.currentDroppingState = droppingState;
     this.activeSession = null;
     this.dragLock = true;
     this.feedback = {
@@ -667,13 +763,27 @@ export class KanbanDragController {
       dragLock: true,
     };
     this.notifyListeners();
+    this.notifyDropListeners();
+    return droppingState;
+  };
+
+  reportDropComplete = async (operationId: string): Promise<void> => {
+    if (!this.currentOperationId || this.currentOperationId !== operationId) {
+      return;
+    }
+
+    const drop = this.currentDroppingState;
+    this.currentOperationId = null;
+    this.currentDroppingState = null;
+    this.dropSpacerY = null;
+    this.notifyDropListeners();
 
     try {
-      if (finalTargetLaneId && this.validLaneSet.has(finalTargetLaneId)) {
-        if (this.onReorderTask && targetIndex !== undefined) {
-          await this.onReorderTask(session.taskId, finalTargetLaneId, targetIndex);
-        } else if (this.onMoveTask && finalTargetLaneId !== session.sourceLaneId) {
-          await this.onMoveTask(session.taskId, finalTargetLaneId);
+      if (drop && drop.isDrop && this.validLaneSet.has(drop.targetLaneId)) {
+        if (this.onReorderTask) {
+          await this.onReorderTask(drop.taskId, drop.targetLaneId, drop.targetIndex);
+        } else if (this.onMoveTask && drop.targetLaneId !== drop.sourceLaneId) {
+          await this.onMoveTask(drop.taskId, drop.targetLaneId);
         }
       }
     } finally {
@@ -687,6 +797,26 @@ export class KanbanDragController {
         this.notifyListeners();
       }, 150);
     }
+  };
+
+  abortDrop = (operationId: string) => {
+    if (!this.currentOperationId || this.currentOperationId !== operationId) {
+      return;
+    }
+    this.currentOperationId = null;
+    this.currentDroppingState = null;
+    this.dropSpacerY = null;
+    this.notifyDropListeners();
+
+    if (this.dragLockTimeout) clearTimeout(this.dragLockTimeout);
+    this.dragLockTimeout = setTimeout(() => {
+      this.dragLock = false;
+      this.feedback = {
+        ...this.feedback,
+        dragLock: false,
+      };
+      this.notifyListeners();
+    }, 150);
   };
 
   cancelGesture = () => {
@@ -808,6 +938,23 @@ export class KanbanDragController {
       this.slotListeners.delete(listener);
     };
   };
+
+  subscribeDrop = (listener: () => void): (() => void) => {
+    this.dropListeners.add(listener);
+    return () => {
+      this.dropListeners.delete(listener);
+    };
+  };
+
+  getDroppingState = (): DroppingState | null => {
+    return this.currentDroppingState;
+  };
+
+  private notifyDropListeners() {
+    for (const listener of this.dropListeners) {
+      listener();
+    }
+  }
 
   private checkAndNotifySlotState() {
     const nextSlotState: DragSlotState = {
@@ -962,17 +1109,20 @@ export class KanbanDragController {
 }
 
 export interface DroppingState {
-  taskId: string;
-  task: KanbanTask | null;
-  projectName: string | null;
-  targetLaneId: string;
-  targetIndex: number;
-  fromX: number;
-  fromY: number;
-  toX: number;
-  toY: number;
-  releaseX?: number;
-  releaseY?: number;
+  readonly operationId: string;
+  readonly taskId: string;
+  readonly sourceLaneId: string;
+  readonly task: KanbanTask | null;
+  readonly projectName: string | null;
+  readonly targetLaneId: string;
+  readonly targetIndex: number;
+  readonly isDrop: boolean;
+  readonly fromX: number;
+  readonly fromY: number;
+  readonly toX: number;
+  readonly toY: number;
+  readonly releaseX?: number;
+  readonly releaseY?: number;
 }
 
 export interface UseKanbanDragReturn {
@@ -983,6 +1133,7 @@ export interface UseKanbanDragReturn {
   droppingTaskId: string | null;
   droppingState: DroppingState | null;
   commitDrop: () => Promise<void>;
+  abortDrop: () => void;
   getTaskPreview?: (taskId: string) => TaskPreviewItem | null;
   bindLane: (laneId: string) => LaneDragBinding;
   bindContainerRef: (instance: any) => void;
@@ -1042,9 +1193,11 @@ export function useKanbanDrag(options: KanbanDragOptions = {}): UseKanbanDragRet
     controller.getFeedback
   );
 
-  const [droppingState, setDroppingState] = useState<DroppingState | null>(null);
-  const droppingStateRef = useRef<DroppingState | null>(null);
-  droppingStateRef.current = droppingState;
+  const droppingState = useSyncExternalStore(
+    controller.subscribeDrop,
+    controller.getDroppingState,
+    controller.getDroppingState
+  );
 
   const containerScrollRef = useRef<any>(null);
   const currentScrollX = useRef(0);
@@ -1082,91 +1235,30 @@ export function useKanbanDrag(options: KanbanDragOptions = {}): UseKanbanDragRet
   };
 
   const commitDrop = async () => {
-    const curDropping = droppingStateRef.current;
-    if (!curDropping) return;
-    try {
-      await controller.releaseGesture(curDropping.releaseX, curDropping.releaseY);
-    } catch (err) {
-      console.error("Commit drop failed:", err);
-    } finally {
-      setDroppingState(null);
-      droppingStateRef.current = null;
-      controller.setDropSpacerY(null);
+    const drop = controller.getDroppingState();
+    if (drop) {
+      await controller.reportDropComplete(drop.operationId);
+    }
+  };
+
+  const abortDrop = () => {
+    const drop = controller.getDroppingState();
+    if (drop) {
+      controller.abortDrop(drop.operationId);
     }
   };
 
   const handleDragRelease = async (releaseX?: number, releaseY?: number): Promise<void> => {
-    const curFeedback = controller.getFeedback();
-    if (!curFeedback.isDragging || !curFeedback.draggingTaskId) {
-      await controller.releaseGesture(releaseX, releaseY);
-      return;
-    }
-
-    const activeTaskId = curFeedback.draggingTaskId;
-    const preview = getTaskPreview ? getTaskPreview(activeTaskId) : null;
-    const targetLaneId =
-      curFeedback.hoveredLaneId ??
-      curFeedback.draggingSourceLaneId ??
-      "";
-    const targetIndex = curFeedback.targetIndex ?? 0;
-
-    const containerBounds = controller.getContainerBounds() ?? null;
-    const containerX = containerBounds?.x ?? 0;
-    const containerY = containerBounds?.y ?? 0;
-    const cardHalfWidth = 140;
-
-    const fromX =
-      (curFeedback.pointerX ?? releaseX ?? 0) - containerX - cardHalfWidth;
-    const fromY = (curFeedback.pointerY ?? releaseY ?? 0) - containerY - 20;
-
-    const targetSlot = controller.getDropSlotPosition(targetLaneId, targetIndex);
-    let toX = fromX;
-    let toY = fromY;
-
-    if (targetSlot) {
-      toX = targetSlot.x;
-      const laneScroll = controller.getLaneScroll(targetLaneId);
-      const laneLayout = controller.getLaneLayout(targetLaneId);
-      const cardsViewport = controller.getCardsViewportLayout(targetLaneId);
-      const dropSpacerY = controller.getDropSpacerY();
-      if (
-        dropSpacerY !== null &&
-        curFeedback.hoveredLaneId === targetLaneId
-      ) {
-        toY =
-          (laneLayout?.y ?? 0) +
-          (cardsViewport?.y ?? 0) -
-          laneScroll +
-          dropSpacerY;
-      } else {
-        toY = targetSlot.y;
-      }
-    }
-
-    const nextDroppingState: DroppingState = {
-      taskId: activeTaskId,
-      task: preview?.task ?? null,
-      projectName: preview?.projectDisplayName ?? null,
-      targetLaneId,
-      targetIndex,
-      fromX,
-      fromY,
-      toX,
-      toY,
-      releaseX,
-      releaseY,
-    };
-    setDroppingState(nextDroppingState);
-    droppingStateRef.current = nextDroppingState;
+    await controller.beginDropAnimation({ x: releaseX, y: releaseY });
   };
 
   const handleDragCancel = () => {
-    if (droppingStateRef.current) {
-      setDroppingState(null);
-      droppingStateRef.current = null;
-      controller.setDropSpacerY(null);
+    const drop = controller.getDroppingState();
+    if (drop) {
+      controller.abortDrop(drop.operationId);
+    } else {
+      controller.cancelGesture();
     }
-    controller.cancelGesture();
   };
 
   controller.setReleaseHandler(handleDragRelease);
@@ -1234,6 +1326,7 @@ export function useKanbanDrag(options: KanbanDragOptions = {}): UseKanbanDragRet
     droppingTaskId: droppingState?.taskId ?? null,
     droppingState,
     commitDrop,
+    abortDrop,
     getTaskPreview,
     bindLane,
     bindContainerRef,
