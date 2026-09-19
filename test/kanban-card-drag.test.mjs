@@ -20,6 +20,7 @@ import {
   TestRenderer,
   act,
   loadClientComponent,
+  instrumentControllerSubscriptions,
 } from "./helpers/react-host-env.mjs";
 
 const KanbanCard = loadClientComponent("kanban-card", "KanbanCard");
@@ -211,6 +212,16 @@ test("真实useKanbanDrag与useSyncExternalStore触发订阅更新与卸载注�
   });
   controller.setLaneCardOrder("lane-main", ["task-a", "task-b"]);
 
+  // 观测真实控制器公开订阅接口与清理函数
+  const tracker = instrumentControllerSubscriptions(controller);
+
+  // 重新渲染以确保 useSyncExternalStore 接收被观测的公开订阅函数
+  act(() => {
+    root.update(
+      React.createElement(LaneCardsBoard, { tasks, laneId: "lane-main" }),
+    );
+  });
+
   const getCardAJson = () => root.toJSON().children[0];
   const getCardBJson = () => root.toJSON().children[1];
 
@@ -275,23 +286,109 @@ test("真实useKanbanDrag与useSyncExternalStore触发订阅更新与卸载注�
   });
   assert.equal(controller.isDragLocked(), false);
 
-  // 5. 真实卸载解除订阅验证: 卸载后后续事件严禁引起渲染
+  // 5. 真实卸载与外部存储订阅释放闭环验证
+  assert.equal(tracker.cleanupsCalled.subscribe, 0, "卸载前清理函数尚未调用");
+  assert.equal(tracker.cleanupsCalled.subscribeSlot, 0);
+  assert.equal(tracker.cleanupsCalled.subscribeDrop, 0);
+
   const rendersBeforeUnmount = renderCount;
+  tracker.markUnmounted();
   act(() => {
     root.unmount();
   });
 
-  // 卸载后再对控制器执行操作，组件不应再重新执行渲染
+  // 验证 React 卸载严格调用了控制器公开订阅接口返回的全部清理函数
+  assert.equal(
+    tracker.cleanupsCalled.subscribe,
+    1,
+    "卸载时必须准确调用 subscribe 清理函数",
+  );
+  assert.equal(
+    tracker.cleanupsCalled.subscribeSlot,
+    1,
+    "卸载时必须准确调用 subscribeSlot 清理函数",
+  );
+  assert.equal(
+    tracker.cleanupsCalled.subscribeDrop,
+    1,
+    "卸载时必须准确调用 subscribeDrop 清理函数",
+  );
+
+  // 卸载后再对控制器执行操作，验证没有回调泄露派发且组件不重新渲染
   act(() => {
     controller.startGesture("task-b", "lane-main", 50, 50, true);
+    controller.moveGesture(120, 120);
     controller.cancelGesture();
     t.mock.timers.tick(60);
   });
 
   assert.equal(
+    tracker.leakedDispatchesAfterUnmount,
+    0,
+    "卸载后控制器手势通知严禁向已注销订阅派发任何回调",
+  );
+  assert.equal(
     renderCount,
     rendersBeforeUnmount,
     "卸载后外部存储订阅已解除，严禁在卸载后再渲染",
+  );
+
+  // 6. 控制器公开订阅接口（subscribe/subscribeSlot/subscribeDrop）取消后零回调派发验证
+  let publicFeedbackCalls = 0;
+  let publicSlotCalls = 0;
+  let publicDropCalls = 0;
+
+  const unsubFeedback = controller.subscribe(() => {
+    publicFeedbackCalls++;
+  });
+  const unsubSlot = controller.subscribeSlot(() => {
+    publicSlotCalls++;
+  });
+  const unsubDrop = controller.subscribeDrop(() => {
+    publicDropCalls++;
+  });
+
+  assert.equal(typeof unsubFeedback, "function", "subscribe 必须返回清理函数");
+  assert.equal(typeof unsubSlot, "function", "subscribeSlot 必须返回清理函数");
+  assert.equal(typeof unsubDrop, "function", "subscribeDrop 必须返回清理函数");
+
+  // 触发手势变更，验证各公开订阅接收正常派发
+  controller.handlePointerDown(
+    { taskId: "task-b", laneId: "lane-main", onPress: () => {} },
+    { x: 50, y: 50 },
+    "handle",
+  );
+  assert.ok(publicFeedbackCalls > 0, "活动手势期间 feedback 订阅必须接收派发");
+  assert.ok(publicSlotCalls > 0, "活动手势期间 slot 订阅必须接收派发");
+
+  // 执行取消订阅清理函数
+  unsubFeedback();
+  unsubSlot();
+  unsubDrop();
+
+  const feedbackCallsAfterUnsub = publicFeedbackCalls;
+  const slotCallsAfterUnsub = publicSlotCalls;
+  const dropCallsAfterUnsub = publicDropCalls;
+
+  // 取消订阅后触发控制器事件（移动、落位动画开启、取消手势等）
+  controller.handlePointerMove({ x: 150, y: 150 });
+  controller.cancelGesture();
+  t.mock.timers.tick(60);
+
+  assert.equal(
+    publicFeedbackCalls,
+    feedbackCallsAfterUnsub,
+    "subscribe 取消后严禁再接收任何通知派发",
+  );
+  assert.equal(
+    publicSlotCalls,
+    slotCallsAfterUnsub,
+    "subscribeSlot 取消后严禁再接收任何通知派发",
+  );
+  assert.equal(
+    publicDropCalls,
+    dropCallsAfterUnsub,
+    "subscribeDrop 取消后严禁再接收任何通知派发",
   );
 });
 

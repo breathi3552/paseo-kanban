@@ -152,6 +152,49 @@ export function loadClientModule(file, moduleOverrides = {}) {
   return exports;
 }
 
+/**
+ * Instruments a KanbanDragController's public subscription methods to monitor
+ * subscription registration, cleanup execution, and post-unmount callback dispatches.
+ */
+export function instrumentControllerSubscriptions(controller) {
+  const cleanupsCalled = { subscribe: 0, subscribeSlot: 0, subscribeDrop: 0 };
+  let leakedDispatchesAfterUnmount = 0;
+  let isUnmounted = false;
+
+  const wrapMethod = (method) => {
+    const orig = controller[method];
+    controller[method] = (listener) => {
+      const wrappedListener = () => {
+        if (isUnmounted) {
+          leakedDispatchesAfterUnmount++;
+        }
+        return listener();
+      };
+      const origCleanup = orig.call(controller, wrappedListener);
+      return () => {
+        cleanupsCalled[method]++;
+        origCleanup();
+      };
+    };
+  };
+
+  wrapMethod("subscribe");
+  wrapMethod("subscribeSlot");
+  wrapMethod("subscribeDrop");
+
+  return {
+    markUnmounted: () => {
+      isUnmounted = true;
+    },
+    get cleanupsCalled() {
+      return cleanupsCalled;
+    },
+    get leakedDispatchesAfterUnmount() {
+      return leakedDispatchesAfterUnmount;
+    },
+  };
+}
+
 export function loadClientComponent(file, componentName, moduleOverrides = {}) {
   const exports = loadClientModule(file, moduleOverrides);
   return componentName ? exports[componentName] : exports;
