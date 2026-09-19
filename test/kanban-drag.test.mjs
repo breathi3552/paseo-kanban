@@ -537,3 +537,37 @@ test("边缘滚动: 接近看板视口左右 48px 边缘时输出定向速度矢
 
   await controller.releaseGesture();
 });
+
+// ---------------------------------------------------------------------------
+// 11. 失败清理与互斥锁释放
+// ---------------------------------------------------------------------------
+test("失败清理: 提交回调抛出异常或保存被拒绝后，互斥锁仍能正常释放，后续可继续操作", async () => {
+  let attempts = 0;
+  const controller = setupController();
+  controller.setOnReorderTask(async () => {
+    attempts++;
+    throw new Error("Network failure");
+  });
+
+  controller.startGesture("task-1", "to-plan", 70, 130, true);
+  controller.moveGesture(340, 130);
+
+  try {
+    await controller.releaseGesture(340, 130);
+  } catch (err) {
+    assert.match(String(err), /Network failure/);
+  }
+
+  // Wait for the unlock window (150ms)
+  await new Promise((resolve) => setTimeout(resolve, 180));
+
+  assert.equal(controller.isDragLocked(), false, "互斥锁必须在失败后恢复释放");
+  assert.equal(controller.getFeedback().isDragging, false);
+
+  // 下一次操作必须可以正常进行
+  controller.startGesture("task-2", "to-plan", 70, 130, true);
+  assert.equal(controller.getFeedback().isDragging, true);
+  assert.equal(controller.getFeedback().draggingTaskId, "task-2");
+  controller.cancelGesture();
+});
+

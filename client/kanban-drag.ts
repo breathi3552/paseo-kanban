@@ -444,23 +444,25 @@ export class KanbanDragController {
     };
     this.notifyListeners();
 
-    if (finalTargetLaneId && this.validLaneSet.has(finalTargetLaneId)) {
-      if (this.onReorderTask && targetIndex !== undefined) {
-        await this.onReorderTask(session.taskId, finalTargetLaneId, targetIndex);
-      } else if (this.onMoveTask && finalTargetLaneId !== session.sourceLaneId) {
-        await this.onMoveTask(session.taskId, finalTargetLaneId);
+    try {
+      if (finalTargetLaneId && this.validLaneSet.has(finalTargetLaneId)) {
+        if (this.onReorderTask && targetIndex !== undefined) {
+          await this.onReorderTask(session.taskId, finalTargetLaneId, targetIndex);
+        } else if (this.onMoveTask && finalTargetLaneId !== session.sourceLaneId) {
+          await this.onMoveTask(session.taskId, finalTargetLaneId);
+        }
       }
+    } finally {
+      if (this.dragLockTimeout) clearTimeout(this.dragLockTimeout);
+      this.dragLockTimeout = setTimeout(() => {
+        this.dragLock = false;
+        this.feedback = {
+          ...this.feedback,
+          dragLock: false,
+        };
+        this.notifyListeners();
+      }, 150);
     }
-
-    if (this.dragLockTimeout) clearTimeout(this.dragLockTimeout);
-    this.dragLockTimeout = setTimeout(() => {
-      this.dragLock = false;
-      this.feedback = {
-        ...this.feedback,
-        dragLock: false,
-      };
-      this.notifyListeners();
-    }, 150);
   };
 
   cancelGesture = () => {
@@ -858,6 +860,8 @@ export function useKanbanDrag(options: KanbanDragOptions = {}): UseKanbanDragRet
     if (!curDropping) return;
     try {
       await controller.releaseGesture(curDropping.releaseX, curDropping.releaseY);
+    } catch (err) {
+      console.error("Commit drop failed:", err);
     } finally {
       setDroppingState(null);
       droppingStateRef.current = null;
