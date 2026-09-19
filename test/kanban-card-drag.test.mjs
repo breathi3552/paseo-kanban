@@ -1032,3 +1032,577 @@ test("落位动画期间卡片保持隐藏: 原位卡片不得在动画期间重
     root.unmount();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 9. (S4) 卡片 Pending 阶段卸载与非活动卡片注销隔离
+// ---------------------------------------------------------------------------
+test("(S4) 卡片pending长按阶段卸载，推进时间无拖拽激活、无点击、无落位提交；注销其他非活动卡片不取消正在进行的拖拽", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+
+  const reorders = [];
+  let clickCount1 = 0;
+  let clickCount2 = 0;
+
+  const controller = new KanbanDragController({
+    lanes: ["lane-1"],
+    onReorderTask: (taskId, targetLaneId, targetIndex) => {
+      reorders.push({ taskId, targetLaneId, targetIndex });
+    },
+  });
+  controller.registerContainerBounds({ x: 0, y: 0, width: 400, height: 600 });
+  controller.registerLaneLayout("lane-1", {
+    x: 0,
+    y: 0,
+    width: 300,
+    height: 600,
+  });
+  controller.setLaneCardOrder("lane-1", ["card-1", "card-2"]);
+
+  const nativePanResponder = {
+    create: (handlers) => ({ panHandlers: handlers }),
+  };
+
+  const binding1 = controller.bindCard(
+    "lane-1",
+    "card-1",
+    () => {
+      clickCount1++;
+    },
+    nativePanResponder,
+  );
+  const binding2 = controller.bindCard(
+    "lane-1",
+    "card-2",
+    () => {
+      clickCount2++;
+    },
+    nativePanResponder,
+  );
+
+  let root1;
+  let root2;
+  act(() => {
+    root1 = TestRenderer.create(
+      React.createElement(KanbanCard, {
+        task: { id: "card-1", laneId: "lane-1", title: "Card 1", subtasks: [] },
+        projectDisplayName: null,
+        theme: { colors: {} },
+        layout: { compact: false },
+        binding: binding1,
+      }),
+    );
+    root2 = TestRenderer.create(
+      React.createElement(KanbanCard, {
+        task: { id: "card-2", laneId: "lane-1", title: "Card 2", subtasks: [] },
+        projectDisplayName: null,
+        theme: { colors: {} },
+        layout: { compact: false },
+        binding: binding2,
+      }),
+    );
+  });
+
+  // 1a. 卡片 1 触发 pointerDown，进入长按 pending 状态 (鼠标长按阈值 260ms)
+  const card1Tree = root1.toJSON();
+  card1Tree.props.onPanResponderGrant({ nativeEvent: {} }, { x0: 50, y0: 50 });
+
+  // 在 260ms 长按判定完成前（推进 100ms），卡片 1 从组件树卸载
+  act(() => {
+    t.mock.timers.tick(100);
+  });
+  act(() => {
+    root1.unmount();
+  });
+
+  // 推进超过长按阈值（推进 200ms），断言无拖拽激活、无点击、无落位提交
+  act(() => {
+    t.mock.timers.tick(200);
+  });
+
+  assert.equal(
+    controller.getFeedback().isDragging,
+    false,
+    "卡片卸载后推进长按时间严禁激活拖拽",
+  );
+  assert.equal(controller.getFeedback().draggingTaskId, null);
+  assert.equal(clickCount1, 0, "卡片卸载后严禁触发点击详情");
+  assert.equal(clickCount2, 0, "卡片2未触发点击详情");
+  assert.equal(reorders.length, 0, "卡片卸载后严禁产生落位提交");
+  assert.equal(controller.isDragLocked(), false, "控制器不得残留拖拽互斥锁");
+
+  // 1b. 验证注销其他非活动卡片不得取消正在进行的拖拽
+  const binding1New = controller.bindCard(
+    "lane-1",
+    "card-1",
+    () => {
+      clickCount1++;
+    },
+    nativePanResponder,
+  );
+  act(() => {
+    root1 = TestRenderer.create(
+      React.createElement(KanbanCard, {
+        task: { id: "card-1", laneId: "lane-1", title: "Card 1", subtasks: [] },
+        projectDisplayName: null,
+        theme: { colors: {} },
+        layout: { compact: false },
+        binding: binding1New,
+      }),
+    );
+  });
+
+  // card-1 正常激活拖拽
+  const newTree1 = root1.toJSON();
+  newTree1.props.onPanResponderGrant({ nativeEvent: {} }, { x0: 50, y0: 50 });
+  act(() => {
+    t.mock.timers.tick(260);
+  });
+  assert.equal(
+    controller.getFeedback().isDragging,
+    true,
+    "Card 1 拖拽正常激活",
+  );
+  assert.equal(controller.getFeedback().draggingTaskId, "card-1");
+
+  // 此时注销非活动卡片 card-2 (root2 unmount)
+  act(() => {
+    root2.unmount();
+  });
+
+  // 断言 card-1 的拖拽会话绝对不受影响
+  assert.equal(
+    controller.getFeedback().isDragging,
+    true,
+    "注销非活动卡片不得取消正在进行的拖拽",
+  );
+  assert.equal(controller.getFeedback().draggingTaskId, "card-1");
+
+  // card-1 正常移动并释放
+  newTree1.props.onPanResponderMove(
+    { nativeEvent: {} },
+    { moveX: 50, moveY: 150 },
+  );
+  await act(async () => {
+    await newTree1.props.onPanResponderRelease(
+      { nativeEvent: {} },
+      { moveX: 50, moveY: 150 },
+    );
+  });
+
+  assert.equal(reorders.length, 1, "Card 1 正常完成落位提交");
+  assert.equal(reorders[0].taskId, "card-1");
+
+  act(() => {
+    t.mock.timers.tick(60);
+  });
+  act(() => {
+    root1.unmount();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10. (S4) Hook/看板卸载取消内部待执行资源、无泄漏派发与幂等落位
+// ---------------------------------------------------------------------------
+test("(S4) 真实hook/看板卸载时取消内部待执行资源，延迟回调不再通知废弃订阅、不再启动新保存；清理幂等", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+
+  const reorders = [];
+  let liveDrag = null;
+
+  function BoardWithHook({ laneId, taskId }) {
+    const drag = useKanbanDrag({
+      lanes: [laneId],
+      onReorderTask: (id, targetLane, idx) => {
+        reorders.push({ id, targetLane, idx });
+      },
+    });
+    liveDrag = drag;
+    const laneBinding = drag.bindLane(laneId);
+
+    return React.createElement(
+      "View",
+      null,
+      React.createElement(KanbanCard, {
+        task: { id: taskId, laneId, title: taskId, subtasks: [] },
+        projectDisplayName: null,
+        theme: { colors: {} },
+        layout: { compact: false },
+        binding: laneBinding.bindCard(taskId, undefined, {
+          create: (handlers) => ({ panHandlers: handlers }),
+        }),
+      }),
+    );
+  }
+
+  let root;
+  act(() => {
+    root = TestRenderer.create(
+      React.createElement(BoardWithHook, {
+        laneId: "lane-a",
+        taskId: "task-1",
+      }),
+    );
+  });
+
+  const controller = liveDrag.controller;
+  controller.registerContainerBounds({ x: 0, y: 0, width: 400, height: 600 });
+  controller.registerLaneLayout("lane-a", {
+    x: 0,
+    y: 0,
+    width: 300,
+    height: 600,
+  });
+  controller.setLaneCardOrder("lane-a", ["task-1"]);
+
+  // 观测订阅
+  const tracker = instrumentControllerSubscriptions(controller);
+
+  // 重新渲染注入 instrumented 订阅函数
+  act(() => {
+    root.update(
+      React.createElement(BoardWithHook, {
+        laneId: "lane-a",
+        taskId: "task-1",
+      }),
+    );
+  });
+
+  // 2a. 在 pending 状态下直接卸载整个组件（包含 useKanbanDrag）
+  const cardTree = root.toJSON().children[0];
+  act(() => {
+    cardTree.props.onPanResponderGrant({ nativeEvent: {} }, { x0: 60, y0: 60 });
+  });
+
+  // 标记卸载并执行真实卸载
+  tracker.markUnmounted();
+  act(() => {
+    root.unmount();
+  });
+
+  // 推进定时器（长按 260ms + 互斥 60ms）
+  act(() => {
+    t.mock.timers.tick(350);
+  });
+
+  // 断言：延迟回调不得通知废弃订阅，不得启动保存
+  assert.equal(
+    tracker.leakedDispatchesAfterUnmount,
+    0,
+    "看板卸载后内部计时器取消，延迟回调严禁向已废弃订阅派发任何通知",
+  );
+  assert.equal(reorders.length, 0, "卸载后严禁启动任何新保存");
+  assert.equal(controller.getFeedback().isDragging, false);
+
+  // 2b. 卸载前尚未完成动画的落位按取消语义中止，迟到/重复的完成信号幂等无害
+  act(() => {
+    root = TestRenderer.create(
+      React.createElement(BoardWithHook, {
+        laneId: "lane-a",
+        taskId: "task-1",
+      }),
+    );
+  });
+  const newController = liveDrag.controller;
+  newController.registerContainerBounds({
+    x: 0,
+    y: 0,
+    width: 400,
+    height: 600,
+  });
+  newController.registerLaneLayout("lane-a", {
+    x: 0,
+    y: 0,
+    width: 300,
+    height: 600,
+  });
+  newController.setLaneCardOrder("lane-a", ["task-1"]);
+
+  // 激活拖拽并进入落位动画阶段
+  let droppingState;
+  await act(async () => {
+    newController.startGesture("task-1", "lane-a", 60, 60, true);
+    newController.moveGesture(60, 160);
+    droppingState = await newController.beginDropAnimation({ x: 60, y: 160 });
+  });
+  assert.ok(droppingState, "落位动画已开启");
+
+  // 此时动画尚未完成，看板组件突然卸载！
+  act(() => {
+    root.unmount();
+  });
+
+  // 迟到的动画完成回调尝试调用 reportDropComplete
+  await act(async () => {
+    await newController.reportDropComplete(droppingState.operationId);
+    // 重复调用以验证幂等性
+    await newController.reportDropComplete(droppingState.operationId);
+  });
+
+  assert.equal(
+    reorders.length,
+    0,
+    "未完成动画在卸载后中止，迟到/重复的完成信号严禁产生新提交",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 11. (S4) 在途异步保存完成不复活废弃交互状态或污染新会话
+// ---------------------------------------------------------------------------
+test("(S4) 已经发出的save不能凭空撤销，但其异步完成不得复活废弃交互状态或污染新会话", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+
+  let resolveSavePromise;
+  const savePromise = new Promise((resolve) => {
+    resolveSavePromise = resolve;
+  });
+
+  const saves = [];
+  const controller = new KanbanDragController({
+    lanes: ["lane-1"],
+    onReorderTask: (taskId, targetLaneId, targetIndex) => {
+      saves.push({ taskId, targetLaneId, targetIndex });
+      return savePromise;
+    },
+  });
+  controller.registerContainerBounds({ x: 0, y: 0, width: 400, height: 600 });
+  controller.registerLaneLayout("lane-1", {
+    x: 0,
+    y: 0,
+    width: 300,
+    height: 600,
+  });
+  controller.setLaneCardOrder("lane-1", ["task-1"]);
+
+  // 1. 正常拖拽并启动落位
+  let dropState;
+  await act(async () => {
+    controller.startGesture("task-1", "lane-1", 50, 50, true);
+    dropState = await controller.beginDropAnimation({ x: 50, y: 50 });
+  });
+
+  // 2. 触发 reportDropComplete，savePromise 处于在途 pending 状态
+  let reportCompletePromise;
+  act(() => {
+    reportCompletePromise = controller.reportDropComplete(
+      dropState.operationId,
+    );
+  });
+  assert.equal(saves.length, 1, "保存已被正常发出");
+
+  // 3. 此时看板发生卸载信号 (teardown)
+  controller.teardown();
+
+  // 观测此时订阅，确保废弃会话不会再被晚到的异步完成通知
+  let notifiedAfterTeardown = 0;
+  controller.subscribe(() => {
+    notifiedAfterTeardown++;
+  });
+  controller.subscribeDrop(() => {
+    notifiedAfterTeardown++;
+  });
+
+  // 4. 异步保存成功完成
+  await act(async () => {
+    resolveSavePromise();
+    await reportCompletePromise;
+  });
+
+  // 推进互斥定时器（如果有的话）
+  act(() => {
+    t.mock.timers.tick(100);
+  });
+
+  assert.equal(
+    notifiedAfterTeardown,
+    0,
+    "在途保存完成后严禁向已 teardown 的订阅派发通知",
+  );
+  assert.equal(
+    controller.isDragLocked(),
+    false,
+    "在途保存完成严禁复活旧会话的互斥锁",
+  );
+  assert.equal(
+    controller.getFeedback().isDragging,
+    false,
+    "在途保存完成严禁复活旧会话的拖拽状态",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 12. (S4) 真实 React StrictMode 双重生命周期与重新挂载后正常交互与落位
+// ---------------------------------------------------------------------------
+test("(S4) React StrictMode setup-cleanup-setup与重新挂载后必须仍可正常拖拽、订阅和落位", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+
+  const reorderEvents = [];
+  let liveDrag = null;
+
+  function StrictBoard({ laneId, tasks }) {
+    const drag = useKanbanDrag({
+      lanes: [laneId],
+      onReorderTask: (id, targetLane, idx) => {
+        reorderEvents.push({ id, targetLane, idx });
+      },
+    });
+    liveDrag = drag;
+    const laneBinding = drag.bindLane(laneId);
+
+    return React.createElement(
+      "View",
+      null,
+      tasks.map((task) =>
+        React.createElement(KanbanCard, {
+          key: task.id,
+          task,
+          projectDisplayName: null,
+          theme: { colors: {} },
+          layout: { compact: false },
+          binding: laneBinding.bindCard(task.id, undefined, {
+            create: (handlers) => ({ panHandlers: handlers }),
+          }),
+        }),
+      ),
+    );
+  }
+
+  const tasks = [
+    { id: "task-1", laneId: "lane-main", title: "Task 1", subtasks: [] },
+    { id: "task-2", laneId: "lane-main", title: "Task 2", subtasks: [] },
+  ];
+
+  // 1. 使用真实 React.StrictMode 包装挂载
+  let root;
+  act(() => {
+    root = TestRenderer.create(
+      React.createElement(
+        React.StrictMode,
+        null,
+        React.createElement(StrictBoard, { laneId: "lane-main", tasks }),
+      ),
+    );
+  });
+
+  const controller = liveDrag.controller;
+  controller.registerContainerBounds({ x: 0, y: 0, width: 400, height: 600 });
+  controller.registerLaneLayout("lane-main", {
+    x: 0,
+    y: 0,
+    width: 300,
+    height: 600,
+  });
+  controller.setLaneCardOrder("lane-main", ["task-1", "task-2"]);
+
+  // 2. 验证在 StrictMode (setup-cleanup-setup) 后，控制器未被死锁，拖拽依然完全可用
+  const card1Node = root.toJSON().children[0];
+  act(() => {
+    card1Node.props.onPanResponderGrant(
+      { nativeEvent: {} },
+      { x0: 50, y0: 50 },
+    );
+  });
+
+  // 推进 260ms 长按阈值
+  act(() => {
+    t.mock.timers.tick(260);
+  });
+
+  assert.equal(
+    controller.getFeedback().isDragging,
+    true,
+    "StrictMode 双重生命周期后必须依然能正常激活长按拖拽",
+  );
+  assert.equal(controller.getFeedback().draggingTaskId, "task-1");
+
+  // 移动并落位
+  act(() => {
+    card1Node.props.onPanResponderMove(
+      { nativeEvent: {} },
+      { moveX: 50, moveY: 150 },
+    );
+  });
+  let dropState;
+  await act(async () => {
+    dropState = await controller.beginDropAnimation({ x: 50, y: 150 });
+  });
+  assert.ok(dropState, "StrictMode 下必须能生成落位状态");
+
+  await act(async () => {
+    await controller.reportDropComplete(dropState.operationId);
+  });
+  assert.equal(reorderEvents.length, 1, "StrictMode 下落位提交必须成功");
+  assert.equal(reorderEvents[0].id, "task-1");
+
+  act(() => {
+    t.mock.timers.tick(60);
+  });
+  assert.equal(controller.isDragLocked(), false);
+
+  // 3. 真正卸载组件
+  act(() => {
+    root.unmount();
+  });
+
+  // 4. 再次在 StrictMode 中重新挂载该看板，验证重新挂载后仍可完整拖拽落位
+  let root2;
+  act(() => {
+    root2 = TestRenderer.create(
+      React.createElement(
+        React.StrictMode,
+        null,
+        React.createElement(StrictBoard, { laneId: "lane-main", tasks }),
+      ),
+    );
+  });
+
+  const controller2 = liveDrag.controller;
+  controller2.registerContainerBounds({
+    x: 0,
+    y: 0,
+    width: 400,
+    height: 600,
+  });
+  controller2.registerLaneLayout("lane-main", {
+    x: 0,
+    y: 0,
+    width: 300,
+    height: 600,
+  });
+  controller2.setLaneCardOrder("lane-main", ["task-1", "task-2"]);
+
+  const card2Node = root2.toJSON().children[1];
+  act(() => {
+    card2Node.props.onPanResponderGrant(
+      { nativeEvent: {} },
+      { x0: 50, y0: 100 },
+    );
+  });
+  act(() => {
+    t.mock.timers.tick(260);
+  });
+
+  assert.equal(
+    controller2.getFeedback().isDragging,
+    true,
+    "重新挂载后必须能正常激活拖拽",
+  );
+  assert.equal(controller2.getFeedback().draggingTaskId, "task-2");
+
+  let dropState2;
+  await act(async () => {
+    dropState2 = await controller2.beginDropAnimation({ x: 50, y: 100 });
+  });
+  await act(async () => {
+    await controller2.reportDropComplete(dropState2.operationId);
+  });
+
+  assert.equal(reorderEvents.length, 2, "重新挂载后落位提交成功");
+  assert.equal(reorderEvents[1].id, "task-2");
+
+  act(() => {
+    t.mock.timers.tick(60);
+  });
+  act(() => {
+    root2.unmount();
+  });
+});

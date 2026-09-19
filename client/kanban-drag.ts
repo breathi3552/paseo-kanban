@@ -199,6 +199,7 @@ export class KanbanDragController {
   private currentOperationId: string | null = null;
   private currentDroppingState: DroppingState | null = null;
   private getTaskPreview?: (taskId: string) => TaskPreviewItem | null;
+  private lifecycleEpoch: number = 0;
 
   private feedback: DragFeedback = {
     isDragging: false,
@@ -280,6 +281,40 @@ export class KanbanDragController {
     const laneMap = this.cardLayouts.get(laneId);
     if (laneMap) {
       laneMap.delete(taskId);
+    }
+  };
+
+  unregisterCard = (laneId: string, taskId: string) => {
+    const key = `${laneId}:${taskId}`;
+    this.cardCallbacks.delete(key);
+    this.cardResponders.delete(key);
+    this.unregisterCardLayout(laneId, taskId);
+
+    if (
+      this.activeSession &&
+      this.activeSession.taskId === taskId &&
+      this.activeSession.sourceLaneId === laneId
+    ) {
+      if (!this.activeSession.isActivated) {
+        this.clearPendingTimer();
+        this.pendingOnPress = null;
+        this.activeSession = null;
+        this.feedback = {
+          ...this.feedback,
+          isDragging: false,
+          draggingTaskId: null,
+          draggingSourceLaneId: null,
+          hoveredLaneId: null,
+          targetIndex: undefined,
+          pointerX: undefined,
+          pointerY: undefined,
+          autoScrollVelocity: 0,
+          dragLock: false,
+        };
+        this.notifyListeners();
+      } else {
+        this.cancelGesture();
+      }
     }
   };
 
@@ -440,11 +475,7 @@ export class KanbanDragController {
       cardPanHandlers: responders?.body?.panHandlers,
       handlePanHandlers: responders?.handle?.panHandlers,
       onLayout: (rect: Rect) => this.registerCardLayout(laneId, taskId, rect),
-      onUnmount: () => {
-        this.cardCallbacks.delete(key);
-        this.cardResponders.delete(key);
-        this.unregisterCardLayout(laneId, taskId);
-      },
+      onUnmount: () => this.unregisterCard(laneId, taskId),
     };
   };
 
@@ -477,8 +508,10 @@ export class KanbanDragController {
     this.startGesture(context.taskId, context.laneId, point.x, point.y, false);
 
     const longPressDuration = inputKind === "touch" ? 220 : 260;
+    const epoch = this.lifecycleEpoch;
     this.pendingTimer = setTimeout(() => {
       this.pendingTimer = null;
+      if (this.lifecycleEpoch !== epoch) return;
       if (this.dragLock) return;
       if (this.activeSession && !this.activeSession.isActivated) {
         this.activeSession.isActivated = true;
@@ -856,6 +889,7 @@ export class KanbanDragController {
 
     const drop = this.currentDroppingState;
     this.currentOperationId = null;
+    const epoch = this.lifecycleEpoch;
 
     try {
       if (drop && drop.isDrop && this.validLaneSet.has(drop.targetLaneId)) {
@@ -870,20 +904,23 @@ export class KanbanDragController {
         }
       }
     } finally {
-      this.currentDroppingState = null;
-      this.dropSpacerY = null;
-      this.notifyDropListeners();
-      this.notifyListeners();
-
-      if (this.dragLockTimeout) clearTimeout(this.dragLockTimeout);
-      this.dragLockTimeout = setTimeout(() => {
-        this.dragLock = false;
-        this.feedback = {
-          ...this.feedback,
-          dragLock: false,
-        };
+      if (this.lifecycleEpoch === epoch) {
+        this.currentDroppingState = null;
+        this.dropSpacerY = null;
+        this.notifyDropListeners();
         this.notifyListeners();
-      }, 60);
+
+        if (this.dragLockTimeout) clearTimeout(this.dragLockTimeout);
+        this.dragLockTimeout = setTimeout(() => {
+          if (this.lifecycleEpoch !== epoch) return;
+          this.dragLock = false;
+          this.feedback = {
+            ...this.feedback,
+            dragLock: false,
+          };
+          this.notifyListeners();
+        }, 60);
+      }
     }
   };
 
@@ -891,6 +928,7 @@ export class KanbanDragController {
     if (!this.currentOperationId || this.currentOperationId !== operationId) {
       return;
     }
+    const epoch = this.lifecycleEpoch;
     this.currentOperationId = null;
     this.currentDroppingState = null;
     this.dropSpacerY = null;
@@ -899,6 +937,7 @@ export class KanbanDragController {
 
     if (this.dragLockTimeout) clearTimeout(this.dragLockTimeout);
     this.dragLockTimeout = setTimeout(() => {
+      if (this.lifecycleEpoch !== epoch) return;
       this.dragLock = false;
       this.feedback = {
         ...this.feedback,
@@ -912,6 +951,7 @@ export class KanbanDragController {
     this.clearPendingTimer();
     this.pendingOnPress = null;
     if (!this.activeSession) return;
+    const epoch = this.lifecycleEpoch;
     const wasActivated = this.activeSession.isActivated;
     this.activeSession = null;
     this.feedback = {
@@ -930,6 +970,7 @@ export class KanbanDragController {
     if (wasActivated) {
       if (this.dragLockTimeout) clearTimeout(this.dragLockTimeout);
       this.dragLockTimeout = setTimeout(() => {
+        if (this.lifecycleEpoch !== epoch) return;
         this.dragLock = false;
         this.feedback = {
           ...this.feedback,
@@ -938,6 +979,49 @@ export class KanbanDragController {
         this.notifyListeners();
       }, 60);
     }
+  };
+
+  teardown = () => {
+    this.lifecycleEpoch++;
+    this.clearPendingTimer();
+    this.pendingOnPress = null;
+
+    if (this.dragLockTimeout) {
+      clearTimeout(this.dragLockTimeout);
+      this.dragLockTimeout = null;
+    }
+    this.dragLock = false;
+
+    if (this.currentDroppingState) {
+      this.currentDroppingState = null;
+      this.dropSpacerY = null;
+    }
+    this.currentOperationId = null;
+
+    if (this.activeSession) {
+      this.activeSession = null;
+    }
+
+    this.feedback = {
+      isDragging: false,
+      draggingTaskId: null,
+      draggingSourceLaneId: null,
+      hoveredLaneId: null,
+      targetIndex: undefined,
+      pointerX: undefined,
+      pointerY: undefined,
+      autoScrollVelocity: 0,
+      dragLock: false,
+    };
+
+    this.slotState = {
+      isDragging: false,
+      draggingTaskId: null,
+      draggingSourceLaneId: null,
+      hoveredLaneId: null,
+      targetIndex: 0,
+      dragLock: false,
+    };
   };
 
   getContainerBounds = (): Rect | null => {
@@ -1297,6 +1381,7 @@ export interface UseKanbanDragReturn {
   getCardsViewportLayout: KanbanDragController["getCardsViewportLayout"];
   getLaneScroll: KanbanDragController["getLaneScroll"];
   getDropSlotPosition: KanbanDragController["getDropSlotPosition"];
+  teardown: () => void;
 }
 
 export function useKanbanDrag(
@@ -1344,6 +1429,12 @@ export function useKanbanDrag(
 
   const containerScrollRef = useRef<any>(null);
   const currentScrollX = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      controller.teardown();
+    };
+  }, [controller]);
 
   // Smooth edge auto-scroll when dragging near viewport boundaries
   useEffect(() => {
@@ -1512,5 +1603,6 @@ export function useKanbanDrag(
     getCardsViewportLayout: controller.getCardsViewportLayout,
     getLaneScroll: controller.getLaneScroll,
     getDropSlotPosition: controller.getDropSlotPosition,
+    teardown: controller.teardown,
   };
 }
