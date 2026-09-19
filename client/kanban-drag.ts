@@ -149,6 +149,8 @@ export class KanbanDragController {
   private onReorderTask?: (taskId: string, targetLaneId: string, targetIndex: number) => void | Promise<void>;
   private dragLock: boolean = false;
   private dragLockTimeout: ReturnType<typeof setTimeout> | null = null;
+  private pendingTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingOnPress: (() => void) | null = null;
   private listeners: Set<() => void> = new Set();
   private slotListeners: Set<() => void> = new Set();
   private dropSpacerY: number | null = null;
@@ -281,6 +283,108 @@ export class KanbanDragController {
 
   getDropSpacerY = (): number | null => {
     return this.dropSpacerY;
+  };
+
+  private clearPendingTimer = () => {
+    if (this.pendingTimer) {
+      clearTimeout(this.pendingTimer);
+      this.pendingTimer = null;
+    }
+  };
+
+  handlePointerDown = (
+    context: { taskId: string; laneId: string; onPress?: () => void },
+    point: { x: number; y: number },
+    source: "handle" | "body" = "body",
+    _inputKind?: "mouse" | "touch"
+  ) => {
+    if (this.dragLock) return;
+    if (this.activeSession?.isActivated) return;
+
+    this.clearPendingTimer();
+    this.pendingOnPress = context.onPress ?? null;
+
+    if (source === "handle") {
+      this.startGesture(context.taskId, context.laneId, point.x, point.y, true);
+      return;
+    }
+
+    this.startGesture(context.taskId, context.laneId, point.x, point.y, false);
+
+    const longPressDuration = 260;
+    this.pendingTimer = setTimeout(() => {
+      this.pendingTimer = null;
+      if (this.dragLock) return;
+      if (this.activeSession && !this.activeSession.isActivated) {
+        this.activeSession.isActivated = true;
+        this.dragLock = true;
+        const initialHit = this.computeHit(
+          this.activeSession.lastPointerX,
+          this.activeSession.lastPointerY
+        );
+        const targetLaneId = initialHit ?? this.activeSession.sourceLaneId;
+        const targetIndex = this.computeTargetIndex(
+          targetLaneId,
+          this.activeSession.lastPointerY
+        );
+        this.activeSession.currentTargetIndex = targetIndex;
+        this.feedback = {
+          ...this.feedback,
+          isDragging: true,
+          draggingTaskId: this.activeSession.taskId,
+          draggingSourceLaneId: this.activeSession.sourceLaneId,
+          hoveredLaneId: targetLaneId,
+          targetIndex,
+          draggedCardHeight: this.activeSession.cardLayouts
+            .get(this.activeSession.sourceLaneId)
+            ?.get(this.activeSession.taskId)?.height,
+          dragLock: true,
+        };
+        this.notifyListeners();
+      }
+    }, longPressDuration);
+  };
+
+  handlePointerMove = (point: { x: number; y: number }) => {
+    if (!this.activeSession) return;
+    const dist = Math.hypot(
+      point.x - this.activeSession.startX,
+      point.y - this.activeSession.startY
+    );
+    if (dist >= 5) {
+      this.clearPendingTimer();
+    }
+    this.moveGesture(point.x, point.y);
+  };
+
+  handlePointerUp = async (point?: { x: number; y: number }): Promise<void> => {
+    this.clearPendingTimer();
+    if (!this.activeSession) return;
+
+    const wasActivated = this.activeSession.isActivated;
+    const dist = point
+      ? Math.hypot(
+          point.x - this.activeSession.startX,
+          point.y - this.activeSession.startY
+        )
+      : 0;
+    const onPress = this.pendingOnPress;
+    this.pendingOnPress = null;
+
+    if (wasActivated) {
+      await this.releaseGesture(point?.x, point?.y);
+    } else {
+      await this.releaseGesture(point?.x, point?.y);
+      if (dist < 5 && !this.dragLock && onPress) {
+        onPress();
+      }
+    }
+  };
+
+  handlePointerCancel = () => {
+    this.clearPendingTimer();
+    this.pendingOnPress = null;
+    this.cancelGesture();
   };
 
   startGesture = (
@@ -466,6 +570,8 @@ export class KanbanDragController {
   };
 
   cancelGesture = () => {
+    this.clearPendingTimer();
+    this.pendingOnPress = null;
     if (!this.activeSession) return;
     const wasActivated = this.activeSession.isActivated;
     this.activeSession = null;

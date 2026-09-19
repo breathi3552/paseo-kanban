@@ -571,3 +571,43 @@ test("失败清理: 提交回调抛出异常或保存被拒绝后，互斥锁仍
   controller.cancelGesture();
 });
 
+// ---------------------------------------------------------------------------
+// 12. 统一手势输入入口 (handlePointerDown/Move/Up/Cancel)
+// ---------------------------------------------------------------------------
+test("共同输入入口: 轻点分流、手柄立即激活与主体位移升级拖拽", async () => {
+  const reorders = [];
+  let clicks = 0;
+  const controller = setupController();
+  controller.setOnReorderTask((...args) => reorders.push(args));
+  const ctx = {
+    taskId: "t1",
+    laneId: "to-plan",
+    onPress: () => { clicks++; },
+  };
+
+  // 1. 轻点: 按下并在原地抬起 (< 5px)，触发 onPress，不触发排序
+  controller.handlePointerDown(ctx, { x: 100, y: 100 }, "body");
+  await controller.handlePointerUp({ x: 100, y: 100 });
+  assert.equal(clicks, 1, "原地松手识别为轻点打开详情");
+  assert.equal(reorders.length, 0, "轻点不产生排序");
+
+  // 2. 主体移动 >= 5px 激活拖拽
+  controller.handlePointerDown(ctx, { x: 100, y: 100 }, "body");
+  controller.handlePointerMove({ x: 106, y: 100 });
+  assert.equal(controller.getFeedback().isDragging, true, "位移 >= 5px 激活拖拽");
+  await controller.handlePointerUp({ x: 340, y: 100 });
+  assert.equal(clicks, 1, "拖拽不触发点击");
+  assert.equal(reorders.length, 1, "释放触发排序");
+
+  // 等待稳定窗口释放互斥锁
+  await new Promise((resolve) => setTimeout(resolve, 180));
+
+  // 3. 手柄立即激活
+  controller.handlePointerDown(ctx, { x: 50, y: 50 }, "handle");
+  assert.equal(controller.getFeedback().isDragging, true, "手柄按下立即激活");
+  await controller.handlePointerUp({ x: 340, y: 100 });
+  assert.equal(clicks, 1, "手柄拖拽不触发点击");
+  assert.equal(reorders.length, 2, "手柄释放触发排序");
+});
+
+
