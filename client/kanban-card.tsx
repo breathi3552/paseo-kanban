@@ -35,7 +35,7 @@ export function KanbanCard({
 
   const completedSubtasksCount = useMemo(
     () => task.subtasks.filter((s) => s.completed).length,
-    [task.subtasks]
+    [task.subtasks],
   );
 
   const styles = useMemo(
@@ -98,18 +98,22 @@ export function KanbanCard({
           color:
             task.subtasks.length > 0 &&
             completedSubtasksCount === task.subtasks.length
-              ? theme.colors.statusSuccess ?? theme.colors.accent
+              ? (theme.colors.statusSuccess ?? theme.colors.accent)
               : theme.colors.foregroundMuted,
           fontWeight: "500",
         },
       }),
-    [theme, layout.compact, task.subtasks.length, completedSubtasksCount]
+    [theme, layout.compact, task.subtasks.length, completedSubtasksCount],
   );
 
   return (
     <View
       // Keep the responder mounted, but let the single drop slot replace its space.
-      style={binding.isDragging ? { position: "absolute", left: 0, right: 0, opacity: 0 } : undefined}
+      style={
+        binding.isDragging
+          ? { position: "absolute", left: 0, right: 0, opacity: 0 }
+          : undefined
+      }
       onLayout={(e) => binding.onLayout?.(e.nativeEvent.layout)}
       {...binding.cardPanHandlers}
     >
@@ -121,7 +125,11 @@ export function KanbanCard({
             accessibilityLabel={t("card.dragHandle")}
             {...binding.handlePanHandlers}
           >
-            <Icon name="GripVertical" size={14} color={theme.colors.foregroundMuted} />
+            <Icon
+              name="GripVertical"
+              size={14}
+              color={theme.colors.foregroundMuted}
+            />
           </View>
 
           <Text style={styles.title} numberOfLines={2}>
@@ -169,7 +177,7 @@ export function KanbanCardPreview({
   const { t } = useI18n();
   const completedSubtasksCount = useMemo(
     () => task.subtasks.filter((s) => s.completed).length,
-    [task.subtasks]
+    [task.subtasks],
   );
 
   const styles = useMemo(
@@ -184,7 +192,9 @@ export function KanbanCardPreview({
           borderRadius: 8,
           padding: layout.compact ? 10 : 12,
           gap: 8,
-          ...(animated ? {} : { transform: [{ rotate: "2.5deg" }, { scale: 1.03 }] }),
+          ...(animated
+            ? {}
+            : { transform: [{ rotate: "2.5deg" }, { scale: 1.03 }] }),
           shadowColor: "#000",
           shadowOffset: { width: 0, height: 8 },
           shadowOpacity: 0.25,
@@ -239,12 +249,18 @@ export function KanbanCardPreview({
           color:
             task.subtasks.length > 0 &&
             completedSubtasksCount === task.subtasks.length
-              ? theme.colors.statusSuccess ?? theme.colors.accent
+              ? (theme.colors.statusSuccess ?? theme.colors.accent)
               : theme.colors.foregroundMuted,
           fontWeight: "500",
         },
       }),
-    [theme, layout.compact, task.subtasks.length, completedSubtasksCount]
+    [
+      theme,
+      layout.compact,
+      task.subtasks.length,
+      completedSubtasksCount,
+      animated,
+    ],
   );
 
   return (
@@ -288,7 +304,12 @@ export function KanbanDropSpacer({
 }: {
   height?: number;
   theme: PluginTheme;
-  onLayout?: (layout: { x: number; y: number; width: number; height: number }) => void;
+  onLayout?: (layout: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => void;
 }) {
   const animHeight = useRef(new Animated.Value(0)).current;
 
@@ -313,7 +334,7 @@ export function KanbanDropSpacer({
           opacity: 0.7,
         },
       }),
-    [theme]
+    [theme],
   );
 
   return (

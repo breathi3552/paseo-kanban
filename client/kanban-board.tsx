@@ -9,12 +9,8 @@ import {
 } from "react-native";
 import { useSettings } from "@getpaseo/plugin/client";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import {
-  kanbanSettings,
-  filterTasksByProject,
-  type KanbanTask,
-} from "../shared/kanban";
-import { useProjects, getProjectDisplayName } from "./use-projects";
+import { kanbanSettings, filterTasksByProject } from "../shared/kanban";
+import { useProjects } from "./use-projects";
 import { TaskModal } from "./task-modal";
 import { LaneModal } from "./lane-modal";
 import { useKanbanDrag } from "./kanban-drag";
@@ -33,11 +29,17 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
   const { theme, layout } = props;
   const { t, language } = useI18n(props);
   const settings = useSettings(kanbanSettings);
-  const { projects, resolveProjectName, isError: projectsError } = useProjects();
+  const {
+    projects,
+    resolveProjectName,
+    isError: projectsError,
+  } = useProjects();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
-  const [activeTaskSession, setActiveTaskSession] = useState<TaskEditSession | null>(null);
-  const [activeLaneSession, setActiveLaneSession] = useState<LaneEditSession | null>(null);
+  const [activeTaskSession, setActiveTaskSession] =
+    useState<TaskEditSession | null>(null);
+  const [activeLaneSession, setActiveLaneSession] =
+    useState<LaneEditSession | null>(null);
   const [reorderError, setReorderError] = useState<string | null>(null);
 
   const isReady = settings.status === "ready";
@@ -53,7 +55,7 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
   const handleReorderTask = async (
     taskId: string,
     targetLaneId: string,
-    targetIndex: number
+    targetIndex: number,
   ) => {
     if (!board) return;
     const result = await executeTaskReorder({
@@ -102,7 +104,7 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
             ? null
             : selectedProjectId,
         language,
-      })
+      }),
     );
   };
 
@@ -116,7 +118,7 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
         baseRevision: revision,
         save: (b, r) => settings.save(b, r),
         language,
-      })
+      }),
     );
   };
 
@@ -129,7 +131,7 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
         baseRevision: revision,
         save: (b, r) => settings.save(b, r),
         language,
-      })
+      }),
     );
   };
 
@@ -143,7 +145,7 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
         baseRevision: revision,
         save: (b, r) => settings.save(b, r),
         language,
-      })
+      }),
     );
   };
 
@@ -294,7 +296,7 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
           textAlign: "center",
         },
       }),
-    [theme, layout.compact]
+    [theme, layout.compact],
   );
 
   if (settings.status === "loading") {
@@ -312,8 +314,13 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
         <Text style={[styles.centerText, { color: theme.colors.statusDanger }]}>
           {t("kanban.loadError", { error: settings.error })}
         </Text>
-        <Pressable onPress={() => settings.reload()} style={styles.secondaryButton}>
-          <Text style={styles.secondaryButtonText}>{t("kanban.retryLoad")}</Text>
+        <Pressable
+          onPress={() => settings.reload()}
+          style={styles.secondaryButton}
+        >
+          <Text style={styles.secondaryButtonText}>
+            {t("kanban.retryLoad")}
+          </Text>
         </Pressable>
       </View>
     );
@@ -322,18 +329,38 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
   if (settings.status === "invalid") {
     return (
       <View style={[styles.container, styles.centerBox]}>
-        <Text style={[styles.centerText, { color: theme.colors.statusWarning ?? theme.colors.statusDanger }]}>
+        <Text
+          style={[
+            styles.centerText,
+            { color: theme.colors.statusWarning ?? theme.colors.statusDanger },
+          ]}
+        >
           {t("kanban.formatError", { error: settings.error })}
         </Text>
-        <Text style={[styles.centerText, { color: theme.colors.foregroundMuted, fontSize: 12 }]}>
+        <Text
+          style={[
+            styles.centerText,
+            { color: theme.colors.foregroundMuted, fontSize: 12 },
+          ]}
+        >
           {t("kanban.formatErrorHint")}
         </Text>
         <View style={{ flexDirection: "row", gap: 10 }}>
-          <Pressable onPress={() => settings.reload()} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>{t("kanban.retryLoad")}</Text>
+          <Pressable
+            onPress={() => settings.reload()}
+            style={styles.secondaryButton}
+          >
+            <Text style={styles.secondaryButtonText}>
+              {t("kanban.retryLoad")}
+            </Text>
           </Pressable>
-          <Pressable onPress={() => settings.reset()} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>{t("kanban.resetDefault")}</Text>
+          <Pressable
+            onPress={() => settings.reset()}
+            style={styles.primaryButton}
+          >
+            <Text style={styles.primaryButtonText}>
+              {t("kanban.resetDefault")}
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -349,35 +376,43 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
         <View style={styles.headerTopRow}>
           <View style={styles.titleRow}>
             <Text style={styles.titleText}>{t("kanban.title")}</Text>
-            <View style={{
-              backgroundColor: theme.colors.surface2,
-              paddingHorizontal: 6,
-              paddingVertical: 2,
-              borderRadius: 10,
-            }}>
-              <Text style={{
-                fontSize: 11,
-                color: theme.colors.foregroundMuted,
-                fontWeight: "600",
-              }}>
-                {t("kanban.stats", { tasks: board.tasks.length, lanes: board.lanes.length })}
+            <View
+              style={{
+                backgroundColor: theme.colors.surface2,
+                paddingHorizontal: 6,
+                paddingVertical: 2,
+                borderRadius: 10,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: theme.colors.foregroundMuted,
+                  fontWeight: "600",
+                }}
+              >
+                {t("kanban.stats", {
+                  tasks: board.tasks.length,
+                  lanes: board.lanes.length,
+                })}
               </Text>
             </View>
           </View>
 
           <View style={styles.headerActions}>
-            <Pressable
-              onPress={openNewLane}
-              style={styles.secondaryButton}
-            >
-              <Text style={styles.secondaryButtonText}>{t("kanban.addLane")}</Text>
+            <Pressable onPress={openNewLane} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonText}>
+                {t("kanban.addLane")}
+              </Text>
             </Pressable>
 
             <Pressable
               onPress={() => openNewTask()}
               style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonText}>{t("kanban.newTask")}</Text>
+              <Text style={styles.primaryButtonText}>
+                {t("kanban.newTask")}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -419,7 +454,8 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
               <Text
                 style={[
                   styles.filterChipText,
-                  selectedProjectId === "unassigned" && styles.filterChipTextSelected,
+                  selectedProjectId === "unassigned" &&
+                    styles.filterChipTextSelected,
                 ]}
               >
                 {t("kanban.filterUnassigned")}
@@ -453,7 +489,13 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
             })}
 
             {projectsError && (
-              <Text style={{ fontSize: 11, color: theme.colors.statusWarning ?? theme.colors.foregroundMuted }}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  color:
+                    theme.colors.statusWarning ?? theme.colors.foregroundMuted,
+                }}
+              >
                 {t("kanban.projectsError")}
               </Text>
             )}
@@ -476,7 +518,9 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
             }}
             style={styles.conflictAction}
           >
-            <Text style={{ fontSize: 12, color: theme.colors.foreground }}>{t("kanban.refresh")}</Text>
+            <Text style={{ fontSize: 12, color: theme.colors.foreground }}>
+              {t("kanban.refresh")}
+            </Text>
           </Pressable>
         </View>
       )}
@@ -489,7 +533,9 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
           style={styles.lanesContainer}
           contentContainerStyle={styles.lanesContent}
           onLayout={(e) => drag.handleContainerLayout(e.nativeEvent.layout)}
-          onScroll={(e) => drag.handleContainerScroll(e.nativeEvent.contentOffset.x)}
+          onScroll={(e) =>
+            drag.handleContainerScroll(e.nativeEvent.contentOffset.x)
+          }
           scrollEventThrottle={16}
         >
           {board.lanes.map((lane) => {
@@ -512,11 +558,7 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
           })}
         </ScrollView>
 
-        <KanbanDragOverlay
-          drag={drag}
-          theme={theme}
-          layout={layout}
-        />
+        <KanbanDragOverlay drag={drag} theme={theme} layout={layout} />
       </View>
 
       {/* Modals with Session Baseline Locking */}

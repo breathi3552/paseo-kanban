@@ -25,23 +25,39 @@ function KanbanDragOverlayInner({
   projectDisplayName: propProjectName,
 }: KanbanDragOverlayProps) {
   const liveFeedback = useSyncExternalStore(
-    drag.controller ? drag.controller.subscribe : (() => () => {}),
-    drag.controller ? drag.controller.getFeedback : (() => drag.feedback),
-    drag.controller ? drag.controller.getFeedback : (() => drag.feedback)
+    drag.controller ? drag.controller.subscribe : () => () => {},
+    drag.controller ? drag.controller.getFeedback : () => drag.feedback,
+    drag.controller ? drag.controller.getFeedback : () => drag.feedback,
   );
 
   const curDropping = useSyncExternalStore(
-    drag.controller ? drag.controller.subscribeDrop : (() => () => {}),
-    drag.controller ? drag.controller.getDroppingState : (() => drag.droppingState),
-    drag.controller ? drag.controller.getDroppingState : (() => drag.droppingState)
+    drag.controller ? drag.controller.subscribeDrop : () => () => {},
+    drag.controller
+      ? drag.controller.getDroppingState
+      : () => drag.droppingState,
+    drag.controller
+      ? drag.controller.getDroppingState
+      : () => drag.droppingState,
   );
-  const animPos = useRef(Animated?.ValueXY ? new Animated.ValueXY({ x: 0, y: 0 }) : null).current;
-  const animRotate = useRef(Animated?.Value ? new Animated.Value(1) : null).current;
-  const animScale = useRef(Animated?.Value ? new Animated.Value(1.03) : null).current;
+  const animPos = useRef(
+    Animated?.ValueXY ? new Animated.ValueXY({ x: 0, y: 0 }) : null,
+  ).current;
+  const animRotate = useRef(
+    Animated?.Value ? new Animated.Value(1) : null,
+  ).current;
+  const animScale = useRef(
+    Animated?.Value ? new Animated.Value(1.03) : null,
+  ).current;
   const droppingHandledRef = useRef<string | null>(null);
   const lastOpIdRef = useRef<string | null>(null);
 
-  if (curDropping && animPos && animRotate && animScale && lastOpIdRef.current !== curDropping.operationId) {
+  if (
+    curDropping &&
+    animPos &&
+    animRotate &&
+    animScale &&
+    lastOpIdRef.current !== curDropping.operationId
+  ) {
     lastOpIdRef.current = curDropping.operationId;
     animPos.setValue({ x: curDropping.fromX, y: curDropping.fromY });
     animRotate.setValue(1);
@@ -56,7 +72,9 @@ function KanbanDragOverlayInner({
       return;
     }
 
-    const dropKey = curDropping.operationId || `${curDropping.taskId}_${curDropping.targetLaneId}_${curDropping.targetIndex}`;
+    const dropKey =
+      curDropping.operationId ||
+      `${curDropping.taskId}_${curDropping.targetLaneId}_${curDropping.targetIndex}`;
     if (droppingHandledRef.current === dropKey) {
       return;
     }
@@ -119,7 +137,9 @@ function KanbanDragOverlayInner({
       : null);
 
   const isVisible =
-    (liveFeedback.isDragging && typeof liveFeedback.pointerX === "number" && activeTask !== null) ||
+    (liveFeedback.isDragging &&
+      typeof liveFeedback.pointerX === "number" &&
+      activeTask !== null) ||
     (curDropping !== null && activeTask !== null);
 
   if (!isVisible || !activeTask) {
@@ -146,7 +166,10 @@ function KanbanDragOverlayInner({
         { scale: animScale },
       ],
     };
-  } else if (typeof liveFeedback.pointerX === "number" && typeof liveFeedback.pointerY === "number") {
+  } else if (
+    typeof liveFeedback.pointerX === "number" &&
+    typeof liveFeedback.pointerY === "number"
+  ) {
     overlayStyle = {
       left: liveFeedback.pointerX - containerX - cardHalfWidth,
       top: liveFeedback.pointerY - containerY - 20,
@@ -159,10 +182,7 @@ function KanbanDragOverlayInner({
   return (
     <AnimatedView
       pointerEvents="none"
-      style={[
-        styles.dragOverlay,
-        overlayStyle,
-      ]}
+      style={[styles.dragOverlay, overlayStyle]}
     >
       <KanbanCardPreview
         task={activeTask}

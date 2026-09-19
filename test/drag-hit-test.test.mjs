@@ -73,7 +73,11 @@ test("findHoveredLaneId: returns null when pointer is outside container viewport
     scrollX: 0,
     lanes: mockLanes,
   });
-  assert.equal(hitHeader, null, "Outside container viewport (above) must return null");
+  assert.equal(
+    hitHeader,
+    null,
+    "Outside container viewport (above) must return null",
+  );
 
   // Pointer below container (pointerY = 700 > 80 + 600 = 680)
   const hitOutsideBottom = findHoveredLaneId({
@@ -83,7 +87,11 @@ test("findHoveredLaneId: returns null when pointer is outside container viewport
     scrollX: 0,
     lanes: mockLanes,
   });
-  assert.equal(hitOutsideBottom, null, "Outside container viewport (below) must return null");
+  assert.equal(
+    hitOutsideBottom,
+    null,
+    "Outside container viewport (below) must return null",
+  );
 
   // Pointer to the left of container (pointerX = 10 < 20)
   const hitLeft = findHoveredLaneId({
@@ -93,7 +101,11 @@ test("findHoveredLaneId: returns null when pointer is outside container viewport
     scrollX: 0,
     lanes: mockLanes,
   });
-  assert.equal(hitLeft, null, "Outside container viewport (left) must return null");
+  assert.equal(
+    hitLeft,
+    null,
+    "Outside container viewport (left) must return null",
+  );
 });
 
 test("findHoveredLaneId: accounts for horizontal scroll offset correctly", () => {
@@ -106,7 +118,11 @@ test("findHoveredLaneId: accounts for horizontal scroll offset correctly", () =>
     scrollX: 294,
     lanes: mockLanes,
   });
-  assert.equal(hitScrolled, "in-progress", "Must correctly hit lane 2 after horizontal scroll");
+  assert.equal(
+    hitScrolled,
+    "in-progress",
+    "Must correctly hit lane 2 after horizontal scroll",
+  );
 });
 
 test("findHoveredLaneId: moving over target lane then releasing in toolbar returns null", () => {
@@ -132,6 +148,6 @@ test("findHoveredLaneId: moving over target lane then releasing in toolbar retur
   assert.equal(
     finalReleaseHit,
     null,
-    "Release in toolbar area must evaluate to null and prevent move"
+    "Release in toolbar area must evaluate to null and prevent move",
   );
 });

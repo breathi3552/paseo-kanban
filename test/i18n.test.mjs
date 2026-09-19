@@ -19,7 +19,7 @@ const source = ts.transpileModule(
       module: ts.ModuleKind.CommonJS,
       jsx: ts.JsxEmit.ReactJSX,
     },
-  }
+  },
 ).outputText;
 
 const i18n = {};
@@ -59,7 +59,7 @@ test("normalizeLanguage: 准确将各类中文标头归一化为 zh", () => {
     assert.equal(
       normalizeLanguage(variant),
       "zh",
-      `Expected ${variant} to normalize to 'zh'`
+      `Expected ${variant} to normalize to 'zh'`,
     );
   }
 });
@@ -91,7 +91,7 @@ test("normalizeLanguage: 其他所有语言均回退归一化为 en", () => {
     assert.equal(
       normalizeLanguage(lang),
       "en",
-      `Expected ${lang} to normalize to 'en'`
+      `Expected ${lang} to normalize to 'en'`,
     );
   }
 });
@@ -103,22 +103,24 @@ test("translations: zh 与 en 词条键完整对齐且无遗漏", () => {
   assert.deepEqual(
     zhKeys,
     enKeys,
-    "zh and en dictionaries must have identical translation keys"
+    "zh and en dictionaries must have identical translation keys",
   );
   assert.ok(zhKeys.length >= 35, "Dictionary must contain full UI terminology");
 });
 
 test("formatString & t: 文本翻译与参数插值正确工作", () => {
+  assert.equal(formatString("Hello {name}", { name: "Paseo" }), "Hello Paseo");
+
   // Chinese
   assert.equal(t("kanban.title", "zh"), "任务看板");
   assert.equal(t("kanban.sidebarTitle", "zh"), "看板");
   assert.equal(
     t("kanban.stats", "zh", { tasks: 12, lanes: 4 }),
-    "12 任务 · 4 泳道"
+    "12 任务 · 4 泳道",
   );
   assert.equal(
     t("laneModal.cannotDeleteHasTasks", "zh", { count: 5 }),
-    "此泳道当前包含 5 个任务，需清空或移走任务后方可删除。"
+    "此泳道当前包含 5 个任务，需清空或移走任务后方可删除。",
   );
 
   // English
@@ -126,11 +128,11 @@ test("formatString & t: 文本翻译与参数插值正确工作", () => {
   assert.equal(t("kanban.sidebarTitle", "en"), "Kanban");
   assert.equal(
     t("kanban.stats", "en", { tasks: 12, lanes: 4 }),
-    "12 tasks · 4 lanes"
+    "12 tasks · 4 lanes",
   );
   assert.equal(
     t("laneModal.cannotDeleteHasTasks", "en", { count: 5 }),
-    "This lane currently contains 5 tasks. Clear or move tasks before deleting."
+    "This lane currently contains 5 tasks. Clear or move tasks before deleting.",
   );
 });
 
@@ -147,7 +149,6 @@ test("detectPaseoLanguage: 优先感知宿主传入的 locale/language 属性", 
 });
 
 test("detectPaseoLanguage: 支持从 @paseo:app-settings 存储读取系统语言配置", () => {
-  const originalGlobalThis = globalThis;
   try {
     // Mock localStorage
     const store = new Map();
@@ -210,7 +211,15 @@ test("kanban-session: 国际化错误信息在英文与中文模式下正确产�
       { id: "to-plan", title: "待规划" },
       { id: "done", title: "已完成" },
     ],
-    tasks: [{ id: "t1", title: "Task 1", laneId: "to-plan", description: "", subtasks: [] }],
+    tasks: [
+      {
+        id: "t1",
+        title: "Task 1",
+        laneId: "to-plan",
+        description: "",
+        subtasks: [],
+      },
+    ],
   };
 
   // 1. English Mode Task Session
@@ -222,13 +231,19 @@ test("kanban-session: 国际化错误信息在英文与中文模式下正确产�
     language: "en",
   });
 
-  const emptyTitleRes = await enTaskSession.save({ title: "   ", laneId: "to-plan" });
+  const emptyTitleRes = await enTaskSession.save({
+    title: "   ",
+    laneId: "to-plan",
+  });
   assert.equal(emptyTitleRes.success, false);
   assert.equal(emptyTitleRes.error, "Task title cannot be empty");
 
   const emptySubtaskOk = enTaskSession.addSubtask("   ");
   assert.equal(emptySubtaskOk, false);
-  assert.equal(enTaskSession.getSnapshot().error, "Subtask content cannot be empty");
+  assert.equal(
+    enTaskSession.getSnapshot().error,
+    "Subtask content cannot be empty",
+  );
 
   // English Mode Save Conflict
   enTaskSession.setTitle("Valid Title");
@@ -270,7 +285,7 @@ test("kanban-session: 国际化错误信息在英文与中文模式下正确产�
   assert.equal(enReorderRes.success, false);
   assert.equal(
     enReorderRes.error,
-    "Save failed or version conflict, data was not modified. Please refresh and try again."
+    "Save failed or version conflict, data was not modified. Please refresh and try again.",
   );
 
   // 4. Default / Chinese Mode (backward compatibility)

@@ -1,6 +1,11 @@
 import { useState, useEffect, useMemo, useSyncExternalStore } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { Modal, TextInput, Icon, ScrollView } from "@getpaseo/plugin/client/react-native";
+import {
+  Modal,
+  TextInput,
+  Icon,
+  ScrollView,
+} from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanLane } from "../shared/kanban";
 import type { ProjectItem } from "./use-projects";
@@ -32,7 +37,7 @@ export function TaskModal({
   const snapshot = useSyncExternalStore(
     session.subscribe,
     session.getSnapshot,
-    session.getSnapshot
+    session.getSnapshot,
   );
 
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
@@ -216,7 +221,7 @@ export function TaskModal({
           fontWeight: "500",
         },
       }),
-    [theme, layout.compact]
+    [theme, layout.compact],
   );
 
   const handleAddSubtask = () => {
@@ -242,8 +247,14 @@ export function TaskModal({
 
   return (
     <Modal
-      title={session.mode === "edit" ? t("taskModal.titleEdit") : t("taskModal.titleCreate")}
-      icon={<Icon name="PanelsTopLeft" size={18} color={theme.colors.foreground} />}
+      title={
+        session.mode === "edit"
+          ? t("taskModal.titleEdit")
+          : t("taskModal.titleCreate")
+      }
+      icon={
+        <Icon name="PanelsTopLeft" size={18} color={theme.colors.foreground} />
+      }
       open={open}
       onOpenChange={(next) => {
         if (!next && !isSaving) {
@@ -319,7 +330,8 @@ export function TaskModal({
                 <Text
                   style={[
                     styles.optionChipText,
-                    snapshot.projectId === null && styles.optionChipTextSelected,
+                    snapshot.projectId === null &&
+                      styles.optionChipTextSelected,
                   ]}
                 >
                   {t("taskModal.noProject")}
@@ -376,7 +388,9 @@ export function TaskModal({
               <View key={subtask.id} style={styles.subtaskItem}>
                 <Pressable
                   onPress={() =>
-                    session.updateSubtask(subtask.id, { completed: !subtask.completed })
+                    session.updateSubtask(subtask.id, {
+                      completed: !subtask.completed,
+                    })
                   }
                   style={[
                     styles.subtaskCheck,
@@ -384,7 +398,11 @@ export function TaskModal({
                   ]}
                 >
                   {subtask.completed && (
-                    <Icon name="Check" size={14} color={theme.colors.accentForeground} />
+                    <Icon
+                      name="Check"
+                      size={14}
+                      color={theme.colors.accentForeground}
+                    />
                   )}
                 </Pressable>
 
@@ -405,7 +423,11 @@ export function TaskModal({
                   onPress={() => session.removeSubtask(subtask.id)}
                   hitSlop={8}
                 >
-                  <Icon name="Trash2" size={14} color={theme.colors.statusDanger} />
+                  <Icon
+                    name="Trash2"
+                    size={14}
+                    color={theme.colors.statusDanger}
+                  />
                 </Pressable>
               </View>
             ))}
@@ -423,10 +445,15 @@ export function TaskModal({
                 onPress={handleAddSubtask}
                 style={[
                   styles.optionChip,
-                  { backgroundColor: theme.colors.surface2, justifyContent: "center" },
+                  {
+                    backgroundColor: theme.colors.surface2,
+                    justifyContent: "center",
+                  },
                 ]}
               >
-                <Text style={styles.optionChipText}>{t("taskModal.addStep")}</Text>
+                <Text style={styles.optionChipText}>
+                  {t("taskModal.addStep")}
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -440,16 +467,25 @@ export function TaskModal({
                   style={styles.deleteButton}
                   disabled={isSaving}
                 >
-                  <Text style={styles.deleteButtonText}>{t("taskModal.deleteTask")}</Text>
+                  <Text style={styles.deleteButtonText}>
+                    {t("taskModal.deleteTask")}
+                  </Text>
                 </Pressable>
               ) : (
-                <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-                  <Text style={{ fontSize: 13, color: theme.colors.statusDanger }}>
+                <View
+                  style={{ flexDirection: "row", gap: 8, alignItems: "center" }}
+                >
+                  <Text
+                    style={{ fontSize: 13, color: theme.colors.statusDanger }}
+                  >
                     {t("taskModal.confirmDeletePrompt")}
                   </Text>
                   <Pressable
                     onPress={handleDelete}
-                    style={[styles.deleteButton, { backgroundColor: theme.colors.statusDanger }]}
+                    style={[
+                      styles.deleteButton,
+                      { backgroundColor: theme.colors.statusDanger },
+                    ]}
                     disabled={isSaving}
                   >
                     <Text style={[styles.deleteButtonText, { color: "#fff" }]}>
@@ -458,9 +494,14 @@ export function TaskModal({
                   </Pressable>
                   <Pressable
                     onPress={() => setShowDeleteConfirm(false)}
-                    style={[styles.optionChip, { backgroundColor: theme.colors.surface2 }]}
+                    style={[
+                      styles.optionChip,
+                      { backgroundColor: theme.colors.surface2 },
+                    ]}
                   >
-                    <Text style={styles.optionChipText}>{t("taskModal.cancel")}</Text>
+                    <Text style={styles.optionChipText}>
+                      {t("taskModal.cancel")}
+                    </Text>
                   </Pressable>
                 </View>
               )}
@@ -474,7 +515,9 @@ export function TaskModal({
               style={styles.cancelButton}
               disabled={isSaving}
             >
-              <Text style={styles.cancelButtonText}>{t("taskModal.cancel")}</Text>
+              <Text style={styles.cancelButtonText}>
+                {t("taskModal.cancel")}
+              </Text>
             </Pressable>
 
             <Pressable
@@ -486,8 +529,8 @@ export function TaskModal({
                 {isSaving
                   ? t("taskModal.saving")
                   : session.mode === "edit"
-                  ? t("taskModal.saveChanges")
-                  : t("taskModal.submitCreate")}
+                    ? t("taskModal.saveChanges")
+                    : t("taskModal.submitCreate")}
               </Text>
             </Pressable>
           </View>

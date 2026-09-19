@@ -21,8 +21,8 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 
 ## Requirements
 
-- **Paseo**: `>= 0.8.0`
-- **Node.js**: `>= 20.0.0` (recommended for development)
+- **Paseo Host Runtime Commitment**: `>= 0.8.0` (declared in `paseo-plugin.json`). As a Paseo workspace plugin, production runtime execution is managed and hosted by the Paseo application environment.
+- **Development & CI Baseline**: Node.js `>= 24.0.0`. Node 24 is required for local development, linting, formatting, TypeScript checks, and automated testing via Node's native test runner (`node --test`) and type stripping (`--experimental-strip-types`).
 
 ---
 
@@ -33,11 +33,13 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 No manual build or git cloning needed. You can install directly via npm or GitHub:
 
 **Via NPM (Release package):**
+
 ```bash
 paseo plugin install npm:paseo-kanban
 ```
 
 **Via GitHub:**
+
 ```bash
 paseo plugin add breathi3552/paseo-kanban
 ```
@@ -69,6 +71,7 @@ npm install
 # 2. Link this directory into your local Paseo daemon
 paseo plugin link .
 ```
+
 ---
 
 ## Development & Testing
@@ -77,23 +80,37 @@ paseo plugin link .
 
 ```bash
 npm install
+# or clean install:
+npm ci
 ```
 
-### Run Tests
+### Unified Quality Guardrails (Check)
 
-Runs unit tests for board domain logic, subtask mutations, and drag hit-testing:
+Runs typecheck, automated test suites, linting, and format verification in sequence:
 
 ```bash
-npm test
+npm run check
 ```
 
-### Type Checking
+### Individual Quality Tasks
 
-Validates TypeScript types across client and server entry points:
-
-```bash
-npm run typecheck
-```
+- **Run Tests**: Cross-platform auto-discovery of all `test/*.test.mjs` suites:
+  ```bash
+  npm test
+  ```
+- **Type Checking**: Validates TypeScript types across client and server entry points:
+  ```bash
+  npm run typecheck
+  ```
+- **Linting**: Static code analysis with ESLint:
+  ```bash
+  npm run lint
+  ```
+- **Formatting**: Check or format code style with Prettier:
+  ```bash
+  npm run format:check
+  npm run format
+  ```
 
 ---
 

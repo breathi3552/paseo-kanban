@@ -6,9 +6,13 @@ export interface ProjectItem {
   projectDisplayName: string;
 }
 
-export type ProjectNameResolver = (projectId: string | null | undefined) => string | null;
+export type ProjectNameResolver = (
+  projectId: string | null | undefined,
+) => string | null;
 
-export function createProjectNameResolver(projects: ProjectItem[]): ProjectNameResolver {
+export function createProjectNameResolver(
+  projects: ProjectItem[],
+): ProjectNameResolver {
   const index = new Map<string, string>();
   for (const p of projects) {
     index.set(p.projectId, p.projectDisplayName);
@@ -21,7 +25,7 @@ export function createProjectNameResolver(projects: ProjectItem[]): ProjectNameR
 
 export function getProjectDisplayName(
   projectId: string | null | undefined,
-  projectsOrResolver: ProjectItem[] | ProjectNameResolver
+  projectsOrResolver: ProjectItem[] | ProjectNameResolver,
 ): string | null {
   if (!projectId) return null;
   if (typeof projectsOrResolver === "function") {
@@ -37,7 +41,9 @@ export interface ProjectsState {
   error?: string | null;
 }
 
-export function fetchProjectsWithOrderControl(onUpdate: (state: ProjectsState) => void) {
+export function fetchProjectsWithOrderControl(
+  onUpdate: (state: ProjectsState) => void,
+) {
   let latestRequestId = 0;
   let isDestroyed = false;
 
@@ -100,7 +106,10 @@ export function useProjects() {
     };
   }, [paseo]);
 
-  const resolveProjectName = useMemo(() => createProjectNameResolver(projects), [projects]);
+  const resolveProjectName = useMemo(
+    () => createProjectNameResolver(projects),
+    [projects],
+  );
 
   return {
     projects,

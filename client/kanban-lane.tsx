@@ -1,5 +1,12 @@
 import { useMemo, useEffect, Fragment, memo } from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet, PanResponder } from "react-native";
+import {
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  StyleSheet,
+  PanResponder,
+} from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanLane, KanbanTask } from "../shared/kanban";
 import { KanbanCard, KanbanDropSpacer } from "./kanban-card";
@@ -50,7 +57,10 @@ function KanbanLaneViewInner({
 
   // Sync card order to controller whenever tasks in this lane change
   useEffect(() => {
-    setLaneCardOrder?.(lane.id, tasks.map((t) => t.id));
+    setLaneCardOrder?.(
+      lane.id,
+      tasks.map((t) => t.id),
+    );
   }, [lane.id, tasks, setLaneCardOrder]);
 
   const styles = useMemo(
@@ -142,7 +152,7 @@ function KanbanLaneViewInner({
           userSelect: "none",
         },
       }),
-    [theme, layout.compact]
+    [theme, layout.compact],
   );
 
   const dropBeforeTaskId = isHovered
@@ -211,7 +221,11 @@ function KanbanLaneViewInner({
                 }
                 theme={theme}
                 layout={layout}
-                binding={bindCard(task.id, () => onSelectTask(task), PanResponder)}
+                binding={bindCard(
+                  task.id,
+                  () => onSelectTask(task),
+                  PanResponder,
+                )}
               />
             </Fragment>
           ))}
@@ -226,9 +240,7 @@ function KanbanLaneViewInner({
 
           {tasks.length === 0 && !isHovered && (
             <View style={styles.emptyLanePlaceholder}>
-              <Text style={styles.emptyLaneText}>
-                {t("lane.emptyHint")}
-              </Text>
+              <Text style={styles.emptyLaneText}>{t("lane.emptyHint")}</Text>
             </View>
           )}
         </View>

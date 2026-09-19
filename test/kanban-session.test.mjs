@@ -126,9 +126,21 @@ test("正常路径: 编辑任务并更新属性，严格保留子步骤标识与
   assert.equal(updated.laneId, "in-progress");
   assert.equal(updated.projectId, "proj-1");
   assert.equal(updated.subtasks.length, 3);
-  assert.deepEqual(updated.subtasks[0], { id: "sub-a", title: "步骤A 改名", completed: true });
-  assert.deepEqual(updated.subtasks[1], { id: "sub-b", title: "步骤B", completed: true });
-  assert.deepEqual(updated.subtasks[2], { id: "sub-c", title: "步骤C 新增", completed: false });
+  assert.deepEqual(updated.subtasks[0], {
+    id: "sub-a",
+    title: "步骤A 改名",
+    completed: true,
+  });
+  assert.deepEqual(updated.subtasks[1], {
+    id: "sub-b",
+    title: "步骤B",
+    completed: true,
+  });
+  assert.deepEqual(updated.subtasks[2], {
+    id: "sub-c",
+    title: "步骤C 新增",
+    completed: false,
+  });
 });
 
 test("正常路径: 删除任务操作", async () => {
@@ -178,7 +190,10 @@ test("正常路径: 泳道创建、重命名与删除", async () => {
   assert.equal(editSession.initialValues.title, "测试验证");
   const editResult = await editSession.saveDraft({ title: "QA验收" });
   assert.equal(editResult.success, true);
-  assert.equal(store.values.lanes.find((l) => l.id === "lane-qa")?.title, "QA验收");
+  assert.equal(
+    store.values.lanes.find((l) => l.id === "lane-qa")?.title,
+    "QA验收",
+  );
 
   // 3. 删除空泳道
   const delSession = openLaneSession({
@@ -192,7 +207,10 @@ test("正常路径: 泳道创建、重命名与删除", async () => {
   const delResult = await delSession.deleteLane();
   assert.equal(delResult.success, true);
   assert.equal(store.values.lanes.length, 3);
-  assert.equal(store.values.lanes.some((l) => l.id === "lane-qa"), false);
+  assert.equal(
+    store.values.lanes.some((l) => l.id === "lane-qa"),
+    false,
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -217,9 +235,17 @@ test("并发路径: 打开会话后外部发生修改，原会话保存被拒绝
   await store.save(
     {
       ...store.values,
-      tasks: [{ id: "t1", title: "会话B修改的标题", laneId: "in-progress", projectId: null, subtasks: [] }],
+      tasks: [
+        {
+          id: "t1",
+          title: "会话B修改的标题",
+          laneId: "in-progress",
+          projectId: null,
+          subtasks: [],
+        },
+      ],
     },
-    store.revision
+    store.revision,
   );
   assert.equal(store.revision, "rev-2");
 
@@ -258,7 +284,7 @@ test("并发路径: 目标被外部删除后，原会话保存被拒绝，已删
       ...store.values,
       tasks: [],
     },
-    store.revision
+    store.revision,
   );
   assert.equal(store.values.tasks.length, 0);
 
@@ -326,7 +352,7 @@ test("基准路径: 外部更新后原会话仍提交与打开时相配的基准
   assert.equal(
     lastCall.revision,
     initialRevision,
-    "提交的版本号必须严格是会话打开时的 baseRevision (rev-1)，绝不能改用最新版本号 (rev-3)"
+    "提交的版本号必须严格是会话打开时的 baseRevision (rev-1)，绝不能改用最新版本号 (rev-3)",
   );
 });
 
@@ -569,7 +595,10 @@ test("排序操作: 成功移动任务，版本号匹配并推进，完整任务
   assert.equal(result.unchanged, undefined);
   assert.equal(store.history.length, 1);
   assert.equal(store.history[0].revision, baseRevision);
-  assert.deepEqual(store.values.tasks.map((t) => t.id), ["t2", "t1"]);
+  assert.deepEqual(
+    store.values.tasks.map((t) => t.id),
+    ["t2", "t1"],
+  );
 });
 
 test("排序操作: 同泳道原位操作返回 unchanged，不产生存储写入", async () => {
@@ -601,16 +630,28 @@ test("排序操作: 使用过期版本号提交返回保存失败，未覆盖新
   });
 
   // 外部并发修改导致 store 版本推进
-  await store.save({
-    ...store.values,
-    tasks: [{ id: "t1", title: "外部并发修改的标题", laneId: "to-plan", projectId: null }],
-  }, store.revision);
+  await store.save(
+    {
+      ...store.values,
+      tasks: [
+        {
+          id: "t1",
+          title: "外部并发修改的标题",
+          laneId: "to-plan",
+          projectId: null,
+        },
+      ],
+    },
+    store.revision,
+  );
 
   // 旧事务使用旧版本号提交
   const result = await executeTaskReorder({
     baseBoard: {
       lanes: store.values.lanes,
-      tasks: [{ id: "t1", title: "旧快照任务", laneId: "to-plan", projectId: null }],
+      tasks: [
+        { id: "t1", title: "旧快照任务", laneId: "to-plan", projectId: null },
+      ],
     },
     baseRevision: "rev-1", // 已过期的版本
     taskId: "t1",
@@ -717,7 +758,10 @@ test("会话子步骤: 增删改与完成状态、稳定 ID 生成与碰撞防�
   assert.match(session.getSnapshot().error ?? "", /子步骤内容不能为空/);
 
   // 3. 修改子步骤内容与勾选完成
-  session.updateSubtask("sub_1", { completed: true, title: "检查网络配置 (已通过)" });
+  session.updateSubtask("sub_1", {
+    completed: true,
+    title: "检查网络配置 (已通过)",
+  });
   const sub1 = session.getSnapshot().subtasks[0];
   assert.equal(sub1.id, "sub_1", "ID 必须稳定保留");
   assert.equal(sub1.completed, true);
@@ -782,7 +826,11 @@ test("会话并发与防护: 保存中拒绝草稿修改与重复提交，保存
   assert.equal(failResult.success, false);
   assert.match(failResult.error, /保存失败|冲突/);
   assert.equal(staleSession.getSnapshot().isSaving, false);
-  assert.equal(staleSession.getSnapshot().title, "未同步的内容", "失败必须完整保留草稿");
+  assert.equal(
+    staleSession.getSnapshot().title,
+    "未同步的内容",
+    "失败必须完整保留草稿",
+  );
 });
 
 test("泳道会话: 快照包含保护判断，重复提交与删除拦截均被保护", async () => {
@@ -844,7 +892,7 @@ test("跨模块全流程: 筛选 -> 拖拽 -> 落位 -> 保存 -> 编辑 -> 外�
   // 无可见锚点规则：追加至 in-progress 隐藏任务 t2 之后
   assert.deepEqual(
     store.values.tasks.map((t) => `${t.id}:${t.laneId}`),
-    ["t2:in-progress", "t1:in-progress"]
+    ["t2:in-progress", "t1:in-progress"],
   );
 
   // 3. 编辑: 打开任务 t1 的编辑会话并添加子步骤
@@ -859,13 +907,21 @@ test("跨模块全流程: 筛选 -> 拖拽 -> 落位 -> 保存 -> 编辑 -> 外�
   session1.addSubtask("检查安全合规");
   const saveRes = await session1.save();
   assert.equal(saveRes.success, true);
-  assert.equal(store.values.tasks.find((t) => t.id === "t1").title, "Task 1 (强化版)");
+  assert.equal(
+    store.values.tasks.find((t) => t.id === "t1").title,
+    "Task 1 (强化版)",
+  );
 
   // 4. 外部冲突: 外部发生写入导致 store revision 推进
-  await store.save({
-    ...store.values,
-    tasks: store.values.tasks.map((t) => (t.id === "t2" ? { ...t, title: "Task 2 外部修改" } : t)),
-  }, store.revision);
+  await store.save(
+    {
+      ...store.values,
+      tasks: store.values.tasks.map((t) =>
+        t.id === "t2" ? { ...t, title: "Task 2 外部修改" } : t,
+      ),
+    },
+    store.revision,
+  );
 
   // 5. 旧事务尝试再排序，使用过期的 revision
   const staleReorder = await executeTaskReorder({
@@ -880,7 +936,10 @@ test("跨模块全流程: 筛选 -> 拖拽 -> 落位 -> 保存 -> 编辑 -> 外�
   assert.equal(staleReorder.success, false);
   assert.match(staleReorder.error, /保存失败|冲突/);
   // 外部修改完整保留，t1 仍停留在 in-progress
-  assert.equal(store.values.tasks.find((t) => t.id === "t1").laneId, "in-progress");
+  assert.equal(
+    store.values.tasks.find((t) => t.id === "t1").laneId,
+    "in-progress",
+  );
 
   // 6. 刷新后重新拖拽: 读取最新看板与 revision，重新拖拽至 done 泳道
   const freshReorder = await executeTaskReorder({
@@ -898,7 +957,9 @@ test("跨模块全流程: 筛选 -> 拖拽 -> 落位 -> 保存 -> 编辑 -> 外�
 
 test("解耦验证: 项目重命名与项目查询失败不破坏正在进行的任务排序或草稿编辑", async () => {
   const store = createMockStore({
-    tasks: [{ id: "t1", title: "核心任务", laneId: "to-plan", projectId: "p-proj" }],
+    tasks: [
+      { id: "t1", title: "核心任务", laneId: "to-plan", projectId: "p-proj" },
+    ],
   });
 
   const session = openTaskSession({
@@ -925,5 +986,3 @@ test("解耦验证: 项目重命名与项目查询失败不破坏正在进行的
   assert.equal(saveRes.success, true);
   assert.equal(store.values.tasks[0].projectId, "p-proj");
 });
-
-

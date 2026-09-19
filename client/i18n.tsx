@@ -1,9 +1,11 @@
-import * as React from "react";
 import { useState, useEffect, useMemo } from "react";
 
 export type SupportedLanguage = "zh" | "en";
 
-export type TranslationParams = Record<string, string | number | boolean | null | undefined>;
+export type TranslationParams = Record<
+  string,
+  string | number | boolean | null | undefined
+>;
 
 export const translations = {
   zh: {
@@ -16,7 +18,8 @@ export const translations = {
     "kanban.refresh": "刷新最新数据",
     "kanban.loadError": "加载看板配置失败：{error}",
     "kanban.formatError": "看板配置格式异常：{error}",
-    "kanban.formatErrorHint": "数据未被悄悄覆盖。若需使用默认结构可重置，或重试加载。",
+    "kanban.formatErrorHint":
+      "数据未被悄悄覆盖。若需使用默认结构可重置，或重试加载。",
     "kanban.retryLoad": "重试加载",
     "kanban.resetDefault": "重置为默认结构",
     "kanban.saveFailed": "保存失败：{error}",
@@ -35,7 +38,8 @@ export const translations = {
     "laneModal.nameLabel": "泳道名称 *",
     "laneModal.namePlaceholder": "例如：待测试、发布中...",
     "laneModal.cannotDeleteLast": "看板必须至少保留一条泳道，无法删除此泳道。",
-    "laneModal.cannotDeleteHasTasks": "此泳道当前包含 {count} 个任务，需清空或移走任务后方可删除。",
+    "laneModal.cannotDeleteHasTasks":
+      "此泳道当前包含 {count} 个任务，需清空或移走任务后方可删除。",
     "laneModal.deleteLane": "删除此泳道",
     "laneModal.confirmDeletePrompt": "确认删除？",
     "laneModal.confirmDelete": "确认删除",
@@ -74,7 +78,8 @@ export const translations = {
     "kanban.refresh": "Refresh latest data",
     "kanban.loadError": "Failed to load kanban settings: {error}",
     "kanban.formatError": "Kanban settings format error: {error}",
-    "kanban.formatErrorHint": "Data was not silently overwritten. Reset to default structure if needed, or retry loading.",
+    "kanban.formatErrorHint":
+      "Data was not silently overwritten. Reset to default structure if needed, or retry loading.",
     "kanban.retryLoad": "Retry Loading",
     "kanban.resetDefault": "Reset to Default",
     "kanban.saveFailed": "Save failed: {error}",
@@ -85,15 +90,18 @@ export const translations = {
     "kanban.projectsError": "(Project list update restricted)",
     "lane.add": "+ Add",
     "lane.manage": "Manage",
-    "lane.emptyHint": "No cards yet. Click '+' in the top right or drag cards here.",
+    "lane.emptyHint":
+      "No cards yet. Click '+' in the top right or drag cards here.",
     "card.dragHandle": "Drag handle",
     "card.subtasksCount": "Subtasks {completed}/{total}",
     "laneModal.titleEdit": "Manage Lane",
     "laneModal.titleCreate": "Add Lane",
     "laneModal.nameLabel": "Lane Name *",
     "laneModal.namePlaceholder": "e.g., Testing, In Review...",
-    "laneModal.cannotDeleteLast": "A kanban board must retain at least one lane. Cannot delete this lane.",
-    "laneModal.cannotDeleteHasTasks": "This lane currently contains {count} tasks. Clear or move tasks before deleting.",
+    "laneModal.cannotDeleteLast":
+      "A kanban board must retain at least one lane. Cannot delete this lane.",
+    "laneModal.cannotDeleteHasTasks":
+      "This lane currently contains {count} tasks. Clear or move tasks before deleting.",
     "laneModal.deleteLane": "Delete Lane",
     "laneModal.confirmDeletePrompt": "Confirm delete?",
     "laneModal.confirmDelete": "Confirm Delete",
@@ -166,7 +174,10 @@ interface EnvironmentGlobals {
     language?: string;
   };
   window?: {
-    addEventListener(event: string, listener: (event: { key?: string }) => void): void;
+    addEventListener(
+      event: string,
+      listener: (event: { key?: string }) => void,
+    ): void;
   };
   i18n?: {
     language?: string;
@@ -175,7 +186,9 @@ interface EnvironmentGlobals {
 
 const env = globalThis as typeof globalThis & EnvironmentGlobals;
 
-export function detectPaseoLanguage(hostProps?: DetectLanguageOptions): SupportedLanguage {
+export function detectPaseoLanguage(
+  hostProps?: DetectLanguageOptions,
+): SupportedLanguage {
   if (languageOverride) {
     return languageOverride;
   }
@@ -254,14 +267,18 @@ function ensureGlobalListeners() {
   });
 }
 
-export function getLanguage(hostProps?: DetectLanguageOptions): SupportedLanguage {
+export function getLanguage(
+  hostProps?: DetectLanguageOptions,
+): SupportedLanguage {
   if (hostProps) {
     return detectPaseoLanguage(hostProps);
   }
   return currentLanguage;
 }
 
-export function subscribeLanguage(listener: (lang: SupportedLanguage) => void): () => void {
+export function subscribeLanguage(
+  listener: (lang: SupportedLanguage) => void,
+): () => void {
   listeners.add(listener);
   ensureGlobalListeners();
   return () => {
@@ -269,7 +286,10 @@ export function subscribeLanguage(listener: (lang: SupportedLanguage) => void): 
   };
 }
 
-export function formatString(template: string, params?: TranslationParams): string {
+export function formatString(
+  template: string,
+  params?: TranslationParams,
+): string {
   if (!params) return template;
   return template.replace(/\{(\w+)\}/g, (match, key) => {
     return params[key] != null ? String(params[key]) : match;
@@ -279,7 +299,7 @@ export function formatString(template: string, params?: TranslationParams): stri
 export function t(
   key: TranslationKey,
   langOrParams?: SupportedLanguage | TranslationParams,
-  params?: TranslationParams
+  params?: TranslationParams,
 ): string {
   let lang: SupportedLanguage;
   let finalParams: TranslationParams | undefined;
@@ -303,22 +323,28 @@ export interface I18nContextValue {
 }
 
 export function useI18n(hostProps?: DetectLanguageOptions): I18nContextValue {
-  const [lang, setLang] = useState<SupportedLanguage>(() => detectPaseoLanguage(hostProps));
+  const hostLocale =
+    hostProps?.locale ??
+    hostProps?.language ??
+    hostProps?.host?.locale ??
+    hostProps?.host?.language;
+  const [lang, setLang] = useState<SupportedLanguage>(() =>
+    detectPaseoLanguage(hostProps),
+  );
 
   useEffect(() => {
     ensureGlobalListeners();
     const immediate = detectPaseoLanguage(hostProps);
-    if (immediate !== lang) {
-      setLang(immediate);
-    }
+    setLang((prev) => (immediate !== prev ? immediate : prev));
     return subscribeLanguage((newLang) => {
       setLang(newLang);
     });
-  }, [hostProps?.host?.language, hostProps?.locale, hostProps?.language]);
+  }, [hostLocale, hostProps]);
 
   const tBound = useMemo(
-    () => (key: TranslationKey, params?: TranslationParams) => t(key, lang, params),
-    [lang]
+    () => (key: TranslationKey, params?: TranslationParams) =>
+      t(key, lang, params),
+    [lang],
   );
 
   return {

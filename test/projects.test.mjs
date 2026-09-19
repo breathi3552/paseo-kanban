@@ -22,6 +22,9 @@ test("项目名称解析: 空关联、已知项目显示名称、未知项目回
   // 2. 已知项目
   assert.equal(resolve("p1"), "基础设施");
   assert.equal(resolve("p2"), "用户界面");
+  assert.equal(getProjectDisplayName("p1", projects), "基础设施");
+  assert.equal(getProjectDisplayName("unknown", projects), "unknown");
+  assert.equal(getProjectDisplayName("p1", resolve), "基础设施");
 
   // 3. 未知项目回退其 ID
   assert.equal(resolve("p-unknown"), "p-unknown");
@@ -47,10 +50,8 @@ test("请求乱序控制: A 先发、B 后发先完成、A 最后完成，A 的�
   });
 
   let resolveA;
-  let rejectA;
-  const promiseA = new Promise((resolve, reject) => {
+  const promiseA = new Promise((resolve) => {
     resolveA = resolve;
-    rejectA = reject;
   });
 
   let resolveB;
@@ -72,7 +73,9 @@ test("请求乱序控制: A 先发、B 后发先完成、A 最后完成，A 的�
   // 等待 microtask
   await new Promise((r) => setImmediate(r));
 
-  assert.deepEqual(state.projects, [{ projectId: "pB", projectDisplayName: "项目B" }]);
+  assert.deepEqual(state.projects, [
+    { projectId: "pB", projectDisplayName: "项目B" },
+  ]);
   assert.equal(state.error, null);
 
   // A 随后完成（旧请求迟到）
@@ -86,35 +89,44 @@ test("请求乱序控制: A 先发、B 后发先完成、A 最后完成，A 的�
   assert.deepEqual(
     state.projects,
     [{ projectId: "pB", projectDisplayName: "项目B" }],
-    "旧请求 A 不能覆盖新请求 B 的结果"
+    "旧请求 A 不能覆盖新请求 B 的结果",
   );
 
   // 再次验证：如果 A 抛错迟到，也不能将错误覆盖到当前状态
-  let resolveC;
-  const promiseC = new Promise((resolve) => { resolveC = resolve; });
+  const promiseC = new Promise(() => {});
   controller.execute(() => promiseC);
 
   let rejectD;
-  const promiseD = new Promise((_, reject) => { rejectD = reject; });
+  const promiseD = new Promise((_, reject) => {
+    rejectD = reject;
+  });
   // 先发一个会被超车的慢失败请求
   const slowFailController = fetchProjectsWithOrderControl((next) => {
     state = { ...state, ...next };
   });
   slowFailController.execute(() => promiseD);
-  slowFailController.execute(() => Promise.resolve({
-    projects: [{ projectId: "pLatest", projectDisplayName: "最新项目" }],
-  }));
+  slowFailController.execute(() =>
+    Promise.resolve({
+      projects: [{ projectId: "pLatest", projectDisplayName: "最新项目" }],
+    }),
+  );
 
   await new Promise((r) => setImmediate(r));
-  assert.deepEqual(state.projects, [{ projectId: "pLatest", projectDisplayName: "最新项目" }]);
+  assert.deepEqual(state.projects, [
+    { projectId: "pLatest", projectDisplayName: "最新项目" },
+  ]);
 
   // 此时慢失败请求 D 发生错误
   rejectD(new Error("Old network timeout"));
-  try { await promiseD; } catch {}
+  try {
+    await promiseD;
+  } catch {}
   await new Promise((r) => setImmediate(r));
 
   assert.equal(state.error, null, "过期的失败不能覆盖较新的成功状态");
-  assert.deepEqual(state.projects, [{ projectId: "pLatest", projectDisplayName: "最新项目" }]);
+  assert.deepEqual(state.projects, [
+    { projectId: "pLatest", projectDisplayName: "最新项目" },
+  ]);
 });
 
 test("失败恢复: 查询失败保留最后成功列表并暴露错误，后续成功清除错误", async () => {
@@ -131,7 +143,9 @@ test("失败恢复: 查询失败保留最后成功列表并暴露错误，后续
   await controller.execute(async () => ({
     projects: [{ projectId: "p1", projectDisplayName: "项目1" }],
   }));
-  assert.deepEqual(state.projects, [{ projectId: "p1", projectDisplayName: "项目1" }]);
+  assert.deepEqual(state.projects, [
+    { projectId: "p1", projectDisplayName: "项目1" },
+  ]);
   assert.equal(state.error, null);
 
   // 2. 刷新请求失败: 必须保留旧项目列表，同时暴露错误
@@ -141,7 +155,7 @@ test("失败恢复: 查询失败保留最后成功列表并暴露错误，后续
   assert.deepEqual(
     state.projects,
     [{ projectId: "p1", projectDisplayName: "项目1" }],
-    "失败时保留最后一次成功列表"
+    "失败时保留最后一次成功列表",
   );
   assert.match(state.error ?? "", /503 Service Unavailable/);
 
@@ -149,7 +163,9 @@ test("失败恢复: 查询失败保留最后成功列表并暴露错误，后续
   await controller.execute(async () => ({
     projects: [{ projectId: "p1", projectDisplayName: "项目1已更新" }],
   }));
-  assert.deepEqual(state.projects, [{ projectId: "p1", projectDisplayName: "项目1已更新" }]);
+  assert.deepEqual(state.projects, [
+    { projectId: "p1", projectDisplayName: "项目1已更新" },
+  ]);
   assert.equal(state.error, null, "后续成功清除错误");
 });
 

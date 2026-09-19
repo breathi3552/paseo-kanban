@@ -21,8 +21,8 @@
 
 ## 环境要求
 
-- **Paseo**：`>= 0.8.0`
-- **Node.js**：`>= 20.0.0`（开发环境推荐）
+- **Paseo 宿主版本承诺**：`>= 0.8.0`（声明于 `paseo-plugin.json`）。作为 Paseo 工作区插件，插件的生产运行时环境由 Paseo 宿主应用提供并托管执行。
+- **开发与 CI 环境基线**：Node.js `>= 24.0.0`。本地贡献代码、运行静态检查、代码格式化、类型检查与自动化测试必须基于 Node 24，依赖其原生的 `--experimental-strip-types` 类型擦除与原生测试运行器（`node --test`）。
 
 ---
 
@@ -33,11 +33,13 @@
 无需克隆源码或手动编译，推荐直接使用 Paseo CLI 安装：
 
 **方式一：通过 NPM 官方包安装（推荐）**
+
 ```bash
 paseo plugin install npm:paseo-kanban
 ```
 
 **方式二：直接通过 GitHub 仓库安装**
+
 ```bash
 paseo plugin add breathi3552/paseo-kanban
 ```
@@ -69,6 +71,7 @@ npm install
 # 2. 将当前开发目录软链接至本地 Paseo 守护进程
 paseo plugin link .
 ```
+
 ---
 
 ## 开发与测试
@@ -77,23 +80,37 @@ paseo plugin link .
 
 ```bash
 npm install
+# 或干净安装验证：
+npm ci
 ```
 
-### 运行单元测试
+### 统一质量护栏检查
 
-执行看板状态模型、并发校验、子步骤更新以及拖拽命中测试的自动化用例：
+按顺序执行类型检查、自动化测试套件、静态代码检查及代码格式验证：
 
 ```bash
-npm test
+npm run check
 ```
 
-### 类型检查
+### 各独立质量命令
 
-校验前端组件与服务端扩展的 TypeScript 类型完整性：
-
-```bash
-npm run typecheck
-```
+- **运行单元测试**：跨平台自动发现并执行所有 `test/*.test.mjs` 测试套件：
+  ```bash
+  npm test
+  ```
+- **类型检查**：校验前端组件与服务端扩展的 TypeScript 类型完整性：
+  ```bash
+  npm run typecheck
+  ```
+- **代码规范检查 (Lint)**：基于 ESLint 开展轻量静态检查：
+  ```bash
+  npm run lint
+  ```
+- **代码格式检查与格式化 (Format)**：基于 Prettier 校验或自动格式化：
+  ```bash
+  npm run format:check
+  npm run format
+  ```
 
 ---
 

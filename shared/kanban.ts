@@ -96,7 +96,7 @@ export type ProjectFilter =
 
 export function isTaskMatchingFilter(
   task: KanbanTask,
-  filter?: ProjectFilter | string | null
+  filter?: ProjectFilter | string | null,
 ): boolean {
   if (!filter) return true;
   if (typeof filter === "string") {
@@ -111,9 +111,13 @@ export function isTaskMatchingFilter(
 
 export function filterTasksByProject(
   tasks: KanbanTask[],
-  filter?: ProjectFilter | string | null
+  filter?: ProjectFilter | string | null,
 ): KanbanTask[] {
-  if (!filter || filter === "all" || (typeof filter === "object" && filter.type === "all")) {
+  if (
+    !filter ||
+    filter === "all" ||
+    (typeof filter === "object" && filter.type === "all")
+  ) {
     return tasks;
   }
   return tasks.filter((t) => isTaskMatchingFilter(t, filter));
@@ -132,7 +136,7 @@ export const kanbanSettings = defineSettings({
 
 export function addLane(
   board: KanbanBoard,
-  lane: { id: string; title: string }
+  lane: { id: string; title: string },
 ): KanbanBoard {
   const trimmedId = lane.id.trim();
   const trimmedTitle = lane.title.trim();
@@ -156,7 +160,7 @@ export function addLane(
 export function updateLane(
   board: KanbanBoard,
   laneId: string,
-  patch: { title: string }
+  patch: { title: string },
 ): KanbanBoard {
   const trimmedTitle = patch.title.trim();
   if (!trimmedTitle) {
@@ -195,7 +199,7 @@ export function deleteLane(board: KanbanBoard, laneId: string): KanbanBoard {
   const hasTasks = board.tasks.some((t) => t.laneId === laneId);
   if (hasTasks) {
     throw new Error(
-      `Cannot delete lane "${laneId}" because it contains tasks. Move or delete tasks first.`
+      `Cannot delete lane "${laneId}" because it contains tasks. Move or delete tasks first.`,
     );
   }
 
@@ -215,7 +219,7 @@ export function addTask(
     laneId: string;
     projectId?: string | null;
     subtasks?: Array<{ id: string; title: string; completed?: boolean }>;
-  }
+  },
 ): KanbanBoard {
   const trimmedId = task.id.trim();
   const trimmedTitle = task.title.trim();
@@ -260,13 +264,16 @@ export function updateTask(
     laneId?: string;
     projectId?: string | null;
     subtasks?: KanbanSubtask[];
-  }
+  },
 ): KanbanBoard {
   let found = false;
   if (patch.title !== undefined && !patch.title.trim()) {
     throw new Error("Task title cannot be empty");
   }
-  if (patch.laneId !== undefined && !board.lanes.some((l) => l.id === patch.laneId)) {
+  if (
+    patch.laneId !== undefined &&
+    !board.lanes.some((l) => l.id === patch.laneId)
+  ) {
     throw new Error(`Target lane "${patch.laneId}" does not exist`);
   }
 
@@ -276,9 +283,13 @@ export function updateTask(
       return {
         ...task,
         title: patch.title !== undefined ? patch.title.trim() : task.title,
-        description: patch.description !== undefined ? patch.description : task.description,
+        description:
+          patch.description !== undefined
+            ? patch.description
+            : task.description,
         laneId: patch.laneId !== undefined ? patch.laneId : task.laneId,
-        projectId: patch.projectId !== undefined ? patch.projectId : task.projectId,
+        projectId:
+          patch.projectId !== undefined ? patch.projectId : task.projectId,
         subtasks: patch.subtasks !== undefined ? patch.subtasks : task.subtasks,
       };
     }
@@ -312,7 +323,7 @@ export function reorderTask(
   taskId: string,
   targetLaneId: string,
   targetIndex?: number,
-  visibleTaskIdsOrFilter?: string[] | ProjectFilter | string
+  visibleTaskIdsOrFilter?: string[] | ProjectFilter | string,
 ): KanbanBoard {
   const taskToMove = board.tasks.find((t) => t.id === taskId);
   if (!taskToMove) {
@@ -334,7 +345,9 @@ export function reorderTask(
 
   const isSameLane = taskToMove.laneId === targetLaneId;
   const remainingTasks = board.tasks.filter((t) => t.id !== taskId);
-  const targetLaneTasks = remainingTasks.filter((t) => t.laneId === targetLaneId);
+  const targetLaneTasks = remainingTasks.filter(
+    (t) => t.laneId === targetLaneId,
+  );
 
   // Determine visibility predicate
   let isTaskVisible: (t: KanbanTask) => boolean;
@@ -345,7 +358,8 @@ export function reorderTask(
     isTaskVisible = (t: KanbanTask) => idSet.has(t.id);
     isFilterActive = true;
   } else if (visibleTaskIdsOrFilter) {
-    isTaskVisible = (t: KanbanTask) => isTaskMatchingFilter(t, visibleTaskIdsOrFilter);
+    isTaskVisible = (t: KanbanTask) =>
+      isTaskMatchingFilter(t, visibleTaskIdsOrFilter);
     isFilterActive =
       typeof visibleTaskIdsOrFilter === "string"
         ? visibleTaskIdsOrFilter !== "all"
@@ -376,7 +390,9 @@ export function reorderTask(
     let insertAfterTask: KanbanTask | undefined;
     for (let i = targetLaneIdx - 1; i >= 0; i--) {
       const prevLaneId = board.lanes[i].id;
-      const prevLaneTasks = remainingTasks.filter((t) => t.laneId === prevLaneId);
+      const prevLaneTasks = remainingTasks.filter(
+        (t) => t.laneId === prevLaneId,
+      );
       if (prevLaneTasks.length > 0) {
         insertAfterTask = prevLaneTasks[prevLaneTasks.length - 1];
         break;
@@ -388,7 +404,9 @@ export function reorderTask(
       let insertBeforeTask: KanbanTask | undefined;
       for (let i = targetLaneIdx + 1; i < board.lanes.length; i++) {
         const nextLaneId = board.lanes[i].id;
-        const nextLaneTasks = remainingTasks.filter((t) => t.laneId === nextLaneId);
+        const nextLaneTasks = remainingTasks.filter(
+          (t) => t.laneId === nextLaneId,
+        );
         if (nextLaneTasks.length > 0) {
           insertBeforeTask = nextLaneTasks[0];
           break;
@@ -414,7 +432,10 @@ export function reorderTask(
       } else {
         const clampedVisibleIdx = Math.max(
           0,
-          Math.min(targetIndex ?? visibleTargetTasks.length, visibleTargetTasks.length)
+          Math.min(
+            targetIndex ?? visibleTargetTasks.length,
+            visibleTargetTasks.length,
+          ),
         );
         if (clampedVisibleIdx >= visibleTargetTasks.length) {
           referenceTask = visibleTargetTasks[visibleTargetTasks.length - 1];
@@ -427,7 +448,7 @@ export function reorderTask(
     } else {
       const clampedLaneIdx = Math.max(
         0,
-        Math.min(targetIndex ?? targetLaneTasks.length, targetLaneTasks.length)
+        Math.min(targetIndex ?? targetLaneTasks.length, targetLaneTasks.length),
       );
       if (clampedLaneIdx >= targetLaneTasks.length) {
         referenceTask = targetLaneTasks[targetLaneTasks.length - 1];
@@ -450,7 +471,10 @@ export function reorderTask(
 
   if (
     nextTasks.length === board.tasks.length &&
-    nextTasks.every((t, idx) => t.id === board.tasks[idx].id && t.laneId === board.tasks[idx].laneId)
+    nextTasks.every(
+      (t, idx) =>
+        t.id === board.tasks[idx].id && t.laneId === board.tasks[idx].laneId,
+    )
   ) {
     return board;
   }
@@ -460,6 +484,3 @@ export function reorderTask(
     tasks: nextTasks,
   });
 }
-
-
-

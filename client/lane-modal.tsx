@@ -26,7 +26,7 @@ export function LaneModal({
   const snapshot = useSyncExternalStore(
     session.subscribe,
     session.getSnapshot,
-    session.getSnapshot
+    session.getSnapshot,
   );
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -142,7 +142,7 @@ export function LaneModal({
           fontWeight: "500",
         },
       }),
-    [theme, layout.compact]
+    [theme, layout.compact],
   );
 
   const handleSave = async () => {
@@ -161,7 +161,11 @@ export function LaneModal({
 
   return (
     <Modal
-      title={session.mode === "edit" ? t("laneModal.titleEdit") : t("laneModal.titleCreate")}
+      title={
+        session.mode === "edit"
+          ? t("laneModal.titleEdit")
+          : t("laneModal.titleCreate")
+      }
       icon={<Icon name="Columns3" size={18} color={theme.colors.foreground} />}
       open={open}
       onOpenChange={(next) => {
@@ -196,7 +200,9 @@ export function LaneModal({
             <Text style={styles.warningText}>
               {snapshot.lanesCount <= 1
                 ? t("laneModal.cannotDeleteLast")
-                : t("laneModal.cannotDeleteHasTasks", { count: snapshot.tasksInLaneCount })}
+                : t("laneModal.cannotDeleteHasTasks", {
+                    count: snapshot.tasksInLaneCount,
+                  })}
             </Text>
           </View>
         )}
@@ -210,16 +216,25 @@ export function LaneModal({
                 style={styles.deleteButton}
                 disabled={isSaving}
               >
-                <Text style={styles.deleteButtonText}>{t("laneModal.deleteLane")}</Text>
+                <Text style={styles.deleteButtonText}>
+                  {t("laneModal.deleteLane")}
+                </Text>
               </Pressable>
             ) : (
-              <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-                <Text style={{ fontSize: 13, color: theme.colors.statusDanger }}>
+              <View
+                style={{ flexDirection: "row", gap: 8, alignItems: "center" }}
+              >
+                <Text
+                  style={{ fontSize: 13, color: theme.colors.statusDanger }}
+                >
                   {t("laneModal.confirmDeletePrompt")}
                 </Text>
                 <Pressable
                   onPress={handleDelete}
-                  style={[styles.deleteButton, { backgroundColor: theme.colors.statusDanger }]}
+                  style={[
+                    styles.deleteButton,
+                    { backgroundColor: theme.colors.statusDanger },
+                  ]}
                   disabled={isSaving}
                 >
                   <Text style={[styles.deleteButtonText, { color: "#fff" }]}>
@@ -230,7 +245,9 @@ export function LaneModal({
                   onPress={() => setShowDeleteConfirm(false)}
                   style={styles.cancelButton}
                 >
-                  <Text style={styles.cancelButtonText}>{t("laneModal.cancel")}</Text>
+                  <Text style={styles.cancelButtonText}>
+                    {t("laneModal.cancel")}
+                  </Text>
                 </Pressable>
               </View>
             )}
@@ -256,8 +273,8 @@ export function LaneModal({
               {isSaving
                 ? t("laneModal.saving")
                 : session.mode === "edit"
-                ? t("laneModal.saveChanges")
-                : t("laneModal.submitCreate")}
+                  ? t("laneModal.saveChanges")
+                  : t("laneModal.submitCreate")}
             </Text>
           </Pressable>
         </View>

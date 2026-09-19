@@ -1,6 +1,5 @@
 import {
   type KanbanBoard,
-  type KanbanTask,
   type KanbanLane,
   type KanbanSubtask,
   type ProjectFilter,
@@ -14,8 +13,7 @@ import {
 } from "../shared/kanban.ts";
 
 export type SessionResult =
-  | { success: true }
-  | { success: false; error: string };
+  { success: true } | { success: false; error: string };
 
 export type SaveFn = (board: KanbanBoard, revision: string) => Promise<boolean>;
 
@@ -26,15 +24,18 @@ export const sessionMessages = {
     subtaskEmpty: "新增子步骤内容不能为空",
     savingInProgress: "正在保存中，请勿重复提交",
     taskTitleEmpty: "任务标题不能为空",
-    subtaskTitleEmpty: (idx: number) => `第 ${idx} 个子步骤标题不能为空，请修改或删除该步骤`,
+    subtaskTitleEmpty: (idx: number) =>
+      `第 ${idx} 个子步骤标题不能为空，请修改或删除该步骤`,
     taskNotFound: (id: string) => `任务 "${id}" 不存在或已被删除`,
-    taskSaveConflict: "保存失败：数据可能已被其他会话修改或保存未生效。草稿已保留，请核实后再试。",
+    taskSaveConflict:
+      "保存失败：数据可能已被其他会话修改或保存未生效。草稿已保留，请核实后再试。",
     savingActionInProgress: "正在保存中，请勿重复操作",
     taskDeleteOnlyInEdit: "仅在编辑模式下可删除任务",
     taskDeleteFailed: "删除失败：数据可能已被其他会话修改或删除未生效。",
     laneTitleEmpty: "泳道名称不能为空",
     laneNotFound: (id: string) => `泳道 "${id}" 不存在或已被删除`,
-    laneSaveConflict: "保存失败：数据可能已被其他会话修改或保存未生效。草稿已保留。",
+    laneSaveConflict:
+      "保存失败：数据可能已被其他会话修改或保存未生效。草稿已保留。",
     laneDeleteOnlyInEdit: "仅在编辑模式下可删除泳道",
     laneDeleteFailed: "删除失败：数据可能已被其他会话修改或删除未生效。",
     reorderConflict: "保存失败或版本冲突，未修改数据。请刷新最新数据后重试。",
@@ -43,18 +44,27 @@ export const sessionMessages = {
     subtaskEmpty: "Subtask content cannot be empty",
     savingInProgress: "Saving in progress, please do not submit repeatedly",
     taskTitleEmpty: "Task title cannot be empty",
-    subtaskTitleEmpty: (idx: number) => `Subtask #${idx} title cannot be empty. Please modify or remove it`,
-    taskNotFound: (id: string) => `Task "${id}" does not exist or has been deleted`,
-    taskSaveConflict: "Save failed: Data may have been modified by another session or save was not applied. Draft preserved, please verify and try again.",
-    savingActionInProgress: "Operation in progress, please do not submit repeatedly",
+    subtaskTitleEmpty: (idx: number) =>
+      `Subtask #${idx} title cannot be empty. Please modify or remove it`,
+    taskNotFound: (id: string) =>
+      `Task "${id}" does not exist or has been deleted`,
+    taskSaveConflict:
+      "Save failed: Data may have been modified by another session or save was not applied. Draft preserved, please verify and try again.",
+    savingActionInProgress:
+      "Operation in progress, please do not submit repeatedly",
     taskDeleteOnlyInEdit: "Tasks can only be deleted in edit mode",
-    taskDeleteFailed: "Delete failed: Data may have been modified by another session or delete was not applied.",
+    taskDeleteFailed:
+      "Delete failed: Data may have been modified by another session or delete was not applied.",
     laneTitleEmpty: "Lane name cannot be empty",
-    laneNotFound: (id: string) => `Lane "${id}" does not exist or has been deleted`,
-    laneSaveConflict: "Save failed: Data may have been modified by another session or save was not applied. Draft preserved.",
+    laneNotFound: (id: string) =>
+      `Lane "${id}" does not exist or has been deleted`,
+    laneSaveConflict:
+      "Save failed: Data may have been modified by another session or save was not applied. Draft preserved.",
     laneDeleteOnlyInEdit: "Lanes can only be deleted in edit mode",
-    laneDeleteFailed: "Delete failed: Data may have been modified by another session or delete was not applied.",
-    reorderConflict: "Save failed or version conflict, data was not modified. Please refresh and try again.",
+    laneDeleteFailed:
+      "Delete failed: Data may have been modified by another session or delete was not applied.",
+    reorderConflict:
+      "Save failed or version conflict, data was not modified. Please refresh and try again.",
   },
 } as const;
 
@@ -101,7 +111,10 @@ export interface TaskEditSession {
   setProjectId(projectId: string | null): void;
   clearError(): void;
   addSubtask(title: string): boolean;
-  updateSubtask(id: string, patch: { title?: string; completed?: boolean }): void;
+  updateSubtask(
+    id: string,
+    patch: { title?: string; completed?: boolean },
+  ): void;
   removeSubtask(id: string): void;
   save(draft?: TaskDraft): Promise<SessionResult>;
   saveDraft(draft?: TaskDraft): Promise<SessionResult>;
@@ -157,7 +170,9 @@ export interface OpenTaskSessionOptions {
   language?: SessionLanguage;
 }
 
-export function openTaskSession(options: OpenTaskSessionOptions): TaskEditSession {
+export function openTaskSession(
+  options: OpenTaskSessionOptions,
+): TaskEditSession {
   const {
     mode,
     baseBoard,
@@ -175,7 +190,7 @@ export function openTaskSession(options: OpenTaskSessionOptions): TaskEditSessio
 
   const task =
     mode === "edit" && taskId
-      ? baseBoard.tasks.find((t) => t.id === taskId) ?? null
+      ? (baseBoard.tasks.find((t) => t.id === taskId) ?? null)
       : null;
   const initialLaneId =
     mode === "edit" && task
@@ -281,7 +296,7 @@ export function openTaskSession(options: OpenTaskSessionOptions): TaskEditSessio
 
   function updateSubtask(
     id: string,
-    patch: { title?: string; completed?: boolean }
+    patch: { title?: string; completed?: boolean },
   ) {
     if (isSaving) return;
     let changed = false;
@@ -320,7 +335,8 @@ export function openTaskSession(options: OpenTaskSessionOptions): TaskEditSessio
 
     if (draft) {
       if (draft.title !== undefined) title = draft.title;
-      if (draft.description !== undefined) description = draft.description ?? "";
+      if (draft.description !== undefined)
+        description = draft.description ?? "";
       if (draft.laneId !== undefined) laneId = draft.laneId;
       if (draft.projectId !== undefined) projectId = draft.projectId ?? null;
       if (draft.subtasks !== undefined)
@@ -471,13 +487,22 @@ export interface OpenLaneSessionOptions {
   language?: SessionLanguage;
 }
 
-export function openLaneSession(options: OpenLaneSessionOptions): LaneEditSession {
-  const { mode, baseBoard, baseRevision, save: saveFn, laneId, language = "zh" } = options;
+export function openLaneSession(
+  options: OpenLaneSessionOptions,
+): LaneEditSession {
+  const {
+    mode,
+    baseBoard,
+    baseRevision,
+    save: saveFn,
+    laneId,
+    language = "zh",
+  } = options;
   const msgs = sessionMessages[language] ?? sessionMessages.zh;
 
   const lane =
     mode === "edit" && laneId
-      ? baseBoard.lanes.find((l) => l.id === laneId) ?? null
+      ? (baseBoard.lanes.find((l) => l.id === laneId) ?? null)
       : null;
   const lanesCount = baseBoard.lanes.length;
   const tasksInLaneCount = lane
@@ -665,16 +690,30 @@ export interface ReorderTaskOperationOptions {
 }
 
 export type ReorderOperationResult =
-  | { success: true; unchanged?: boolean }
-  | { success: false; error: string };
+  { success: true; unchanged?: boolean } | { success: false; error: string };
 
 export async function executeTaskReorder(
-  options: ReorderTaskOperationOptions
+  options: ReorderTaskOperationOptions,
 ): Promise<ReorderOperationResult> {
-  const { baseBoard, baseRevision, taskId, targetLaneId, targetIndex, filter, save, language = "zh" } = options;
+  const {
+    baseBoard,
+    baseRevision,
+    taskId,
+    targetLaneId,
+    targetIndex,
+    filter,
+    save,
+    language = "zh",
+  } = options;
   const msgs = sessionMessages[language] ?? sessionMessages.zh;
   try {
-    const nextBoard = reorderTask(baseBoard, taskId, targetLaneId, targetIndex, filter);
+    const nextBoard = reorderTask(
+      baseBoard,
+      taskId,
+      targetLaneId,
+      targetIndex,
+      filter,
+    );
     if (nextBoard === baseBoard) {
       return { success: true, unchanged: true };
     }
@@ -693,4 +732,3 @@ export async function executeTaskReorder(
     };
   }
 }
-

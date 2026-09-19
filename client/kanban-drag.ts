@@ -1,4 +1,4 @@
-import { useRef, useSyncExternalStore, useState, useEffect } from "react";
+import { useRef, useSyncExternalStore, useEffect } from "react";
 import type { KanbanTask } from "../shared/kanban";
 
 export interface Rect {
@@ -86,13 +86,17 @@ export interface TaskPreviewItem {
 export interface KanbanDragOptions {
   lanes?: ({ id: string } | string)[];
   onMoveTask?: (taskId: string, targetLaneId: string) => void | Promise<void>;
-  onReorderTask?: (taskId: string, targetLaneId: string, targetIndex: number) => void | Promise<void>;
+  onReorderTask?: (
+    taskId: string,
+    targetLaneId: string,
+    targetIndex: number,
+  ) => void | Promise<void>;
   getTaskPreview?: (taskId: string) => TaskPreviewItem | null;
 }
 
 export interface ContainerRefTarget {
   measureInWindow?: (
-    callback: (x: number, y: number, width: number, height: number) => void
+    callback: (x: number, y: number, width: number, height: number) => void,
   ) => void;
 }
 
@@ -117,7 +121,7 @@ export interface LaneDragBinding {
   readonly bindCard: (
     taskId: string,
     onSelectTask?: () => void,
-    factory?: PanResponderFactory
+    factory?: PanResponderFactory,
   ) => CardDragBinding;
   readonly registerLaneLayout: (layout: Rect) => void;
   readonly registerCardsViewport: (layout: Rect) => void;
@@ -125,13 +129,16 @@ export interface LaneDragBinding {
   readonly registerCardLayout: (taskId: string, layout: Rect) => void;
   readonly unregisterCardLayout: (taskId: string) => void;
   readonly setDropSpacerY: (y: number | null) => void;
-  readonly setLaneCardOrder: (laneIdOrTaskIds: string | string[], taskIds?: string[]) => void;
+  readonly setLaneCardOrder: (
+    laneIdOrTaskIds: string | string[],
+    taskIds?: string[],
+  ) => void;
   readonly startGesture: (
     taskId: string,
     sourceLaneId: string,
     pointerX: number,
     pointerY: number,
-    immediate?: boolean
+    immediate?: boolean,
   ) => void;
   readonly moveGesture: (pointerX: number, pointerY: number) => void;
   readonly releaseGesture: (pointerX?: number, pointerY?: number) => void;
@@ -162,8 +169,15 @@ export class KanbanDragController {
   private containerRef: ContainerRefTarget | null = null;
   private scrollX: number = 0;
   private activeSession: ActiveDragSession | null = null;
-  private onMoveTask?: (taskId: string, targetLaneId: string) => void | Promise<void>;
-  private onReorderTask?: (taskId: string, targetLaneId: string, targetIndex: number) => void | Promise<void>;
+  private onMoveTask?: (
+    taskId: string,
+    targetLaneId: string,
+  ) => void | Promise<void>;
+  private onReorderTask?: (
+    taskId: string,
+    targetLaneId: string,
+    targetIndex: number,
+  ) => void | Promise<void>;
   private dragLock: boolean = false;
   private dragLockTimeout: ReturnType<typeof setTimeout> | null = null;
   private pendingTimer: ReturnType<typeof setTimeout> | null = null;
@@ -172,7 +186,10 @@ export class KanbanDragController {
   private slotListeners: Set<() => void> = new Set();
   private dropListeners: Set<() => void> = new Set();
   private dropSpacerY: number | null = null;
-  private releaseHandler?: (releaseX?: number, releaseY?: number) => Promise<void>;
+  private releaseHandler?: (
+    releaseX?: number,
+    releaseY?: number,
+  ) => Promise<void>;
   private cancelHandler?: () => void;
   private panResponderFactory: PanResponderFactory | null = null;
   private cardCallbacks: Map<string, () => void> = new Map();
@@ -219,15 +236,26 @@ export class KanbanDragController {
     this.lanesList = lanes.map((l) => (typeof l === "string" ? l : l.id));
     this.validLaneSet = new Set(this.lanesList);
     if (this.activeSession && this.activeSession.isActivated) {
-      this.recomputeHover(this.activeSession.lastPointerX, this.activeSession.lastPointerY);
+      this.recomputeHover(
+        this.activeSession.lastPointerX,
+        this.activeSession.lastPointerY,
+      );
     }
   };
 
-  setOnMoveTask = (fn: (taskId: string, targetLaneId: string) => void | Promise<void>) => {
+  setOnMoveTask = (
+    fn: (taskId: string, targetLaneId: string) => void | Promise<void>,
+  ) => {
     this.onMoveTask = fn;
   };
 
-  setOnReorderTask = (fn: (taskId: string, targetLaneId: string, targetIndex: number) => void | Promise<void>) => {
+  setOnReorderTask = (
+    fn: (
+      taskId: string,
+      targetLaneId: string,
+      targetIndex: number,
+    ) => void | Promise<void>,
+  ) => {
     this.onReorderTask = fn;
   };
 
@@ -262,7 +290,10 @@ export class KanbanDragController {
   registerContainerBounds = (bounds: Rect | null) => {
     this.containerBounds = bounds;
     if (this.activeSession) {
-      this.recomputeHover(this.activeSession.lastPointerX, this.activeSession.lastPointerY);
+      this.recomputeHover(
+        this.activeSession.lastPointerX,
+        this.activeSession.lastPointerY,
+      );
     }
   };
 
@@ -276,7 +307,10 @@ export class KanbanDragController {
         if (ww > 0 && wh > 0) {
           this.containerBounds = { x: wx, y: wy, width: ww, height: wh };
           if (this.activeSession) {
-            this.recomputeHover(this.activeSession.lastPointerX, this.activeSession.lastPointerY);
+            this.recomputeHover(
+              this.activeSession.lastPointerX,
+              this.activeSession.lastPointerY,
+            );
           }
         }
       });
@@ -293,7 +327,10 @@ export class KanbanDragController {
   handleScroll = (scrollX: number) => {
     this.scrollX = scrollX;
     if (this.activeSession) {
-      this.recomputeHover(this.activeSession.lastPointerX, this.activeSession.lastPointerY);
+      this.recomputeHover(
+        this.activeSession.lastPointerX,
+        this.activeSession.lastPointerY,
+      );
     }
   };
 
@@ -308,7 +345,10 @@ export class KanbanDragController {
   handleLaneScroll = (laneId: string, scrollY: number) => {
     this.laneScrollY.set(laneId, scrollY);
     if (this.activeSession) {
-      this.recomputeHover(this.activeSession.lastPointerX, this.activeSession.lastPointerY);
+      this.recomputeHover(
+        this.activeSession.lastPointerX,
+        this.activeSession.lastPointerY,
+      );
     }
   };
 
@@ -320,7 +360,9 @@ export class KanbanDragController {
     return this.dropSpacerY;
   };
 
-  setReleaseHandler = (fn?: (releaseX?: number, releaseY?: number) => Promise<void>) => {
+  setReleaseHandler = (
+    fn?: (releaseX?: number, releaseY?: number) => Promise<void>,
+  ) => {
     this.releaseHandler = fn;
   };
 
@@ -336,7 +378,7 @@ export class KanbanDragController {
     laneId: string,
     taskId: string,
     onPress?: () => void,
-    panResponderFactory?: PanResponderFactory
+    panResponderFactory?: PanResponderFactory,
   ): CardDragBinding => {
     const key = `${laneId}:${taskId}`;
     if (onPress) {
@@ -356,7 +398,7 @@ export class KanbanDragController {
           this.handlePointerDown(
             { taskId, laneId, onPress: cb },
             { x: gs.x0, y: gs.y0 },
-            "body"
+            "body",
           );
         },
         onPanResponderMove: (_e: any, gs: any) => {
@@ -377,7 +419,7 @@ export class KanbanDragController {
           this.handlePointerDown(
             { taskId, laneId, onPress: cb },
             { x: gs.x0, y: gs.y0 },
-            "handle"
+            "handle",
           );
         },
         onPanResponderMove: (_e: any, gs: any) => {
@@ -417,7 +459,7 @@ export class KanbanDragController {
     context: { taskId: string; laneId: string; onPress?: () => void },
     point: { x: number; y: number },
     source: "handle" | "body" = "body",
-    inputKind?: "mouse" | "touch"
+    inputKind?: "mouse" | "touch",
   ) => {
     if (this.dragLock) return;
     if (this.activeSession?.isActivated) return;
@@ -443,12 +485,12 @@ export class KanbanDragController {
         this.dragLock = true;
         const initialHit = this.computeHit(
           this.activeSession.lastPointerX,
-          this.activeSession.lastPointerY
+          this.activeSession.lastPointerY,
         );
         const targetLaneId = initialHit ?? this.activeSession.sourceLaneId;
         const targetIndex = this.computeTargetIndex(
           targetLaneId,
-          this.activeSession.lastPointerY
+          this.activeSession.lastPointerY,
         );
         this.activeSession.currentTargetIndex = targetIndex;
         this.feedback = {
@@ -472,7 +514,7 @@ export class KanbanDragController {
     if (!this.activeSession) return;
     const dist = Math.hypot(
       point.x - this.activeSession.startX,
-      point.y - this.activeSession.startY
+      point.y - this.activeSession.startY,
     );
 
     // If unactivated touch gesture and user moved >= 5px before 220ms:
@@ -503,7 +545,7 @@ export class KanbanDragController {
     const wasActivated = this.activeSession.isActivated;
     const dist = Math.hypot(
       point.x - this.activeSession.startX,
-      point.y - this.activeSession.startY
+      point.y - this.activeSession.startY,
     );
     const onPress = this.pendingOnPress;
     this.pendingOnPress = null;
@@ -537,7 +579,7 @@ export class KanbanDragController {
     sourceLaneId: string,
     pointerX: number,
     pointerY: number,
-    immediate: boolean = true
+    immediate: boolean = true,
   ) => {
     if (this.dragLockTimeout) {
       clearTimeout(this.dragLockTimeout);
@@ -559,7 +601,9 @@ export class KanbanDragController {
       lastPointerY: pointerY,
       isActivated,
       currentTargetIndex: undefined,
-      cardLayouts: new Map([...this.cardLayouts].map(([id, cards]) => [id, new Map(cards)])),
+      cardLayouts: new Map(
+        [...this.cardLayouts].map(([id, cards]) => [id, new Map(cards)]),
+      ),
     };
 
     if (isActivated) {
@@ -575,7 +619,9 @@ export class KanbanDragController {
         draggingSourceLaneId: sourceLaneId,
         hoveredLaneId: targetLaneId,
         targetIndex,
-        draggedCardHeight: this.activeSession.cardLayouts.get(sourceLaneId)?.get(taskId)?.height,
+        draggedCardHeight: this.activeSession.cardLayouts
+          .get(sourceLaneId)
+          ?.get(taskId)?.height,
         pointerX,
         pointerY,
         autoScrollVelocity,
@@ -608,7 +654,7 @@ export class KanbanDragController {
     if (!this.activeSession.isActivated) {
       const dist = Math.hypot(
         this.activeSession.lastPointerX - this.activeSession.startX,
-        this.activeSession.lastPointerY - this.activeSession.startY
+        this.activeSession.lastPointerY - this.activeSession.startY,
       );
       if (dist >= 5) {
         this.activeSession.isActivated = true;
@@ -620,12 +666,17 @@ export class KanbanDragController {
 
     const hitLaneId = this.computeHit(
       this.activeSession.lastPointerX,
-      this.activeSession.lastPointerY
+      this.activeSession.lastPointerY,
     );
     const targetLaneId = hitLaneId ?? this.activeSession.sourceLaneId;
-    const targetIndex = this.computeTargetIndex(targetLaneId, this.activeSession.lastPointerY);
+    const targetIndex = this.computeTargetIndex(
+      targetLaneId,
+      this.activeSession.lastPointerY,
+    );
     this.activeSession.currentTargetIndex = targetIndex;
-    const autoScrollVelocity = this.computeAutoScrollVelocity(this.activeSession.lastPointerX);
+    const autoScrollVelocity = this.computeAutoScrollVelocity(
+      this.activeSession.lastPointerX,
+    );
 
     this.feedback = {
       isDragging: true,
@@ -633,7 +684,9 @@ export class KanbanDragController {
       draggingSourceLaneId: this.activeSession.sourceLaneId,
       hoveredLaneId: hitLaneId,
       targetIndex,
-      draggedCardHeight: this.activeSession.cardLayouts.get(this.activeSession.sourceLaneId)?.get(this.activeSession.taskId)?.height,
+      draggedCardHeight: this.activeSession.cardLayouts
+        .get(this.activeSession.sourceLaneId)
+        ?.get(this.activeSession.taskId)?.height,
       pointerX: this.activeSession.lastPointerX,
       pointerY: this.activeSession.lastPointerY,
       autoScrollVelocity,
@@ -642,7 +695,10 @@ export class KanbanDragController {
     this.notifyListeners();
   };
 
-  releaseGesture = async (pointerX?: number, pointerY?: number): Promise<void> => {
+  releaseGesture = async (
+    pointerX?: number,
+    pointerY?: number,
+  ): Promise<void> => {
     const session = this.activeSession;
     if (!session) return;
 
@@ -674,7 +730,10 @@ export class KanbanDragController {
     }
   };
 
-  beginDropAnimation = async (point?: { x?: number; y?: number }): Promise<DroppingState | null> => {
+  beginDropAnimation = async (point?: {
+    x?: number;
+    y?: number;
+  }): Promise<DroppingState | null> => {
     const session = this.activeSession;
     if (!session || !session.isActivated) {
       this.clearPendingTimer();
@@ -695,7 +754,9 @@ export class KanbanDragController {
     const targetLaneId = hitLaneId ?? session.sourceLaneId;
     const targetIndex = this.computeTargetIndex(targetLaneId, finalY);
 
-    const isValidTarget = Boolean(hitLaneId && this.validLaneSet.has(hitLaneId));
+    const isValidTarget = Boolean(
+      hitLaneId && this.validLaneSet.has(hitLaneId),
+    );
     const isDrop = isValidTarget;
 
     const opId = `op_${++this.operationSeq}_${Date.now()}`;
@@ -730,15 +791,25 @@ export class KanbanDragController {
         }
       }
     } else {
-      const sourceIndex = Math.max(0, this.laneCardOrders.get(session.sourceLaneId)?.indexOf(session.taskId) ?? 0);
-      const sourceSlot = this.getDropSlotPosition(session.sourceLaneId, sourceIndex);
+      const sourceIndex = Math.max(
+        0,
+        this.laneCardOrders
+          .get(session.sourceLaneId)
+          ?.indexOf(session.taskId) ?? 0,
+      );
+      const sourceSlot = this.getDropSlotPosition(
+        session.sourceLaneId,
+        sourceIndex,
+      );
       if (sourceSlot) {
         toX = sourceSlot.x;
         toY = sourceSlot.y;
       }
     }
 
-    const preview = this.getTaskPreview ? this.getTaskPreview(session.taskId) : null;
+    const preview = this.getTaskPreview
+      ? this.getTaskPreview(session.taskId)
+      : null;
 
     const droppingState: DroppingState = {
       operationId: opId,
@@ -789,7 +860,11 @@ export class KanbanDragController {
     try {
       if (drop && drop.isDrop && this.validLaneSet.has(drop.targetLaneId)) {
         if (this.onReorderTask) {
-          await this.onReorderTask(drop.taskId, drop.targetLaneId, drop.targetIndex);
+          await this.onReorderTask(
+            drop.taskId,
+            drop.targetLaneId,
+            drop.targetIndex,
+          );
         } else if (this.onMoveTask && drop.targetLaneId !== drop.sourceLaneId) {
           await this.onMoveTask(drop.taskId, drop.targetLaneId);
         }
@@ -883,14 +958,16 @@ export class KanbanDragController {
 
   getDropSlotPosition = (
     laneId: string,
-    targetIndex: number
+    targetIndex: number,
   ): { x: number; y: number } | null => {
     const laneRect = this.laneLayouts.get(laneId);
     if (!laneRect) return null;
 
     const cardsViewport = this.cardsViewportLayouts.get(laneId);
     const scrollY = this.laneScrollY.get(laneId) ?? 0;
-    const laneCardsMap = (this.activeSession?.cardLayouts ?? this.cardLayouts).get(laneId);
+    const laneCardsMap = (
+      this.activeSession?.cardLayouts ?? this.cardLayouts
+    ).get(laneId);
 
     const slotX = laneRect.x - this.scrollX + (cardsViewport?.x ?? 12);
     const activeTaskId =
@@ -914,12 +991,16 @@ export class KanbanDragController {
       } else {
         const prevCardId = remainingCardIds[targetIndex - 1];
         const prevRect = laneCardsMap?.get(prevCardId);
-        slotCardY = prevRect ? prevRect.y + prevRect.height + 8 : targetIndex * 80;
+        slotCardY = prevRect
+          ? prevRect.y + prevRect.height + 8
+          : targetIndex * 80;
       }
     } else {
       const lastCardId = remainingCardIds[remainingCardIds.length - 1];
       const lastCardRect = laneCardsMap?.get(lastCardId);
-      slotCardY = lastCardRect ? lastCardRect.y + lastCardRect.height + 8 : remainingCardIds.length * 80;
+      slotCardY = lastCardRect
+        ? lastCardRect.y + lastCardRect.height + 8
+        : remainingCardIds.length * 80;
     }
 
     const slotY = laneOriginY + cardsOriginY - scrollY + slotCardY;
@@ -935,7 +1016,10 @@ export class KanbanDragController {
   };
 
   isTaskDragging = (taskId: string): boolean => {
-    if (this.currentDroppingState && this.currentDroppingState.taskId === taskId) {
+    if (
+      this.currentDroppingState &&
+      this.currentDroppingState.taskId === taskId
+    ) {
       return true;
     }
     return this.feedback.isDragging && this.feedback.draggingTaskId === taskId;
@@ -985,16 +1069,16 @@ export class KanbanDragController {
       isDragging: this.feedback.isDragging || isDropping,
       draggingTaskId:
         this.feedback.draggingTaskId ??
-        (isDropping ? this.currentDroppingState?.taskId ?? null : null),
+        (isDropping ? (this.currentDroppingState?.taskId ?? null) : null),
       draggingSourceLaneId:
         this.feedback.draggingSourceLaneId ??
-        (isDropping ? this.currentDroppingState?.sourceLaneId ?? null : null),
+        (isDropping ? (this.currentDroppingState?.sourceLaneId ?? null) : null),
       hoveredLaneId:
         this.feedback.hoveredLaneId ??
-        (isDropping ? this.currentDroppingState?.targetLaneId ?? null : null),
+        (isDropping ? (this.currentDroppingState?.targetLaneId ?? null) : null),
       targetIndex:
         this.feedback.targetIndex ??
-        (isDropping ? this.currentDroppingState?.targetIndex ?? 0 : 0),
+        (isDropping ? (this.currentDroppingState?.targetIndex ?? 0) : 0),
       draggedCardHeight: this.feedback.draggedCardHeight,
       dragLock: this.feedback.dragLock,
     };
@@ -1002,7 +1086,8 @@ export class KanbanDragController {
     const slotChanged =
       this.slotState.isDragging !== nextSlotState.isDragging ||
       this.slotState.draggingTaskId !== nextSlotState.draggingTaskId ||
-      this.slotState.draggingSourceLaneId !== nextSlotState.draggingSourceLaneId ||
+      this.slotState.draggingSourceLaneId !==
+        nextSlotState.draggingSourceLaneId ||
       this.slotState.hoveredLaneId !== nextSlotState.hoveredLaneId ||
       this.slotState.targetIndex !== nextSlotState.targetIndex ||
       this.slotState.draggedCardHeight !== nextSlotState.draggedCardHeight ||
@@ -1030,7 +1115,10 @@ export class KanbanDragController {
       return Math.max(-1, Math.min(0, (relX - 48) / 48));
     }
     if (relX > this.containerBounds.width - 48) {
-      return Math.min(1, Math.max(0, (relX - (this.containerBounds.width - 48)) / 48));
+      return Math.min(
+        1,
+        Math.max(0, (relX - (this.containerBounds.width - 48)) / 48),
+      );
     }
     return 0;
   }
@@ -1038,11 +1126,14 @@ export class KanbanDragController {
   private computeTargetIndex(laneId: string, pointerY: number): number {
     const allCardIds = this.laneCardOrders.get(laneId) ?? [];
     const activeTaskId = this.activeSession?.taskId;
-    const isSourceLane = this.activeSession ? this.activeSession.sourceLaneId === laneId : false;
+    const isSourceLane = this.activeSession
+      ? this.activeSession.sourceLaneId === laneId
+      : false;
 
-    const remainingCount = isSourceLane && allCardIds.includes(activeTaskId ?? "")
-      ? Math.max(0, allCardIds.length - 1)
-      : allCardIds.length;
+    const remainingCount =
+      isSourceLane && allCardIds.includes(activeTaskId ?? "")
+        ? Math.max(0, allCardIds.length - 1)
+        : allCardIds.length;
 
     if (allCardIds.length === 0 || remainingCount === 0) return 0;
 
@@ -1051,18 +1142,22 @@ export class KanbanDragController {
     const laneOriginY = laneRect?.y ?? 0;
     const cardsOriginY = this.cardsViewportLayouts.get(laneId)?.y ?? 0;
     const scrollY = this.laneScrollY.get(laneId) ?? 0;
-    const laneCardsMap = (this.activeSession?.cardLayouts ?? this.cardLayouts).get(laneId);
+    const laneCardsMap = (
+      this.activeSession?.cardLayouts ?? this.cardLayouts
+    ).get(laneId);
 
-    const prevIndex = this.feedback.hoveredLaneId === laneId
-      ? this.activeSession?.currentTargetIndex ?? -1
-      : -1;
+    const prevIndex =
+      this.feedback.hoveredLaneId === laneId
+        ? (this.activeSession?.currentTargetIndex ?? -1)
+        : -1;
 
     for (let i = 0; i < allCardIds.length; i++) {
       const cardId = allCardIds[i];
       const cardRect = laneCardsMap?.get(cardId);
       if (!cardRect) continue;
 
-      const cardTop = containerOriginY + laneOriginY + cardsOriginY - scrollY + cardRect.y;
+      const cardTop =
+        containerOriginY + laneOriginY + cardsOriginY - scrollY + cardRect.y;
       const cardBottom = cardTop + cardRect.height;
 
       let thresholdY: number;
@@ -1070,7 +1165,12 @@ export class KanbanDragController {
         const nextCardId = allCardIds[i + 1];
         const nextCardRect = laneCardsMap?.get(nextCardId);
         if (nextCardRect) {
-          const nextCardTop = containerOriginY + laneOriginY + cardsOriginY - scrollY + nextCardRect.y;
+          const nextCardTop =
+            containerOriginY +
+            laneOriginY +
+            cardsOriginY -
+            scrollY +
+            nextCardRect.y;
           thresholdY = (cardBottom + nextCardTop) / 2;
         } else {
           thresholdY = cardBottom + 4;
@@ -1127,9 +1227,14 @@ export class KanbanDragController {
   private recomputeHover(pointerX: number, pointerY: number) {
     if (!this.activeSession?.isActivated) return;
     const hitLaneId = this.computeHit(pointerX, pointerY);
-    const targetIndex = hitLaneId ? this.computeTargetIndex(hitLaneId, pointerY) : undefined;
+    const targetIndex = hitLaneId
+      ? this.computeTargetIndex(hitLaneId, pointerY)
+      : undefined;
     this.activeSession.currentTargetIndex = targetIndex;
-    if (this.feedback.hoveredLaneId !== hitLaneId || this.feedback.targetIndex !== targetIndex) {
+    if (
+      this.feedback.hoveredLaneId !== hitLaneId ||
+      this.feedback.targetIndex !== targetIndex
+    ) {
       this.feedback = {
         ...this.feedback,
         hoveredLaneId: hitLaneId,
@@ -1194,7 +1299,9 @@ export interface UseKanbanDragReturn {
   getDropSlotPosition: KanbanDragController["getDropSlotPosition"];
 }
 
-export function useKanbanDrag(options: KanbanDragOptions = {}): UseKanbanDragReturn {
+export function useKanbanDrag(
+  options: KanbanDragOptions = {},
+): UseKanbanDragReturn {
   const { lanes = [], onMoveTask, onReorderTask, getTaskPreview } = options;
   const controllerRef = useRef<KanbanDragController | null>(null);
   if (!controllerRef.current) {
@@ -1220,19 +1327,19 @@ export function useKanbanDrag(options: KanbanDragOptions = {}): UseKanbanDragRet
   const slotState = useSyncExternalStore(
     controller.subscribeSlot,
     controller.getSlotState,
-    controller.getSlotState
+    controller.getSlotState,
   );
 
   const feedback = useSyncExternalStore(
     controller.subscribe,
     controller.getFeedback,
-    controller.getFeedback
+    controller.getFeedback,
   );
 
   const droppingState = useSyncExternalStore(
     controller.subscribeDrop,
     controller.getDroppingState,
-    controller.getDroppingState
+    controller.getDroppingState,
   );
 
   const containerScrollRef = useRef<any>(null);
@@ -1284,7 +1391,10 @@ export function useKanbanDrag(options: KanbanDragOptions = {}): UseKanbanDragRet
     }
   };
 
-  const handleDragRelease = async (releaseX?: number, releaseY?: number): Promise<void> => {
+  const handleDragRelease = async (
+    releaseX?: number,
+    releaseY?: number,
+  ): Promise<void> => {
     await controller.beginDropAnimation({ x: releaseX, y: releaseY });
   };
 
@@ -1321,10 +1431,12 @@ export function useKanbanDrag(options: KanbanDragOptions = {}): UseKanbanDragRet
       ? droppingState.targetLaneId === laneId
       : slotState.isDragging && slotState.hoveredLaneId === laneId;
     const targetIndex = droppingState
-      ? (droppingState.targetLaneId === laneId ? droppingState.targetIndex : -1)
+      ? droppingState.targetLaneId === laneId
+        ? droppingState.targetIndex
+        : -1
       : isHovered
-      ? slotState.targetIndex
-      : -1;
+        ? slotState.targetIndex
+        : -1;
 
     return {
       isHovered,
@@ -1332,15 +1444,26 @@ export function useKanbanDrag(options: KanbanDragOptions = {}): UseKanbanDragRet
       isTaskDragging,
       draggedCardHeight: slotState.draggedCardHeight,
       isDragLocked,
-      bindCard: (taskId: string, onSelectTask?: () => void, factory?: PanResponderFactory) =>
-        controller.bindCard(laneId, taskId, onSelectTask, factory),
-      registerLaneLayout: (layout: Rect) => controller.registerLaneLayout(laneId, layout),
-      registerCardsViewport: (layout: Rect) => controller.registerCardsViewportLayout(laneId, layout),
-      handleLaneScroll: (scrollY: number) => controller.handleLaneScroll(laneId, scrollY),
-      registerCardLayout: (taskId: string, layout: Rect) => controller.registerCardLayout(laneId, taskId, layout),
-      unregisterCardLayout: (taskId: string) => controller.unregisterCardLayout(laneId, taskId),
+      bindCard: (
+        taskId: string,
+        onSelectTask?: () => void,
+        factory?: PanResponderFactory,
+      ) => controller.bindCard(laneId, taskId, onSelectTask, factory),
+      registerLaneLayout: (layout: Rect) =>
+        controller.registerLaneLayout(laneId, layout),
+      registerCardsViewport: (layout: Rect) =>
+        controller.registerCardsViewportLayout(laneId, layout),
+      handleLaneScroll: (scrollY: number) =>
+        controller.handleLaneScroll(laneId, scrollY),
+      registerCardLayout: (taskId: string, layout: Rect) =>
+        controller.registerCardLayout(laneId, taskId, layout),
+      unregisterCardLayout: (taskId: string) =>
+        controller.unregisterCardLayout(laneId, taskId),
       setDropSpacerY: (y: number | null) => controller.setDropSpacerY(y),
-      setLaneCardOrder: (laneIdOrTaskIds: string | string[], taskIds?: string[]) => {
+      setLaneCardOrder: (
+        laneIdOrTaskIds: string | string[],
+        taskIds?: string[],
+      ) => {
         if (Array.isArray(laneIdOrTaskIds)) {
           controller.setLaneCardOrder(laneId, laneIdOrTaskIds);
         } else if (taskIds) {
