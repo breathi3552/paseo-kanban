@@ -1,41 +1,18 @@
-import { useMemo, useRef, useEffect } from "react";
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-  PanResponder,
-  Animated,
-} from "react-native";
+import { useMemo, useEffect, useRef } from "react";
+import { View, Text, StyleSheet, Animated } from "react-native";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanTask } from "../shared/kanban";
+import type { CardDragBinding } from "./kanban-drag";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 
-interface KanbanCardProps {
+export interface KanbanCardProps {
   task: KanbanTask;
   projectDisplayName: string | null;
   theme: PluginTheme;
   layout: { compact: boolean };
-  isDraggingThis: boolean;
-  isDragLocked: () => boolean;
-  onPress: () => void;
-  onDragStart: (
-    taskId: string,
-    laneId: string,
-    startX: number,
-    startY: number,
-    immediate?: boolean
-  ) => void;
-  onDragMove: (moveX: number, moveY: number) => void;
-  onDragRelease: (moveX?: number, moveY?: number) => void;
-  onDragCancel: () => void;
-  onLayoutCard?: (
-    taskId: string,
-    layout: { x: number; y: number; width: number; height: number }
-  ) => void;
-  onUnmountCard?: (taskId: string) => void;
+  binding: CardDragBinding;
 }
 
 export function KanbanCard({
@@ -43,67 +20,21 @@ export function KanbanCard({
   projectDisplayName,
   theme,
   layout,
-  isDraggingThis,
-  isDragLocked,
-  onPress,
-  onDragStart,
-  onDragMove,
-  onDragRelease,
-  onDragCancel,
-  onLayoutCard,
-  onUnmountCard,
+  binding,
 }: KanbanCardProps) {
-  const callbacksRef = useRef({
-    onPress,
-    onDragStart,
-    onDragMove,
-    onDragRelease,
-    onDragCancel,
-    task,
-    isDragLocked,
-    onUnmountCard,
-  });
-  useEffect(() => {
-    callbacksRef.current = {
-      onPress,
-      onDragStart,
-      onDragMove,
-      onDragRelease,
-      onDragCancel,
-      task,
-      isDragLocked,
-      onUnmountCard,
-    };
-  });
+  const bindingRef = useRef(binding);
+  bindingRef.current = binding;
 
   useEffect(() => {
     return () => {
-      callbacksRef.current.onUnmountCard?.(task.id);
+      bindingRef.current.onUnmount?.();
     };
-  }, [task.id]);
+  }, []);
 
   const completedSubtasksCount = useMemo(
     () => task.subtasks.filter((s) => s.completed).length,
     [task.subtasks]
   );
-
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isDraggingSessionRef = useRef(false);
-  const hasMovedRef = useRef(false);
-  const startPosRef = useRef({ x: 0, y: 0 });
-
-  const clearLongPressTimer = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      clearLongPressTimer();
-    };
-  }, []);
 
   const styles = useMemo(
     () =>
@@ -170,122 +101,15 @@ export function KanbanCard({
           fontWeight: "500",
         },
       }),
-    [theme, layout.compact, isDraggingThis, task.subtasks.length, completedSubtasksCount]
+    [theme, layout.compact, task.subtasks.length, completedSubtasksCount]
   );
-
-  // Whole card pan responder: claims gesture on touch down to keep pointer captured across the window.
-  // Handles click to open modal, immediate drag (>= 5px), and long-press grab (260ms) + continuous move.
-  const cardPanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (_e, gs) => {
-        clearLongPressTimer();
-        isDraggingSessionRef.current = false;
-        hasMovedRef.current = false;
-        startPosRef.current = { x: gs.x0, y: gs.y0 };
-
-        longPressTimerRef.current = setTimeout(() => {
-          if (callbacksRef.current.isDragLocked()) return;
-          isDraggingSessionRef.current = true;
-          const { onDragStart, task: currentTask } = callbacksRef.current;
-          onDragStart(
-            currentTask.id,
-            currentTask.laneId,
-            startPosRef.current.x,
-            startPosRef.current.y,
-            true
-          );
-        }, 260);
-      },
-      onPanResponderMove: (_e, gs) => {
-        const dist = Math.hypot(gs.dx, gs.dy);
-        if (dist >= 5) {
-          hasMovedRef.current = true;
-          clearLongPressTimer();
-          if (!isDraggingSessionRef.current) {
-            if (callbacksRef.current.isDragLocked()) return;
-            isDraggingSessionRef.current = true;
-            const { onDragStart, task: currentTask } = callbacksRef.current;
-            onDragStart(
-              currentTask.id,
-              currentTask.laneId,
-              gs.x0,
-              gs.y0,
-              true
-            );
-          }
-        }
-
-        if (isDraggingSessionRef.current) {
-          const { onDragMove } = callbacksRef.current;
-          onDragMove(gs.moveX, gs.moveY);
-        }
-      },
-      onPanResponderRelease: (_e, gs) => {
-        clearLongPressTimer();
-        if (isDraggingSessionRef.current) {
-          isDraggingSessionRef.current = false;
-          const { onDragRelease } = callbacksRef.current;
-          onDragRelease(gs.moveX, gs.moveY);
-        } else {
-          if (!hasMovedRef.current && !callbacksRef.current.isDragLocked()) {
-            callbacksRef.current.onPress();
-          }
-        }
-      },
-      onPanResponderTerminate: () => {
-        clearLongPressTimer();
-        if (isDraggingSessionRef.current) {
-          isDraggingSessionRef.current = false;
-          const { onDragCancel } = callbacksRef.current;
-          onDragCancel();
-        }
-      },
-      onPanResponderTerminationRequest: () => !isDraggingSessionRef.current,
-    })
-  ).current;
-
-  // Handle pan responder: claims gesture immediately without needing 5px threshold
-  const handlePanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (_e, gs) => {
-        clearLongPressTimer();
-        isDraggingSessionRef.current = true;
-        const { onDragStart, task: currentTask } = callbacksRef.current;
-        onDragStart(
-          currentTask.id,
-          currentTask.laneId,
-          gs.x0,
-          gs.y0,
-          true
-        );
-      },
-      onPanResponderMove: (_e, gs) => {
-        const { onDragMove } = callbacksRef.current;
-        onDragMove(gs.moveX, gs.moveY);
-      },
-      onPanResponderRelease: (_e, gs) => {
-        isDraggingSessionRef.current = false;
-        const { onDragRelease } = callbacksRef.current;
-        onDragRelease(gs.moveX, gs.moveY);
-      },
-      onPanResponderTerminate: () => {
-        isDraggingSessionRef.current = false;
-        const { onDragCancel } = callbacksRef.current;
-        onDragCancel();
-      },
-    })
-  ).current;
 
   return (
     <View
       // Keep the responder mounted, but let the single drop slot replace its space.
-      style={isDraggingThis ? { position: "absolute", left: 0, right: 0, opacity: 0 } : undefined}
-      onLayout={(e) => onLayoutCard?.(task.id, e.nativeEvent.layout)}
-      {...cardPanResponder.panHandlers}
+      style={binding.isDragging ? { position: "absolute", left: 0, right: 0, opacity: 0 } : undefined}
+      onLayout={(e) => binding.onLayout?.(e.nativeEvent.layout)}
+      {...binding.cardPanHandlers}
     >
       <View style={styles.card}>
         <View style={styles.cardHeader}>
@@ -293,7 +117,7 @@ export function KanbanCard({
             style={styles.dragHandle}
             accessibilityRole="button"
             accessibilityLabel="拖动手柄"
-            {...handlePanResponder.panHandlers}
+            {...binding.handlePanHandlers}
           >
             <Icon name="GripVertical" size={14} color={theme.colors.foregroundMuted} />
           </View>

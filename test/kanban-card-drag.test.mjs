@@ -89,14 +89,18 @@ test("card rerenders must retain geometry: slot follows pointer and release matc
   function renderCards() {
     return cards.map(({ id, renderer }) => renderer.render({
       task: { id, laneId: "lane", title: id, subtasks: [] },
-      projectDisplayName: null, theme: { colors: {} }, layout: { compact: false },
-      isDraggingThis: controller.isTaskDragging(id), isDragLocked: controller.isDragLocked,
-      onPress() {}, onDragStart: controller.startGesture, onDragMove: controller.moveGesture,
-      onDragRelease: controller.releaseGesture, onDragCancel: controller.cancelGesture,
-      onLayoutCard: (taskId, rect) => controller.registerCardLayout("lane", taskId, rect),
-      onUnmountCard: (taskId) => {
-        cleanups++;
-        controller.unregisterCardLayout("lane", taskId);
+      projectDisplayName: null,
+      theme: { colors: {} },
+      layout: { compact: false },
+      binding: {
+        isDragging: controller.isTaskDragging(id),
+        cardPanHandlers: {},
+        handlePanHandlers: {},
+        onLayout: (rect) => controller.registerCardLayout("lane", id, rect),
+        onUnmount: () => {
+          cleanups++;
+          controller.unregisterCardLayout("lane", id);
+        },
       },
     }));
   }
@@ -129,11 +133,30 @@ test("board renders the slot against the remaining cards, not the dragged card",
   })) };
   const drag = {
     feedback: { isDragging: true, draggingTaskId: "1", targetIndex: 0, draggedCardHeight: 96 },
-    isLaneHovered: () => true, isTaskDragging: (id) => id === "1", setLaneCardOrder() {},
+    isLaneHovered: () => true,
+    isTaskDragging: (id) => id === "1",
+    bindLane: (laneId) => ({
+      isHovered: true,
+      targetIndex: drag.feedback.targetIndex,
+      isTaskDragging: (id) => drag.isTaskDragging(id),
+      draggedCardHeight: drag.feedback.draggedCardHeight,
+      registerLaneLayout: () => {},
+      registerCardsViewport: () => {},
+      handleLaneScroll: () => {},
+      setDropSpacerY: () => {},
+      setLaneCardOrder: () => {},
+      bindCard: (taskId) => ({
+        isDragging: drag.isTaskDragging(taskId),
+        cardPanHandlers: {},
+        handlePanHandlers: {},
+        onLayout: () => {},
+        onUnmount: () => {},
+      }),
+    }),
   };
   const renderer = componentRenderer("kanban-board", "KanbanBoardView", {
     "@getpaseo/plugin/client": { useSettings: () => ({ status: "ready", values: board }) },
-    "../shared/kanban": {},
+    "../shared/kanban": { filterTasksByProject: (tasks) => tasks },
     "./use-projects": { useProjects: () => ({ projects: [] }), getProjectDisplayName: () => null },
     "./kanban-card": { KanbanCard: "Card", KanbanDropSpacer: "Slot", KanbanCardPreview: "Preview" },
     "./kanban-drag": { useKanbanDrag: () => drag },
@@ -148,7 +171,7 @@ test("board renders the slot against the remaining cards, not the dragged card",
         result.push("slot");
         assert.equal(node.props.height, drag.feedback.draggedCardHeight, "slot must match the dragged card height");
       }
-      if (node.type === "Card" && !node.props.isDraggingThis) result.push(node.props.task.id);
+      if (node.type === "Card" && !node.props.binding?.isDragging) result.push(node.props.task.id);
       collect(node.props.children, result);
     }
     return result;
@@ -168,23 +191,28 @@ test("board renders the slot against the remaining cards, not the dragged card",
 });
 
 test("long press grabs the card immediately, seamlessly continues dragging on move, and getDropSlotPosition targets the dashed slot", async () => {
-  const dragStarts = [];
-  const dragMoves = [];
-  const dragReleases = [];
+  const controller = new KanbanDragController({ lanes: ["lane-a"] });
+  controller.registerContainerBounds({ x: 10, y: 20, width: 300, height: 600 });
+  controller.registerLaneLayout("lane-a", { x: 10, y: 20, width: 300, height: 600 });
+  controller.registerCardsViewportLayout("lane-a", { x: 10, y: 40, width: 280, height: 500 });
+  controller.setLaneCardOrder("lane-a", ["c1", "c2", "c3"]);
+  controller.registerCardLayout("lane-a", "c1", { x: 0, y: 0, width: 280, height: 60 });
+  controller.registerCardLayout("lane-a", "c2", { x: 0, y: 68, width: 280, height: 60 });
+  controller.registerCardLayout("lane-a", "c3", { x: 0, y: 136, width: 280, height: 60 });
+
   let clicked = false;
+  const nativePanResponder = {
+    create: (handlers) => ({ panHandlers: handlers }),
+  };
+  const binding1 = controller.bindCard("lane-a", "card-1", () => { clicked = true; }, nativePanResponder);
+
   const renderer = componentRenderer();
   const tree = renderer.render({
     task: { id: "card-1", laneId: "lane-a", title: "Test", subtasks: [] },
     projectDisplayName: null,
     theme: { colors: {} },
     layout: { compact: false },
-    isDraggingThis: false,
-    isDragLocked: () => false,
-    onPress: () => { clicked = true; },
-    onDragStart: (...args) => dragStarts.push(args),
-    onDragMove: (...args) => dragMoves.push(args),
-    onDragRelease: (...args) => dragReleases.push(args),
-    onDragCancel() {},
+    binding: binding1,
   });
 
   // 1. Press down (grant gesture responder)
@@ -193,49 +221,35 @@ test("long press grabs the card immediately, seamlessly continues dragging on mo
   // 2. Wait 280ms to trigger long press grab
   await new Promise((resolve) => setTimeout(resolve, 280));
 
-  assert.equal(dragStarts.length, 1, "Long press must trigger dragStart");
-  assert.deepEqual(dragStarts[0], ["card-1", "lane-a", 120, 240, true], "Must grab card immediately at pointer coordinates");
+  assert.equal(controller.getFeedback().isDragging, true, "Long press must trigger dragging");
+  assert.equal(controller.getFeedback().draggingTaskId, "card-1");
 
   // 3. User moves pointer AFTER grabbing: must seamlessly continue dragging without releasing!
   tree.props.onPanResponderMove({ nativeEvent: {} }, { dx: 10, dy: 20, moveX: 130, moveY: 260 });
-  assert.equal(dragMoves.length, 1, "Moving after long press grab must continue dragging");
-  assert.deepEqual(dragMoves[0], [130, 260], "Move coordinates must follow pointer");
-  assert.equal(dragReleases.length, 0, "Moving must not trigger premature release");
+  assert.equal(controller.getFeedback().pointerX, 130);
+  assert.equal(controller.getFeedback().pointerY, 260);
 
   // 4. Release gesture: must trigger release at current coordinates
-  tree.props.onPanResponderRelease({ nativeEvent: {} }, { moveX: 130, moveY: 260 });
-  assert.equal(dragReleases.length, 1, "Release must trigger onDragRelease");
-  assert.deepEqual(dragReleases[0], [130, 260], "Release coordinates must match final position");
+  await tree.props.onPanResponderRelease({ nativeEvent: {} }, { moveX: 130, moveY: 260 });
+  assert.equal(controller.getFeedback().isDragging, false, "Release must finish dragging");
   assert.equal(clicked, false, "Long press and drag must not trigger click onPress");
 
   // 5. Verify quick tap opens modal (< 260ms and < 5px)
+  await new Promise((resolve) => setTimeout(resolve, 180));
   let clickCount = 0;
+  const binding2 = controller.bindCard("lane-a", "card-2", () => { clickCount++; }, nativePanResponder);
   const clickTree = renderer.render({
     task: { id: "card-2", laneId: "lane-a", title: "Test 2", subtasks: [] },
     projectDisplayName: null,
     theme: { colors: {} },
     layout: { compact: false },
-    isDraggingThis: false,
-    isDragLocked: () => false,
-    onPress() { clickCount++; },
-    onDragStart() {},
-    onDragMove() {},
-    onDragRelease() {},
-    onDragCancel() {},
+    binding: binding2,
   });
   clickTree.props.onPanResponderGrant({ nativeEvent: {} }, { x0: 50, y0: 50 });
-  clickTree.props.onPanResponderRelease({ nativeEvent: {} }, { moveX: 50, moveY: 50 });
+  await clickTree.props.onPanResponderRelease({ nativeEvent: {} }, { moveX: 50, moveY: 50 });
   assert.equal(clickCount, 1, "Quick tap must open task details");
 
   // Verify getDropSlotPosition accurately locates the dashed box in the lane
-  const controller = new KanbanDragController({ lanes: ["lane-a"] });
-  controller.registerLaneLayout("lane-a", { x: 10, y: 20, width: 300, height: 600 });
-  controller.registerCardsViewportLayout("lane-a", { x: 10, y: 40, width: 280, height: 500 });
-  controller.setLaneCardOrder("lane-a", ["c1", "c2", "c3"]);
-  controller.registerCardLayout("lane-a", "c1", { x: 0, y: 0, width: 280, height: 60 });
-  controller.registerCardLayout("lane-a", "c2", { x: 0, y: 68, width: 280, height: 60 });
-  controller.registerCardLayout("lane-a", "c3", { x: 0, y: 136, width: 280, height: 60 });
-
   // Top slot (index 0)
   const slot0 = controller.getDropSlotPosition("lane-a", 0);
   assert.deepEqual(slot0, { x: 20, y: 60 }, "Slot 0 should be at top of cards list");

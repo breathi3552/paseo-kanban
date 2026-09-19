@@ -453,32 +453,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                 projects={projects}
                 theme={theme}
                 layout={layout}
-                dragBinding={
-                  drag.bindLane
-                    ? drag.bindLane(lane.id)
-                    : {
-                        isHovered: drag.isLaneHovered ? drag.isLaneHovered(lane.id) : true,
-                        targetIndex: drag.feedback?.targetIndex ?? -1,
-                        isTaskDragging: drag.isTaskDragging || (() => false),
-                        draggedCardHeight: drag.feedback?.draggedCardHeight,
-                        isDragLocked: drag.isDragLocked || (() => false),
-                        registerLaneLayout: (layout) => drag.registerLaneLayout?.(lane.id, layout),
-                        registerCardsViewport: (layout) => drag.registerCardsViewportLayout?.(lane.id, layout),
-                        handleLaneScroll: (scrollY) => drag.handleLaneScroll?.(lane.id, scrollY),
-                        registerCardLayout: (taskId, layout) => drag.registerCardLayout?.(lane.id, taskId, layout),
-                        unregisterCardLayout: (taskId) => drag.unregisterCardLayout?.(lane.id, taskId),
-                        setDropSpacerY: () => {},
-                        setLaneCardOrder: (taskIds) => {
-                          if (Array.isArray(taskIds)) {
-                            drag.setLaneCardOrder?.(lane.id, taskIds);
-                          }
-                        },
-                        startGesture: drag.startGesture || (() => {}),
-                        moveGesture: drag.moveGesture || (() => {}),
-                        releaseGesture: drag.releaseGesture || (() => {}),
-                        cancelGesture: drag.cancelGesture || (() => {}),
-                      }
-                }
+                dragBinding={drag.bindLane(lane.id)}
                 onAddTask={(laneId) => {
                   if (!board) return;
                   setActiveTaskSession(

@@ -96,12 +96,29 @@ export interface ContainerRefTarget {
   ) => void;
 }
 
+export interface PanResponderFactory {
+  create: (config: any) => { panHandlers: any };
+}
+
+export interface CardDragBinding {
+  readonly isDragging: boolean;
+  readonly cardPanHandlers: any;
+  readonly handlePanHandlers: any;
+  readonly onLayout: (rect: Rect) => void;
+  readonly onUnmount: () => void;
+}
+
 export interface LaneDragBinding {
   readonly isHovered: boolean;
   readonly targetIndex: number;
   readonly isTaskDragging: (taskId: string) => boolean;
   readonly draggedCardHeight?: number;
   readonly isDragLocked: () => boolean;
+  readonly bindCard: (
+    taskId: string,
+    onSelectTask?: () => void,
+    factory?: PanResponderFactory
+  ) => CardDragBinding;
   readonly registerLaneLayout: (layout: Rect) => void;
   readonly registerCardsViewport: (layout: Rect) => void;
   readonly handleLaneScroll: (scrollY: number) => void;
@@ -154,6 +171,11 @@ export class KanbanDragController {
   private listeners: Set<() => void> = new Set();
   private slotListeners: Set<() => void> = new Set();
   private dropSpacerY: number | null = null;
+  private releaseHandler?: (releaseX?: number, releaseY?: number) => Promise<void>;
+  private cancelHandler?: () => void;
+  private panResponderFactory: PanResponderFactory | null = null;
+  private cardCallbacks: Map<string, () => void> = new Map();
+  private cardResponders: Map<string, { body: any; handle: any }> = new Map();
 
   private feedback: DragFeedback = {
     isDragging: false,
@@ -285,6 +307,96 @@ export class KanbanDragController {
     return this.dropSpacerY;
   };
 
+  setReleaseHandler = (fn?: (releaseX?: number, releaseY?: number) => Promise<void>) => {
+    this.releaseHandler = fn;
+  };
+
+  setCancelHandler = (fn?: () => void) => {
+    this.cancelHandler = fn;
+  };
+
+  setPanResponderFactory = (factory: PanResponderFactory) => {
+    this.panResponderFactory = factory;
+  };
+
+  bindCard = (
+    laneId: string,
+    taskId: string,
+    onPress?: () => void,
+    panResponderFactory?: PanResponderFactory
+  ): CardDragBinding => {
+    const key = `${laneId}:${taskId}`;
+    if (onPress) {
+      this.cardCallbacks.set(key, onPress);
+    } else {
+      this.cardCallbacks.delete(key);
+    }
+
+    const factory = panResponderFactory ?? this.panResponderFactory;
+    let responders = this.cardResponders.get(key);
+    if (!responders && factory) {
+      const body = factory.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (_e: any, gs: any) => {
+          const cb = this.cardCallbacks.get(key);
+          this.handlePointerDown(
+            { taskId, laneId, onPress: cb },
+            { x: gs.x0, y: gs.y0 },
+            "body"
+          );
+        },
+        onPanResponderMove: (_e: any, gs: any) => {
+          this.handlePointerMove({ x: gs.moveX, y: gs.moveY });
+        },
+        onPanResponderRelease: (_e: any, gs: any) => {
+          this.handlePointerUp({ x: gs.moveX, y: gs.moveY });
+        },
+        onPanResponderTerminate: () => {
+          this.handlePointerCancel();
+        },
+        onPanResponderTerminationRequest: () => !this.isTaskDragging(taskId),
+      });
+
+      const handle = factory.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (_e: any, gs: any) => {
+          const cb = this.cardCallbacks.get(key);
+          this.handlePointerDown(
+            { taskId, laneId, onPress: cb },
+            { x: gs.x0, y: gs.y0 },
+            "handle"
+          );
+        },
+        onPanResponderMove: (_e: any, gs: any) => {
+          this.handlePointerMove({ x: gs.moveX, y: gs.moveY });
+        },
+        onPanResponderRelease: (_e: any, gs: any) => {
+          this.handlePointerUp({ x: gs.moveX, y: gs.moveY });
+        },
+        onPanResponderTerminate: () => {
+          this.handlePointerCancel();
+        },
+      });
+
+      responders = { body, handle };
+      this.cardResponders.set(key, responders);
+    }
+
+    return {
+      isDragging: this.isTaskDragging(taskId),
+      cardPanHandlers: responders?.body?.panHandlers,
+      handlePanHandlers: responders?.handle?.panHandlers,
+      onLayout: (rect: Rect) => this.registerCardLayout(laneId, taskId, rect),
+      onUnmount: () => {
+        this.cardCallbacks.delete(key);
+        this.cardResponders.delete(key);
+        this.unregisterCardLayout(laneId, taskId);
+      },
+    };
+  };
+
   private clearPendingTimer = () => {
     if (this.pendingTimer) {
       clearTimeout(this.pendingTimer);
@@ -372,7 +484,11 @@ export class KanbanDragController {
     this.pendingOnPress = null;
 
     if (wasActivated) {
-      await this.releaseGesture(point?.x, point?.y);
+      if (this.releaseHandler) {
+        await this.releaseHandler(point?.x, point?.y);
+      } else {
+        await this.releaseGesture(point?.x, point?.y);
+      }
     } else {
       await this.releaseGesture(point?.x, point?.y);
       if (dist < 5 && !this.dragLock && onPress) {
@@ -384,7 +500,11 @@ export class KanbanDragController {
   handlePointerCancel = () => {
     this.clearPendingTimer();
     this.pendingOnPress = null;
-    this.cancelGesture();
+    if (this.cancelHandler) {
+      this.cancelHandler();
+    } else {
+      this.cancelGesture();
+    }
   };
 
   startGesture = (
@@ -1049,6 +1169,9 @@ export function useKanbanDrag(options: KanbanDragOptions = {}): UseKanbanDragRet
     controller.cancelGesture();
   };
 
+  controller.setReleaseHandler(handleDragRelease);
+  controller.setCancelHandler(handleDragCancel);
+
   const isTaskDragging = (taskId: string): boolean => {
     if (droppingState?.taskId === taskId) return true;
     return controller.isTaskDragging(taskId);
@@ -1081,6 +1204,8 @@ export function useKanbanDrag(options: KanbanDragOptions = {}): UseKanbanDragRet
       isTaskDragging,
       draggedCardHeight: slotState.draggedCardHeight,
       isDragLocked,
+      bindCard: (taskId: string, onSelectTask?: () => void, factory?: PanResponderFactory) =>
+        controller.bindCard(laneId, taskId, onSelectTask, factory),
       registerLaneLayout: (layout: Rect) => controller.registerLaneLayout(laneId, layout),
       registerCardsViewport: (layout: Rect) => controller.registerCardsViewportLayout(laneId, layout),
       handleLaneScroll: (scrollY: number) => controller.handleLaneScroll(laneId, scrollY),

@@ -1,5 +1,5 @@
 import { useMemo, useEffect, Fragment, memo } from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet } from "react-native";
+import { View, Text, ScrollView, Pressable, StyleSheet, PanResponder } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanLane, KanbanTask } from "../shared/kanban";
 import { KanbanCard, KanbanDropSpacer } from "./kanban-card";
@@ -36,18 +36,12 @@ function KanbanLaneViewInner({
     targetIndex,
     isTaskDragging,
     draggedCardHeight,
-    isDragLocked,
     registerLaneLayout,
     registerCardsViewport,
     handleLaneScroll,
-    registerCardLayout,
-    unregisterCardLayout,
     setDropSpacerY,
-    startGesture,
-    moveGesture,
-    releaseGesture,
-    cancelGesture,
     setLaneCardOrder,
+    bindCard,
   } = dragBinding;
 
   // Sync card order to controller whenever tasks in this lane change
@@ -209,15 +203,7 @@ function KanbanLaneViewInner({
                 projectDisplayName={getProjectDisplayName(task.projectId, projects)}
                 theme={theme}
                 layout={layout}
-                isDraggingThis={isTaskDragging(task.id)}
-                isDragLocked={isDragLocked}
-                onPress={() => onSelectTask(task)}
-                onDragStart={startGesture}
-                onDragMove={moveGesture}
-                onDragRelease={releaseGesture}
-                onDragCancel={cancelGesture}
-                onLayoutCard={(taskId, rect) => registerCardLayout(taskId, rect)}
-                onUnmountCard={(taskId) => unregisterCardLayout(taskId)}
+                binding={bindCard(task.id, () => onSelectTask(task), PanResponder)}
               />
             </Fragment>
           ))}
