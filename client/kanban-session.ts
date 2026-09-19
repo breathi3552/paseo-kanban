@@ -3,12 +3,14 @@ import {
   type KanbanTask,
   type KanbanLane,
   type KanbanSubtask,
+  type ProjectFilter,
   addTask,
   updateTask,
   deleteTask,
   addLane,
   updateLane,
   deleteLane,
+  reorderTask,
 } from "../shared/kanban.ts";
 
 export type SessionResult =
@@ -296,3 +298,43 @@ export function openLaneSession(options: OpenLaneSessionOptions): LaneEditSessio
     },
   };
 }
+
+export interface ReorderTaskOperationOptions {
+  baseBoard: KanbanBoard;
+  baseRevision: string;
+  taskId: string;
+  targetLaneId: string;
+  targetIndex?: number;
+  filter?: ProjectFilter | string;
+  save: SaveFn;
+}
+
+export type ReorderOperationResult =
+  | { success: true; unchanged?: boolean }
+  | { success: false; error: string };
+
+export async function executeTaskReorder(
+  options: ReorderTaskOperationOptions
+): Promise<ReorderOperationResult> {
+  const { baseBoard, baseRevision, taskId, targetLaneId, targetIndex, filter, save } = options;
+  try {
+    const nextBoard = reorderTask(baseBoard, taskId, targetLaneId, targetIndex, filter);
+    if (nextBoard === baseBoard) {
+      return { success: true, unchanged: true };
+    }
+    const saved = await save(nextBoard, baseRevision);
+    if (!saved) {
+      return {
+        success: false,
+        error: "保存失败或版本冲突，未修改数据。请刷新最新数据后重试。",
+      };
+    }
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+

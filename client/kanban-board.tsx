@@ -11,8 +11,7 @@ import { useSettings } from "@getpaseo/plugin/client";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import {
   kanbanSettings,
-  updateTask,
-  reorderTask,
+  filterTasksByProject,
   type KanbanTask,
 } from "../shared/kanban";
 import { useProjects, getProjectDisplayName } from "./use-projects";
@@ -24,6 +23,7 @@ import { KanbanDragOverlay } from "./kanban-overlay";
 import {
   openTaskSession,
   openLaneSession,
+  executeTaskReorder,
   type TaskEditSession,
   type LaneEditSession,
 } from "./kanban-session";
@@ -35,6 +35,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
   const [activeTaskSession, setActiveTaskSession] = useState<TaskEditSession | null>(null);
   const [activeLaneSession, setActiveLaneSession] = useState<LaneEditSession | null>(null);
+  const [reorderError, setReorderError] = useState<string | null>(null);
 
   const isReady = settings.status === "ready";
   const board = isReady ? settings.values : null;
@@ -43,22 +44,8 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
   // Filter tasks based on selected project
   const filteredTasks = useMemo(() => {
     if (!board) return [];
-    if (selectedProjectId === "all") return board.tasks;
-    if (selectedProjectId === "unassigned") {
-      return board.tasks.filter((t) => t.projectId === null);
-    }
-    return board.tasks.filter((t) => t.projectId === selectedProjectId);
+    return filterTasksByProject(board.tasks, selectedProjectId);
   }, [board, selectedProjectId]);
-
-  const handleMoveTask = async (taskId: string, targetLaneId: string) => {
-    if (!board) return;
-    try {
-      const nextBoard = updateTask(board, taskId, { laneId: targetLaneId });
-      await settings.save(nextBoard, revision);
-    } catch (err) {
-      console.error("Move task failed:", err);
-    }
-  };
 
   const handleReorderTask = async (
     taskId: string,
@@ -66,21 +53,19 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
     targetIndex: number
   ) => {
     if (!board) return;
-    try {
-      const visibleTaskIds =
-        selectedProjectId === "all"
-          ? undefined
-          : filteredTasks.filter((t) => t.laneId === targetLaneId).map((t) => t.id);
-      const nextBoard = reorderTask(
-        board,
-        taskId,
-        targetLaneId,
-        targetIndex,
-        visibleTaskIds
-      );
-      await settings.save(nextBoard, revision);
-    } catch (err) {
-      console.error("Reorder task failed:", err);
+    const result = await executeTaskReorder({
+      baseBoard: board,
+      baseRevision: revision,
+      taskId,
+      targetLaneId,
+      targetIndex,
+      filter: selectedProjectId,
+      save: (b, r) => settings.save(b, r),
+    });
+    if (!result.success) {
+      setReorderError(result.error);
+    } else {
+      setReorderError(null);
     }
   };
 
@@ -95,7 +80,6 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
 
   const drag = useKanbanDrag({
     lanes: board?.lanes ?? [],
-    onMoveTask: handleMoveTask,
     onReorderTask: handleReorderTask,
     getTaskPreview,
   });
@@ -431,10 +415,18 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
       </View>
 
       {/* Conflict / Save Error Notification */}
-      {settings.saveError && (
+      {(settings.saveError || reorderError) && (
         <View style={styles.conflictBanner}>
-          <Text style={styles.conflictText}>保存冲突或错误：{settings.saveError}</Text>
-          <Pressable onPress={() => settings.reload()} style={styles.conflictAction}>
+          <Text style={styles.conflictText}>
+            {reorderError ? `保存失败：${reorderError}` : `保存冲突或错误：${settings.saveError}`}
+          </Text>
+          <Pressable
+            onPress={() => {
+              setReorderError(null);
+              settings.reload();
+            }}
+            style={styles.conflictAction}
+          >
             <Text style={{ fontSize: 12, color: theme.colors.foreground }}>刷新最新数据</Text>
           </Pressable>
         </View>

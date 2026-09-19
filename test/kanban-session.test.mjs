@@ -4,6 +4,7 @@ import { KanbanBoardSchema } from "../shared/kanban.ts";
 import {
   openTaskSession,
   openLaneSession,
+  executeTaskReorder,
 } from "../client/kanban-session.ts";
 
 function createMockStore(initialData = {}) {
@@ -540,3 +541,107 @@ test("会话重新打开: 保存成功后重新打开会话准确展示最新持
   assert.equal(s3.initialValues.subtasks[1].title, "新步骤2");
   assert.equal(s3.initialValues.subtasks[1].completed, false);
 });
+
+// ---------------------------------------------------------------------------
+// 6. 统一任务排序操作 (executeTaskReorder)
+// ---------------------------------------------------------------------------
+
+test("排序操作: 成功移动任务，版本号匹配并推进，完整任务列表更新", async () => {
+  const store = createMockStore({
+    tasks: [
+      { id: "t1", title: "Task 1", laneId: "to-plan", projectId: null },
+      { id: "t2", title: "Task 2", laneId: "to-plan", projectId: null },
+    ],
+  });
+
+  const baseRevision = store.revision;
+  const result = await executeTaskReorder({
+    baseBoard: store.values,
+    baseRevision,
+    taskId: "t1",
+    targetLaneId: "to-plan",
+    targetIndex: 1,
+    save: (b, r) => store.save(b, r),
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.unchanged, undefined);
+  assert.equal(store.history.length, 1);
+  assert.equal(store.history[0].revision, baseRevision);
+  assert.deepEqual(store.values.tasks.map((t) => t.id), ["t2", "t1"]);
+});
+
+test("排序操作: 同泳道原位操作返回 unchanged，不产生存储写入", async () => {
+  const store = createMockStore({
+    tasks: [
+      { id: "t1", title: "Task 1", laneId: "to-plan", projectId: "projA" },
+      { id: "t2", title: "Task 2", laneId: "to-plan", projectId: "projB" },
+    ],
+  });
+
+  const result = await executeTaskReorder({
+    baseBoard: store.values,
+    baseRevision: store.revision,
+    taskId: "t1",
+    targetLaneId: "to-plan",
+    targetIndex: 0,
+    filter: { type: "project", projectId: "projA" },
+    save: (b, r) => store.save(b, r),
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.unchanged, true);
+  assert.equal(store.history.length, 0, "原位操作不触发 save");
+});
+
+test("排序操作: 使用过期版本号提交返回保存失败，未覆盖新数据", async () => {
+  const store = createMockStore({
+    tasks: [{ id: "t1", title: "Task 1", laneId: "to-plan", projectId: null }],
+  });
+
+  // 外部并发修改导致 store 版本推进
+  await store.save({
+    ...store.values,
+    tasks: [{ id: "t1", title: "外部并发修改的标题", laneId: "to-plan", projectId: null }],
+  }, store.revision);
+
+  // 旧事务使用旧版本号提交
+  const result = await executeTaskReorder({
+    baseBoard: {
+      lanes: store.values.lanes,
+      tasks: [{ id: "t1", title: "旧快照任务", laneId: "to-plan", projectId: null }],
+    },
+    baseRevision: "rev-1", // 已过期的版本
+    taskId: "t1",
+    targetLaneId: "in-progress",
+    targetIndex: 0,
+    save: (b, r) => store.save(b, r),
+  });
+
+  assert.equal(result.success, false);
+  assert.match(result.error, /保存失败|冲突/);
+  // 外部新数据未被覆盖
+  assert.equal(store.values.tasks[0].title, "外部并发修改的标题");
+  assert.equal(store.values.tasks[0].laneId, "to-plan");
+});
+
+test("排序操作: 保存适配器抛错被捕获并返回错误信息，不抛未捕获异常", async () => {
+  const store = createMockStore({
+    tasks: [{ id: "t1", title: "Task 1", laneId: "to-plan", projectId: null }],
+  });
+
+  const result = await executeTaskReorder({
+    baseBoard: store.values,
+    baseRevision: store.revision,
+    taskId: "t1",
+    targetLaneId: "in-progress",
+    targetIndex: 0,
+    save: async () => {
+      throw new Error("Disk full");
+    },
+  });
+
+  assert.equal(result.success, false);
+  assert.match(result.error, /Disk full/);
+});
+
