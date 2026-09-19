@@ -21,8 +21,8 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 
 ## Requirements
 
-- **Paseo Host Runtime Commitment**: `>= 0.8.0` (declared in `paseo-plugin.json`). As a Paseo workspace plugin, production runtime execution is managed and hosted by the Paseo application environment.
-- **Development & CI Baseline**: Node.js `>= 24.0.0`. Node 24 is required for local development, linting, formatting, TypeScript checks, and automated testing via Node's native test runner (`node --test`) and type stripping (`--experimental-strip-types`).
+- **Paseo Host Runtime Commitment**: `>= 0.8.0` (declared in `paseo-plugin.json`). As a Paseo workspace plugin, production runtime execution is managed and hosted by the Paseo application environment. No consumer-side Node version restriction is imposed in `package.json`.
+- **Development & CI Baseline**: Node.js 24 (pinned in `.nvmrc` and `.node-version`). Node 24 is required for local contributors and CI automation workflows running quality checks (`npm run check`), type stripping (`--experimental-strip-types`), and native test suites (`node --test`).
 
 ---
 

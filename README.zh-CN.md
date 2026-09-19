@@ -21,8 +21,8 @@
 
 ## 环境要求
 
-- **Paseo 宿主版本承诺**：`>= 0.8.0`（声明于 `paseo-plugin.json`）。作为 Paseo 工作区插件，插件的生产运行时环境由 Paseo 宿主应用提供并托管执行。
-- **开发与 CI 环境基线**：Node.js `>= 24.0.0`。本地贡献代码、运行静态检查、代码格式化、类型检查与自动化测试必须基于 Node 24，依赖其原生的 `--experimental-strip-types` 类型擦除与原生测试运行器（`node --test`）。
+- **Paseo 宿主版本承诺**：`>= 0.8.0`（声明于 `paseo-plugin.json`）。作为 Paseo 工作区插件，插件的生产运行时环境由 Paseo 宿主应用提供并托管执行，不在 `package.json` 对消费端强加额外的 `engines.node` 限制。
+- **开发与 CI 环境基线**：Node.js 24（显式声明于 `.nvmrc` 与 `.node-version`）。本地参与开发、运行质量检查护栏（`npm run check`）、代码格式化、类型检查与自动化测试必须基于 Node 24，依赖其原生的 `--experimental-strip-types` 类型擦除与原生测试运行器（`node --test`）。
 
 ---
 
