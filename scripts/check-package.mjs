@@ -31,6 +31,7 @@ import path from "node:path";
 import process from "node:process";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import semver from "semver";
 import ts from "typescript";
 
 export const DISALLOWED_PATTERNS = [
@@ -80,16 +81,21 @@ export const DISALLOWED_PATTERNS = [
 
 export const REQUIRED_PACK_FILES = [
   {
-    name: "Client Entrypoint",
+    // Note: Paseo universal spec requires at least one runtime entrypoint (client or server).
+    // Requiring both index.client.tsx and index.server.ts is this repository's design convention,
+    // as Paseo Kanban contributes both a client sidebar surface and server daemon settings registration.
+    name: "Client Entrypoint (repository convention)",
     matches: (files) =>
       files.includes("index.client.tsx") || files.includes("index.client.ts"),
-    description: "index.client.tsx or index.client.ts",
+    description:
+      "index.client.tsx or index.client.ts (repository convention: required by this plugin)",
   },
   {
-    name: "Server Entrypoint",
+    name: "Server Entrypoint (repository convention)",
     matches: (files) =>
       files.includes("index.server.ts") || files.includes("index.server.tsx"),
-    description: "index.server.ts or index.server.tsx",
+    description:
+      "index.server.ts or index.server.tsx (repository convention: required by this plugin)",
   },
   {
     name: "Plugin Manifest",
@@ -137,7 +143,7 @@ export function validateManifest(manifest) {
     manifest.requirements.paseo.trim() === ""
   ) {
     errors.push("Manifest 'requirements.paseo' is required (e.g. '>=0.8.0')");
-  } else if (!/^[~^><=|\d\s.-]+$/.test(manifest.requirements.paseo)) {
+  } else if (!semver.validRange(manifest.requirements.paseo)) {
     errors.push(
       `Manifest 'requirements.paseo' "${manifest.requirements.paseo}" is not a valid semver range`,
     );
@@ -174,9 +180,7 @@ export function validatePackageJson(pkg) {
   }
 
   // Note: Do NOT lock version to 0.1.0; accept standard SemVer format
-  const semverRegex =
-    /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
-  if (typeof pkg.version !== "string" || !semverRegex.test(pkg.version)) {
+  if (typeof pkg.version !== "string" || !semver.valid(pkg.version)) {
     errors.push(
       `package.json 'version' "${pkg.version}" is not a valid SemVer format`,
     );
@@ -489,21 +493,6 @@ export function validatePackage({
   const pkgResult = validatePackageJson(packageJson);
   if (!pkgResult.valid) {
     errors.push(...pkgResult.errors);
-  }
-
-  // Correlation check
-  if (manifestJson?.id && packageJson?.name) {
-    const unscopedPkgName = packageJson.name.includes("/")
-      ? packageJson.name.split("/")[1]
-      : packageJson.name;
-    if (
-      manifestJson.id !== packageJson.name &&
-      manifestJson.id !== unscopedPkgName
-    ) {
-      errors.push(
-        `Manifest id "${manifestJson.id}" does not match package name "${packageJson.name}"`,
-      );
-    }
   }
 
   // 3. File list checks

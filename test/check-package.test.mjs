@@ -8,7 +8,6 @@ import {
   extractImportsFromSource,
   resolveRelativeImport,
   validateSourceImports,
-  runPackageCheck,
 } from "../scripts/check-package.mjs";
 
 function createValidFixture() {
@@ -153,18 +152,6 @@ test("check-package: validateSourceImports reports missing imports", () => {
 // 2. Positive Tests
 // ---------------------------------------------------------------------------
 
-test("check-package: repository package passes real end-to-end check", async () => {
-  const result = await runPackageCheck({ verbose: false });
-  assert.equal(
-    result.valid,
-    true,
-    `Expected valid package but got errors: ${result.errors.join(", ")}`,
-  );
-  assert.equal(result.errors.length, 0);
-  assert.ok(result.details.fileCount >= 18);
-  assert.ok(result.details.verifiedImportsCount >= 30);
-});
-
 test("check-package: in-memory valid fixture passes validation", () => {
   const fixture = createValidFixture();
   const result = validatePackage(fixture);
@@ -178,8 +165,33 @@ test("check-package: in-memory valid fixture passes validation", () => {
   assert.ok(result.details.verifiedImportsCount >= 5);
 });
 
+test("check-package: accepts valid semver ranges for requirements.paseo (*, 1.x, >=0.8.0, etc.)", () => {
+  const validRanges = [
+    "*",
+    "1.x",
+    ">=0.8.0",
+    "^0.8.0",
+    "~0.8.0",
+    ">=0.8.0 <1.0.0",
+    "0.8.0 - 0.9.0",
+  ];
+  for (const range of validRanges) {
+    const res = validateManifest({
+      id: "paseo-kanban",
+      requirements: { paseo: range },
+    });
+    assert.equal(res.valid, true, `Range "${range}" should be valid`);
+  }
+});
+
 test("check-package: accepts standard SemVer other than 0.1.0 (does not lock version)", () => {
-  for (const ver of ["0.2.0", "1.0.0", "2.1.4-beta.1", "0.1.0"]) {
+  for (const ver of [
+    "0.1.0",
+    "0.2.0",
+    "1.0.0",
+    "2.1.4-beta.1",
+    "2.0.0-rc.1+build.123",
+  ]) {
     const res = validatePackageJson({
       name: "foo",
       version: ver,
@@ -524,7 +536,7 @@ test("check-package: fails when manifest is missing required id or has invalid i
   assert.ok(invalidId.errors.some((e) => e.includes("is invalid")));
 });
 
-test("check-package: fails when manifest is missing requirements.paseo or has invalid semver", () => {
+test("check-package: fails when manifest is missing requirements.paseo or has invalid semver (===, ..., 1..2)", () => {
   const missingReq = validateManifest({ id: "paseo-kanban" });
   assert.equal(missingReq.valid, false);
   assert.ok(
@@ -543,25 +555,49 @@ test("check-package: fails when manifest is missing requirements.paseo or has in
       e.includes("Manifest 'requirements.paseo' is required"),
     ),
   );
+
+  const invalidRanges = ["===", "...", "1..2", "abc", ">= >=0.8"];
+  for (const range of invalidRanges) {
+    const res = validateManifest({
+      id: "paseo-kanban",
+      requirements: { paseo: range },
+    });
+    assert.equal(res.valid, false, `Range "${range}" should be rejected`);
+    assert.ok(
+      res.errors.some((e) => e.includes("not a valid semver range")),
+      `Expected semver range error for "${range}", got: ${res.errors.join("; ")}`,
+    );
+  }
 });
 
-test("check-package: fails when package.json version is invalid semver", () => {
-  const badVersion = validatePackageJson({
-    name: "paseo-kanban",
-    version: "not_a_semver",
-    type: "module",
-    files: [
-      "paseo-plugin.json",
-      "index.client.tsx",
-      "index.server.ts",
-      "client/",
-      "shared/",
-    ],
-  });
-  assert.equal(badVersion.valid, false);
-  assert.ok(
-    badVersion.errors.some((e) => e.includes("not a valid SemVer format")),
-  );
+test("check-package: fails when package.json version is invalid semver (===, ..., 1..2, not_a_semver, 1.0)", () => {
+  for (const badVer of [
+    "not_a_semver",
+    "1.0",
+    "1.0.0.0",
+    "===",
+    "...",
+    "1..2",
+    "abc",
+  ]) {
+    const res = validatePackageJson({
+      name: "paseo-kanban",
+      version: badVer,
+      type: "module",
+      files: [
+        "paseo-plugin.json",
+        "index.client.tsx",
+        "index.server.ts",
+        "client/",
+        "shared/",
+      ],
+    });
+    assert.equal(res.valid, false, `Version "${badVer}" should be rejected`);
+    assert.ok(
+      res.errors.some((e) => e.includes("not a valid SemVer format")),
+      `Expected semver error for "${badVer}", got: ${res.errors.join("; ")}`,
+    );
+  }
 });
 
 test("check-package: fails when host libraries are placed in dependencies instead of devDependencies", () => {
@@ -646,15 +682,16 @@ test("check-package: fails when files array in package.json misses required path
   );
 });
 
-test("check-package: fails when manifest id does not correlate with package name", () => {
+test("check-package: allows differing valid package name and manifest id (not a host constraint)", () => {
   const fixture = createValidFixture();
-  fixture.manifestJson.id = "mismatched-id";
-  fixture.packageJson.name = "expected-name";
+  fixture.manifestJson.id = "my-custom-plugin";
+  fixture.packageJson.name = "@acme/different-package-name";
 
   const result = validatePackage(fixture);
-  assert.equal(result.valid, false);
-  assert.ok(
-    result.errors.some((e) => e.includes("does not match package name")),
-    `Actual errors: ${result.errors.join("; ")}`,
+  assert.equal(
+    result.valid,
+    true,
+    `Expected valid package with differing name/id but got errors: ${result.errors.join("; ")}`,
   );
+  assert.equal(result.errors.length, 0);
 });

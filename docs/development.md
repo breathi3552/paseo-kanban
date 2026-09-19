@@ -56,6 +56,7 @@ npm run check:package
 1. **必要文件齐全性**：
    - 客户端入口：`index.client.tsx`（或 `index.client.ts`）
    - 服务端入口：`index.server.ts`（或 `index.server.tsx`）
+   - _（注：Paseo 通用规范仅要求至少具备客户端或服务端任一入口；本项目因同时注册前端侧栏界面与服务端看板设置，故约定双入口均须齐全）_
    - 插件清单：`paseo-plugin.json`
    - 包元数据：`package.json`
    - 源码目录：`client/` 与 `shared/`
