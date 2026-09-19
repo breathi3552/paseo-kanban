@@ -439,6 +439,60 @@ export class KanbanDragController {
     return this.containerBounds;
   };
 
+  getLaneLayout = (laneId: string): Rect | undefined => {
+    return this.laneLayouts.get(laneId);
+  };
+
+  getCardsViewportLayout = (laneId: string): Rect | undefined => {
+    return this.cardsViewportLayouts.get(laneId);
+  };
+
+  getLaneScroll = (laneId: string): number => {
+    return this.laneScrollY.get(laneId) ?? 0;
+  };
+
+  getDropSlotPosition = (
+    laneId: string,
+    targetIndex: number
+  ): { x: number; y: number } | null => {
+    const laneRect = this.laneLayouts.get(laneId);
+    if (!laneRect) return null;
+
+    const cardsViewport = this.cardsViewportLayouts.get(laneId);
+    const scrollY = this.laneScrollY.get(laneId) ?? 0;
+    const laneCardsMap = (this.activeSession?.cardLayouts ?? this.cardLayouts).get(laneId);
+
+    const slotX = laneRect.x - this.scrollX + (cardsViewport?.x ?? 12);
+    const activeTaskId = this.activeSession?.taskId ?? this.feedback.draggingTaskId;
+    const allCardIds = this.laneCardOrders.get(laneId) ?? [];
+    const remainingCardIds = allCardIds.filter((id) => id !== activeTaskId);
+
+    const laneOriginY = laneRect.y;
+    const cardsOriginY = cardsViewport?.y ?? 0;
+
+    let slotCardY = 0;
+    if (remainingCardIds.length === 0 || targetIndex <= 0) {
+      slotCardY = 0;
+    } else if (targetIndex < remainingCardIds.length) {
+      const nextCardId = remainingCardIds[targetIndex];
+      const nextCardRect = laneCardsMap?.get(nextCardId);
+      if (nextCardRect) {
+        slotCardY = nextCardRect.y;
+      } else {
+        const prevCardId = remainingCardIds[targetIndex - 1];
+        const prevRect = laneCardsMap?.get(prevCardId);
+        slotCardY = prevRect ? prevRect.y + prevRect.height + 8 : targetIndex * 80;
+      }
+    } else {
+      const lastCardId = remainingCardIds[remainingCardIds.length - 1];
+      const lastCardRect = laneCardsMap?.get(lastCardId);
+      slotCardY = lastCardRect ? lastCardRect.y + lastCardRect.height + 8 : remainingCardIds.length * 80;
+    }
+
+    const slotY = laneOriginY + cardsOriginY - scrollY + slotCardY;
+    return { x: slotX, y: slotY };
+  };
+
   getFeedback = (): DragFeedback => {
     return this.feedback;
   };
@@ -629,5 +683,9 @@ export function useKanbanDrag(options: KanbanDragOptions) {
     isTaskDragging: controller.isTaskDragging,
     isLaneHovered: controller.isLaneHovered,
     isDragLocked: controller.isDragLocked,
+    getLaneLayout: controller.getLaneLayout,
+    getCardsViewportLayout: controller.getCardsViewportLayout,
+    getLaneScroll: controller.getLaneScroll,
+    getDropSlotPosition: controller.getDropSlotPosition,
   };
 }

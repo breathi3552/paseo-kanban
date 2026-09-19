@@ -6,6 +6,7 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
+  Animated,
 } from "react-native";
 import { useSettings } from "@getpaseo/plugin/client";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
@@ -36,6 +37,21 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
   const [activeTaskSession, setActiveTaskSession] = useState<TaskEditSession | null>(null);
   const [activeLaneSession, setActiveLaneSession] = useState<LaneEditSession | null>(null);
+
+  interface DroppingState {
+    taskId: string;
+    task: KanbanTask;
+    projectName: string | null;
+    targetLaneId: string;
+    targetIndex: number;
+  }
+  const [droppingState, setDroppingState] = useState<DroppingState | null>(null);
+  const dropSpacerYRef = useRef<number | null>(null);
+
+  const animPos = useRef(Animated?.ValueXY ? new Animated.ValueXY({ x: 0, y: 0 }) : null).current;
+  const animRotate = useRef(Animated?.Value ? new Animated.Value(1) : null).current;
+  const animScale = useRef(Animated?.Value ? new Animated.Value(1.03) : null).current;
+  const AnimatedView = (Animated && Animated.View) || View;
 
   const isReady = settings.status === "ready";
   const board = isReady ? settings.values : null;
@@ -358,6 +374,109 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
     return getProjectDisplayName(draggingTask.projectId, projects);
   }, [draggingTask, projects]);
 
+  const activeOverlayTask = droppingState ? droppingState.task : draggingTask;
+  const activeOverlayProjectName = droppingState ? droppingState.projectName : draggingTaskProjectName;
+  const activeDraggingOrDroppingTaskId = droppingState ? droppingState.taskId : drag.feedback.draggingTaskId;
+
+  const handleDragRelease = (releaseX?: number, releaseY?: number) => {
+    if (!drag.feedback.isDragging || !draggingTask) {
+      drag.releaseGesture(releaseX, releaseY);
+      return;
+    }
+
+    const currentTask = draggingTask;
+    const currentProjectName = draggingTaskProjectName;
+    const targetLaneId =
+      drag.feedback.hoveredLaneId ??
+      drag.feedback.draggingSourceLaneId ??
+      board?.lanes[0]?.id ??
+      "";
+    const targetIndex = drag.feedback.targetIndex ?? 0;
+
+    const containerBounds = drag.getContainerBounds?.() ?? null;
+    const containerX = containerBounds?.x ?? 0;
+    const containerY = containerBounds?.y ?? 0;
+    const cardHalfWidth = layout.compact ? 125 : 140;
+
+    const fromX =
+      (drag.feedback.pointerX ?? releaseX ?? 0) - containerX - cardHalfWidth;
+    const fromY = (drag.feedback.pointerY ?? releaseY ?? 0) - containerY - 20;
+
+    const targetSlot = drag.getDropSlotPosition?.(targetLaneId, targetIndex);
+    let toX = fromX;
+    let toY = fromY;
+
+    if (targetSlot) {
+      toX = targetSlot.x;
+      const laneScroll = drag.getLaneScroll?.(targetLaneId) ?? 0;
+      const laneLayout = drag.getLaneLayout?.(targetLaneId);
+      const cardsViewport = drag.getCardsViewportLayout?.(targetLaneId);
+      if (
+        dropSpacerYRef.current !== null &&
+        drag.feedback.hoveredLaneId === targetLaneId
+      ) {
+        toY =
+          (laneLayout?.y ?? 0) +
+          (cardsViewport?.y ?? 0) -
+          laneScroll +
+          dropSpacerYRef.current;
+      } else {
+        toY = targetSlot.y;
+      }
+    }
+
+    if (!Animated || !animPos || !animRotate || !animScale) {
+      drag.releaseGesture(releaseX, releaseY);
+      dropSpacerYRef.current = null;
+      return;
+    }
+
+    animPos.setValue({ x: fromX, y: fromY });
+    animRotate.setValue(1);
+    animScale.setValue(1.03);
+
+    setDroppingState({
+      taskId: currentTask.id,
+      task: currentTask,
+      projectName: currentProjectName,
+      targetLaneId,
+      targetIndex,
+    });
+
+    Animated.parallel([
+      Animated.timing(animPos, {
+        toValue: { x: toX, y: toY },
+        duration: 180,
+        useNativeDriver: false,
+      }),
+      Animated.timing(animRotate, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: false,
+      }),
+      Animated.timing(animScale, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: false,
+      }),
+    ]).start(async () => {
+      try {
+        await drag.releaseGesture(releaseX, releaseY);
+      } finally {
+        setDroppingState(null);
+        dropSpacerYRef.current = null;
+      }
+    });
+  };
+
+  const handleDragCancel = () => {
+    if (droppingState) {
+      setDroppingState(null);
+      dropSpacerYRef.current = null;
+    }
+    drag.cancelGesture();
+  };
+
   // Keep drag controller aware of the card order within each lane for hit-testing
   useEffect(() => {
     if (!board) return;
@@ -569,12 +688,16 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
         >
           {board.lanes.map((lane) => {
             const laneTasks = filteredTasks.filter((t) => t.laneId === lane.id);
-            const isHovered = drag.isLaneHovered(lane.id);
-            const targetIndex = isHovered
+            const isHovered = droppingState
+              ? droppingState.targetLaneId === lane.id
+              : drag.isLaneHovered(lane.id);
+            const targetIndex = droppingState
+              ? (droppingState.targetLaneId === lane.id ? droppingState.targetIndex : -1)
+              : isHovered
               ? (drag.feedback.targetIndex ?? laneTasks.length)
               : -1;
             const dropBeforeTaskId = isHovered
-              ? laneTasks.filter((task) => task.id !== drag.feedback.draggingTaskId)[targetIndex]?.id
+              ? laneTasks.filter((task) => task.id !== activeDraggingOrDroppingTaskId)[targetIndex]?.id
               : undefined;
 
             return (
@@ -649,15 +772,24 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                     {laneTasks.map((task) => (
                       <Fragment key={task.id}>
                         {isHovered && dropBeforeTaskId === task.id && (
-                          <KanbanDropSpacer theme={theme} height={drag.feedback.draggedCardHeight} />
+                          <KanbanDropSpacer
+                            theme={theme}
+                            height={drag.feedback.draggedCardHeight}
+                            onLayout={(rect) => {
+                              dropSpacerYRef.current = rect.y;
+                            }}
+                          />
                         )}
                         <KanbanCard
                           task={task}
                           projectDisplayName={getProjectDisplayName(task.projectId, projects)}
                           theme={theme}
                           layout={layout}
-                          isDraggingThis={drag.isTaskDragging(task.id)}
-                          isDragLocked={drag.isDragLocked}
+                          isDraggingThis={
+                            drag.isTaskDragging(task.id) ||
+                            droppingState?.taskId === task.id
+                          }
+                          isDragLocked={() => drag.isDragLocked() || droppingState !== null}
                           onPress={() => {
                             if (!board) return;
                             setActiveTaskSession(
@@ -672,8 +804,8 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                           }}
                           onDragStart={drag.startGesture}
                           onDragMove={drag.moveGesture}
-                          onDragRelease={drag.releaseGesture}
-                          onDragCancel={drag.cancelGesture}
+                          onDragRelease={handleDragRelease}
+                          onDragCancel={handleDragCancel}
                           onLayoutCard={(taskId, rect) =>
                             drag.registerCardLayout(lane.id, taskId, rect)
                           }
@@ -685,7 +817,13 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                     ))}
 
                     {isHovered && !dropBeforeTaskId && (
-                      <KanbanDropSpacer theme={theme} height={drag.feedback.draggedCardHeight} />
+                      <KanbanDropSpacer
+                        theme={theme}
+                        height={drag.feedback.draggedCardHeight}
+                        onLayout={(rect) => {
+                          dropSpacerYRef.current = rect.y;
+                        }}
+                      />
                     )}
 
                     {laneTasks.length === 0 && !isHovered && (
@@ -702,31 +840,51 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
           })}
         </ScrollView>
 
-        {drag.feedback.isDragging && draggingTask && typeof drag.feedback.pointerX === "number" && (
-          <View
-            pointerEvents="none"
-            style={[
-              styles.dragOverlay,
-              {
-                left:
-                  drag.feedback.pointerX -
-                  (drag.getContainerBounds()?.x ?? 0) -
-                  (layout.compact ? 125 : 140),
-                top:
-                  (drag.feedback.pointerY ?? 0) -
-                  (drag.getContainerBounds()?.y ?? 0) -
-                  20,
-              },
-            ]}
-          >
-            <KanbanCardPreview
-              task={draggingTask}
-              projectDisplayName={draggingTaskProjectName}
-              theme={theme}
-              layout={layout}
-            />
-          </View>
-        )}
+        {((drag.feedback.isDragging && draggingTask && typeof drag.feedback.pointerX === "number") ||
+          droppingState !== null) &&
+          activeOverlayTask && (
+            <AnimatedView
+              pointerEvents="none"
+              style={[
+                styles.dragOverlay,
+                droppingState && animPos && animRotate && animScale
+                  ? {
+                      left: animPos.x,
+                      top: animPos.y,
+                      transform: [
+                        {
+                          rotate: animRotate.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: ["0deg", "2.5deg"],
+                          }),
+                        },
+                        { scale: animScale },
+                      ],
+                    }
+                  : typeof drag.feedback.pointerX === "number"
+                  ? {
+                      left:
+                        drag.feedback.pointerX -
+                        (drag.getContainerBounds()?.x ?? 0) -
+                        (layout.compact ? 125 : 140),
+                      top:
+                        (drag.feedback.pointerY ?? 0) -
+                        (drag.getContainerBounds()?.y ?? 0) -
+                        20,
+                      transform: [{ rotate: "2.5deg" }, { scale: 1.03 }],
+                    }
+                  : { display: "none" },
+              ]}
+            >
+              <KanbanCardPreview
+                task={activeOverlayTask}
+                projectDisplayName={activeOverlayProjectName}
+                theme={theme}
+                layout={layout}
+                animated={true}
+              />
+            </AnimatedView>
+          )}
       </View>
 
       {/* Modals with Session Baseline Locking */}

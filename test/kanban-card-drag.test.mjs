@@ -148,3 +148,87 @@ test("board renders the slot against the remaining cards, not the dragged card",
     }
   }
 });
+
+test("long press grabs the card immediately, seamlessly continues dragging on move, and getDropSlotPosition targets the dashed slot", async () => {
+  const dragStarts = [];
+  const dragMoves = [];
+  const dragReleases = [];
+  let clicked = false;
+  const renderer = componentRenderer();
+  const tree = renderer.render({
+    task: { id: "card-1", laneId: "lane-a", title: "Test", subtasks: [] },
+    projectDisplayName: null,
+    theme: { colors: {} },
+    layout: { compact: false },
+    isDraggingThis: false,
+    isDragLocked: () => false,
+    onPress: () => { clicked = true; },
+    onDragStart: (...args) => dragStarts.push(args),
+    onDragMove: (...args) => dragMoves.push(args),
+    onDragRelease: (...args) => dragReleases.push(args),
+    onDragCancel() {},
+  });
+
+  // 1. Press down (grant gesture responder)
+  tree.props.onPanResponderGrant({ nativeEvent: {} }, { x0: 120, y0: 240 });
+
+  // 2. Wait 280ms to trigger long press grab
+  await new Promise((resolve) => setTimeout(resolve, 280));
+
+  assert.equal(dragStarts.length, 1, "Long press must trigger dragStart");
+  assert.deepEqual(dragStarts[0], ["card-1", "lane-a", 120, 240, true], "Must grab card immediately at pointer coordinates");
+
+  // 3. User moves pointer AFTER grabbing: must seamlessly continue dragging without releasing!
+  tree.props.onPanResponderMove({ nativeEvent: {} }, { dx: 10, dy: 20, moveX: 130, moveY: 260 });
+  assert.equal(dragMoves.length, 1, "Moving after long press grab must continue dragging");
+  assert.deepEqual(dragMoves[0], [130, 260], "Move coordinates must follow pointer");
+  assert.equal(dragReleases.length, 0, "Moving must not trigger premature release");
+
+  // 4. Release gesture: must trigger release at current coordinates
+  tree.props.onPanResponderRelease({ nativeEvent: {} }, { moveX: 130, moveY: 260 });
+  assert.equal(dragReleases.length, 1, "Release must trigger onDragRelease");
+  assert.deepEqual(dragReleases[0], [130, 260], "Release coordinates must match final position");
+  assert.equal(clicked, false, "Long press and drag must not trigger click onPress");
+
+  // 5. Verify quick tap opens modal (< 260ms and < 5px)
+  let clickCount = 0;
+  const clickTree = renderer.render({
+    task: { id: "card-2", laneId: "lane-a", title: "Test 2", subtasks: [] },
+    projectDisplayName: null,
+    theme: { colors: {} },
+    layout: { compact: false },
+    isDraggingThis: false,
+    isDragLocked: () => false,
+    onPress() { clickCount++; },
+    onDragStart() {},
+    onDragMove() {},
+    onDragRelease() {},
+    onDragCancel() {},
+  });
+  clickTree.props.onPanResponderGrant({ nativeEvent: {} }, { x0: 50, y0: 50 });
+  clickTree.props.onPanResponderRelease({ nativeEvent: {} }, { moveX: 50, moveY: 50 });
+  assert.equal(clickCount, 1, "Quick tap must open task details");
+
+  // Verify getDropSlotPosition accurately locates the dashed box in the lane
+  const controller = new KanbanDragController({ lanes: ["lane-a"] });
+  controller.registerLaneLayout("lane-a", { x: 10, y: 20, width: 300, height: 600 });
+  controller.registerCardsViewportLayout("lane-a", { x: 10, y: 40, width: 280, height: 500 });
+  controller.setLaneCardOrder("lane-a", ["c1", "c2", "c3"]);
+  controller.registerCardLayout("lane-a", "c1", { x: 0, y: 0, width: 280, height: 60 });
+  controller.registerCardLayout("lane-a", "c2", { x: 0, y: 68, width: 280, height: 60 });
+  controller.registerCardLayout("lane-a", "c3", { x: 0, y: 136, width: 280, height: 60 });
+
+  // Top slot (index 0)
+  const slot0 = controller.getDropSlotPosition("lane-a", 0);
+  assert.deepEqual(slot0, { x: 20, y: 60 }, "Slot 0 should be at top of cards list");
+
+  // Middle slot (index 1)
+  const slot1 = controller.getDropSlotPosition("lane-a", 1);
+  assert.deepEqual(slot1, { x: 20, y: 128 }, "Slot 1 should match card 2 top");
+
+  // Bottom slot (index 3)
+  const slot3 = controller.getDropSlotPosition("lane-a", 3);
+  assert.deepEqual(slot3, { x: 20, y: 264 }, "Slot 3 should follow card 3 bottom with gap");
+
+  renderer.unmount();
+});
