@@ -86,7 +86,7 @@ npm ci
 
 ### 统一质量护栏检查
 
-按顺序执行类型检查、自动化测试套件、静态代码检查及代码格式验证：
+按顺序执行类型检查、自动化测试套件、静态代码检查、代码格式验证及发布包完整性检查：
 
 ```bash
 npm run check
@@ -94,6 +94,10 @@ npm run check
 
 ### 各独立质量命令
 
+- **发布包完整性检查**：静态校验发布包产物清单、入口完整性与 TypeScript AST 相对导入闭包：
+  ```bash
+  npm run check:package
+  ```
 - **运行单元测试**：跨平台自动发现并执行所有 `test/*.test.mjs` 测试套件：
   ```bash
   npm test
@@ -111,6 +115,8 @@ npm run check
   npm run format:check
   npm run format
   ```
+
+详细开发贡献流程、发布前检查机制与真实宿主环境手工验收指南，请参阅 [开发与宿主验收指南](./docs/development.md)。
 
 ---
 

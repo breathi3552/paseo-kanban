@@ -86,7 +86,7 @@ npm ci
 
 ### Unified Quality Guardrails (Check)
 
-Runs typecheck, automated test suites, linting, and format verification in sequence:
+Runs typecheck, automated test suites, linting, format verification, and release package checks in sequence:
 
 ```bash
 npm run check
@@ -94,6 +94,10 @@ npm run check
 
 ### Individual Quality Tasks
 
+- **Package Verification**: Validates release package contents, entrypoints, and TypeScript AST relative imports:
+  ```bash
+  npm run check:package
+  ```
 - **Run Tests**: Cross-platform auto-discovery of all `test/*.test.mjs` suites:
   ```bash
   npm test
@@ -111,6 +115,8 @@ npm run check
   npm run format:check
   npm run format
   ```
+
+For comprehensive contribution guidelines, pre-publish package checks, and manual host acceptance steps, see the [Development & Acceptance Guide](./docs/development.md).
 
 ---
 
