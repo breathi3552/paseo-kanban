@@ -711,7 +711,9 @@ test("边缘滚动: 接近看板视口左右 48px 边缘时输出定向速度矢
 // ---------------------------------------------------------------------------
 // 11. 失败清理与互斥锁释放
 // ---------------------------------------------------------------------------
-test("失败清理: 提交回调抛出异常或保存被拒绝后，互斥锁仍能正常释放，后续可继续操作", async () => {
+test("失败清理: 提交回调抛出异常或保存被拒绝后，互斥锁仍能正常释放，后续可继续操作", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+
   let attempts = 0;
   const controller = setupController();
   controller.setOnReorderTask(async () => {
@@ -728,8 +730,8 @@ test("失败清理: 提交回调抛出异常或保存被拒绝后，互斥锁仍
     assert.match(String(err), /Network failure/);
   }
 
-  // Wait for the unlock window (150ms)
-  await new Promise((resolve) => setTimeout(resolve, 180));
+  // 推进 60ms 释放互斥锁
+  t.mock.timers.tick(60);
 
   assert.equal(attempts, 1, "重排回调应且仅应被调用一次");
   assert.equal(controller.isDragLocked(), false, "互斥锁必须在失败后恢复释放");
@@ -745,7 +747,9 @@ test("失败清理: 提交回调抛出异常或保存被拒绝后，互斥锁仍
 // ---------------------------------------------------------------------------
 // 12. 统一手势输入入口 (handlePointerDown/Move/Up/Cancel)
 // ---------------------------------------------------------------------------
-test("共同输入入口: 轻点分流、手柄立即激活与主体位移升级拖拽", async () => {
+test("共同输入入口: 轻点分流、手柄立即激活与主体位移升级拖拽", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+
   const reorders = [];
   let clicks = 0;
   const controller = setupController();
@@ -776,8 +780,8 @@ test("共同输入入口: 轻点分流、手柄立即激活与主体位移升级
   assert.equal(clicks, 1, "拖拽不触发点击");
   assert.equal(reorders.length, 1, "释放触发排序");
 
-  // 等待稳定窗口释放互斥锁
-  await new Promise((resolve) => setTimeout(resolve, 180));
+  // 推进 60ms 释放互斥锁
+  t.mock.timers.tick(60);
 
   // 3. 手柄立即激活
   controller.handlePointerDown(ctx, { x: 50, y: 50 }, "handle");
@@ -790,7 +794,9 @@ test("共同输入入口: 轻点分流、手柄立即激活与主体位移升级
 // ---------------------------------------------------------------------------
 // 13. 触屏 220ms 长按抓起与快速滑动让渡滚动
 // ---------------------------------------------------------------------------
-test("触屏输入: 220ms 长按抓起，长按前快速滑动让渡滚动且不触发拖拽与轻点", async () => {
+test("触屏输入: 220ms 长按抓起，长按前快速滑动让渡滚动且不触发拖拽与轻点", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+
   let clicks = 0;
   const reorders = [];
   const controller = setupController();
@@ -815,8 +821,8 @@ test("触屏输入: 220ms 长按抓起，长按前快速滑动让渡滚动且不
   assert.equal(clicks, 0, "快速滑动不得误触详情弹窗");
   assert.equal(reorders.length, 0);
 
-  // 等待稳定窗口
-  await new Promise((resolve) => setTimeout(resolve, 180));
+  // 推进 60ms 释放互斥锁
+  t.mock.timers.tick(60);
 
   // 2. 触屏长按 220ms: 成功抓起卡片
   controller.handlePointerDown(ctx, { x: 100, y: 100 }, "body", "touch");
@@ -826,8 +832,8 @@ test("触屏输入: 220ms 长按抓起，长按前快速滑动让渡滚动且不
     "按下未满 220ms 前未激活",
   );
 
-  // 等待 230ms 触屏长按到时
-  await new Promise((resolve) => setTimeout(resolve, 230));
+  // 推进 220ms 触屏长按到时
+  t.mock.timers.tick(220);
   assert.equal(
     controller.getFeedback().isDragging,
     true,
@@ -844,7 +850,9 @@ test("触屏输入: 220ms 长按抓起，长按前快速滑动让渡滚动且不
 // ---------------------------------------------------------------------------
 // 14. 操作身份与动画生命周期闭环
 // ---------------------------------------------------------------------------
-test("动画与事务闭环: 操作身份保护，仅完成落位提交一次，重复上报与中断零提交", async () => {
+test("动画与事务闭环: 操作身份保护，仅完成落位提交一次，重复上报与中断零提交", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+
   const reorders = [];
   const controller = setupController();
   controller.setOnReorderTask((...args) => reorders.push(args));
@@ -867,7 +875,7 @@ test("动画与事务闭环: 操作身份保护，仅完成落位提交一次，
   await controller.reportDropComplete(droppingState.operationId);
   assert.equal(reorders.length, 1, "重复完成通知不得重复写入");
 
-  await new Promise((resolve) => setTimeout(resolve, 180));
+  t.mock.timers.tick(60);
 
   // 2. 动画中断: 调用 abortDrop，零提交
   controller.handlePointerDown(ctx, { x: 50, y: 50 }, "handle");
@@ -883,7 +891,9 @@ test("动画与事务闭环: 操作身份保护，仅完成落位提交一次，
 // ---------------------------------------------------------------------------
 // 15. 落位动画状态保持与任务快照动态解析
 // ---------------------------------------------------------------------------
-test("落位动画与提交流程: 动态预览更新、保存期间保持落位状态防止原位闪烁、快速释放互斥锁", async () => {
+test("落位动画与提交流程: 动态预览更新、保存期间保持落位状态防止原位闪烁、快速释放互斥锁", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+
   let saveStarted = false;
   let saveCompleted = false;
   let droppingStateDuringSave = null;
@@ -926,6 +936,7 @@ test("落位动画与提交流程: 动态预览更新、保存期间保持落位
   );
   assert.equal(droppingStateDuringSave.taskId, "dyn-1");
 
+  t.mock.timers.tick(40);
   await reportPromise;
   assert.equal(saveCompleted, true, "保存已完成");
   assert.equal(
@@ -935,7 +946,7 @@ test("落位动画与提交流程: 动态预览更新、保存期间保持落位
   );
 
   // 验证快速解锁（60ms 缓冲后即解锁，不超过 100ms）
-  await new Promise((r) => setTimeout(r, 90));
+  t.mock.timers.tick(60);
   assert.equal(
     controller.isDragLocked(),
     false,
