@@ -264,3 +264,51 @@ test("Task reorder operations: intra-lane, cross-lane, clamping, and visible-rel
   assert.throws(() => reorderTask(b4, "non-existent", "to-plan", 0), /Task with ID "non-existent" not found/);
   assert.throws(() => reorderTask(b4, "t1", "invalid-lane", 0), /Target lane "invalid-lane" does not exist/);
 });
+
+test("Task reorder with project filter: no-anchor cross-lane append, self-only no-op, and non-integer rejection", () => {
+  const initial = KanbanBoardSchema.parse({});
+  // to-plan: t1 (projA), t2 (projB)
+  // in-progress: t3 (projB), t4 (projB)
+  // done: empty
+  const b1 = addTask(initial, { id: "t1", title: "Task 1", laneId: "to-plan", projectId: "projA" });
+  const b2 = addTask(b1, { id: "t2", title: "Task 2", laneId: "to-plan", projectId: "projB" });
+  const b3 = addTask(b2, { id: "t3", title: "Task 3", laneId: "in-progress", projectId: "projB" });
+  const b4 = addTask(b3, { id: "t4", title: "Task 4", laneId: "in-progress", projectId: "projB" });
+
+  // Filter is projA.
+  // In in-progress lane, there are only hidden tasks (t3, t4), no projA visible tasks.
+  // Moving t1 (projA) into in-progress with targetIndex = 0:
+  // Must append to the END of in-progress tasks, NOT insert before t3!
+  const movedCrossLane = reorderTask(b4, "t1", "in-progress", 0, { type: "project", projectId: "projA" });
+  const fullTasks = movedCrossLane.tasks.map((t) => `${t.id}:${t.laneId}`);
+  assert.deepEqual(
+    fullTasks,
+    ["t2:to-plan", "t3:in-progress", "t4:in-progress", "t1:in-progress"],
+    "无可见锚点时应追加到目标泳道现有隐藏任务末尾"
+  );
+  // Verify other tasks content and relative order are completely unchanged
+  assert.deepEqual(
+    movedCrossLane.tasks.find((t) => t.id === "t3"),
+    b4.tasks.find((t) => t.id === "t3")
+  );
+  assert.deepEqual(
+    movedCrossLane.tasks.find((t) => t.id === "t4"),
+    b4.tasks.find((t) => t.id === "t4")
+  );
+
+  // Same lane self-only visible no-op:
+  // In to-plan under projA, t1 is the only visible task (t2 is hidden projB).
+  // Dropping at slot 0 must keep t1 at its original position relative to t2.
+  const sameLaneSelfOnly = reorderTask(b4, "t1", "to-plan", 0, { type: "project", projectId: "projA" });
+  assert.deepEqual(
+    sameLaneSelfOnly.tasks.map((t) => t.id),
+    ["t1", "t2", "t3", "t4"],
+    "同泳道仅自身可见时原位释放不改变任务次序"
+  );
+
+  // Non-integer and non-finite index rejection:
+  assert.throws(() => reorderTask(b4, "t1", "to-plan", NaN), /Target index must be a finite integer/);
+  assert.throws(() => reorderTask(b4, "t1", "to-plan", Infinity), /Target index must be a finite integer/);
+  assert.throws(() => reorderTask(b4, "t1", "to-plan", 1.5), /Target index must be a finite integer/);
+});
+

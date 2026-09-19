@@ -89,6 +89,36 @@ export type KanbanTask = z.infer<typeof TaskSchema>;
 export type KanbanLane = z.infer<typeof LaneSchema>;
 export type KanbanBoard = z.infer<typeof KanbanBoardSchema>;
 
+export type ProjectFilter =
+  | { type: "all" }
+  | { type: "unassigned" }
+  | { type: "project"; projectId: string };
+
+export function isTaskMatchingFilter(
+  task: KanbanTask,
+  filter?: ProjectFilter | string | null
+): boolean {
+  if (!filter) return true;
+  if (typeof filter === "string") {
+    if (filter === "all") return true;
+    if (filter === "unassigned") return task.projectId === null;
+    return task.projectId === filter;
+  }
+  if (filter.type === "all") return true;
+  if (filter.type === "unassigned") return task.projectId === null;
+  return task.projectId === filter.projectId;
+}
+
+export function filterTasksByProject(
+  tasks: KanbanTask[],
+  filter?: ProjectFilter | string | null
+): KanbanTask[] {
+  if (!filter || filter === "all" || (typeof filter === "object" && filter.type === "all")) {
+    return tasks;
+  }
+  return tasks.filter((t) => isTaskMatchingFilter(t, filter));
+}
+
 export const kanbanSettings = defineSettings({
   id: "kanban",
   scope: "host",
@@ -282,7 +312,7 @@ export function reorderTask(
   taskId: string,
   targetLaneId: string,
   targetIndex?: number,
-  visibleTaskIds?: string[]
+  visibleTaskIdsOrFilter?: string[] | ProjectFilter | string
 ): KanbanBoard {
   const taskToMove = board.tasks.find((t) => t.id === taskId);
   if (!taskToMove) {
@@ -292,13 +322,52 @@ export function reorderTask(
     throw new Error(`Target lane "${targetLaneId}" does not exist`);
   }
 
+  if (targetIndex !== undefined) {
+    if (
+      typeof targetIndex !== "number" ||
+      !Number.isFinite(targetIndex) ||
+      !Number.isInteger(targetIndex)
+    ) {
+      throw new Error("Target index must be a finite integer");
+    }
+  }
+
+  const isSameLane = taskToMove.laneId === targetLaneId;
   const remainingTasks = board.tasks.filter((t) => t.id !== taskId);
+  const targetLaneTasks = remainingTasks.filter((t) => t.laneId === targetLaneId);
+
+  // Determine visibility predicate
+  let isTaskVisible: (t: KanbanTask) => boolean;
+  let isFilterActive = false;
+
+  if (Array.isArray(visibleTaskIdsOrFilter)) {
+    const idSet = new Set(visibleTaskIdsOrFilter);
+    isTaskVisible = (t: KanbanTask) => idSet.has(t.id);
+    isFilterActive = true;
+  } else if (visibleTaskIdsOrFilter) {
+    isTaskVisible = (t: KanbanTask) => isTaskMatchingFilter(t, visibleTaskIdsOrFilter);
+    isFilterActive =
+      typeof visibleTaskIdsOrFilter === "string"
+        ? visibleTaskIdsOrFilter !== "all"
+        : visibleTaskIdsOrFilter.type !== "all";
+  } else {
+    isTaskVisible = () => true;
+    isFilterActive = false;
+  }
+
+  // Check same-lane self-only visible no-op rule:
+  // "同泳道只有被拖任务可见时，唯一可见槽位代表原位，不为了无可见锚点而改变该任务与隐藏任务的位置。明确原位操作不产生无意义写入。"
+  if (isSameLane && isFilterActive) {
+    const visibleTargetTasks = targetLaneTasks.filter(isTaskVisible);
+    if (visibleTargetTasks.length === 0) {
+      return board;
+    }
+  }
+
   const updatedTask: KanbanTask = {
     ...taskToMove,
     laneId: targetLaneId,
   };
-
-  const targetLaneTasks = remainingTasks.filter((t) => t.laneId === targetLaneId);
 
   let insertionGlobalIndex: number;
 
@@ -335,22 +404,31 @@ export function reorderTask(
     let referenceTask: KanbanTask;
     let insertBefore = true;
 
-    if (visibleTaskIds && visibleTaskIds.length > 0) {
-      const visibleTargetTasks = targetLaneTasks.filter((t) => visibleTaskIds.includes(t.id));
-      const clampedVisibleIdx = Math.max(0, Math.min(targetIndex ?? visibleTargetTasks.length, visibleTargetTasks.length));
-
+    if (isFilterActive) {
+      const visibleTargetTasks = targetLaneTasks.filter(isTaskVisible);
       if (visibleTargetTasks.length === 0) {
+        // Cross-lane move to a lane with hidden tasks but NO visible tasks:
+        // Append to the end of target lane's existing tasks!
         referenceTask = targetLaneTasks[targetLaneTasks.length - 1];
         insertBefore = false;
-      } else if (clampedVisibleIdx >= visibleTargetTasks.length) {
-        referenceTask = visibleTargetTasks[visibleTargetTasks.length - 1];
-        insertBefore = false;
       } else {
-        referenceTask = visibleTargetTasks[clampedVisibleIdx];
-        insertBefore = true;
+        const clampedVisibleIdx = Math.max(
+          0,
+          Math.min(targetIndex ?? visibleTargetTasks.length, visibleTargetTasks.length)
+        );
+        if (clampedVisibleIdx >= visibleTargetTasks.length) {
+          referenceTask = visibleTargetTasks[visibleTargetTasks.length - 1];
+          insertBefore = false;
+        } else {
+          referenceTask = visibleTargetTasks[clampedVisibleIdx];
+          insertBefore = true;
+        }
       }
     } else {
-      const clampedLaneIdx = Math.max(0, Math.min(targetIndex ?? targetLaneTasks.length, targetLaneTasks.length));
+      const clampedLaneIdx = Math.max(
+        0,
+        Math.min(targetIndex ?? targetLaneTasks.length, targetLaneTasks.length)
+      );
       if (clampedLaneIdx >= targetLaneTasks.length) {
         referenceTask = targetLaneTasks[targetLaneTasks.length - 1];
         insertBefore = false;
@@ -369,6 +447,13 @@ export function reorderTask(
     updatedTask,
     ...remainingTasks.slice(insertionGlobalIndex),
   ];
+
+  if (
+    nextTasks.length === board.tasks.length &&
+    nextTasks.every((t, idx) => t.id === board.tasks[idx].id && t.laneId === board.tasks[idx].laneId)
+  ) {
+    return board;
+  }
 
   return KanbanBoardSchema.parse({
     lanes: board.lanes,
