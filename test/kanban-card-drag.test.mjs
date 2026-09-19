@@ -19,6 +19,8 @@ function componentRenderer(file = "kanban-card", component = "KanbanCard", modul
     },
     useMemo(fn) { return fn(); },
     useState(value) { return [value, () => {}]; },
+    useSyncExternalStore(subscribe, getSnapshot) { return getSnapshot(); },
+    memo(fn) { return fn; },
     Fragment: require("react").Fragment,
     useEffect(fn, deps) {
       const index = cursor++;
@@ -40,13 +42,27 @@ function componentRenderer(file = "kanban-card", component = "KanbanCard", modul
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
   const exports = {};
-  new Function("require", "exports", source)((id) => {
+  function resolveModule(id) {
     if (id in modules) return modules[id];
     if (id === "react") return react;
     if (id === "react-native") return native;
     if (id === "@getpaseo/plugin/client/react-native") return { Icon: "Icon" };
+    if (id.startsWith("./")) {
+      const subFile = id.slice(2);
+      try {
+        const subSource = ts.transpileModule(readFileSync(new URL(`../client/${subFile}.tsx`, import.meta.url), "utf8"), {
+          compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
+        }).outputText;
+        const subExports = {};
+        new Function("require", "exports", subSource)(resolveModule, subExports);
+        return subExports;
+      } catch {
+        // Fall back to require
+      }
+    }
     return require(id);
-  }, exports);
+  }
+  new Function("require", "exports", source)(resolveModule, exports);
   return {
     render(props) {
       cursor = 0;
@@ -125,7 +141,9 @@ test("board renders the slot against the remaining cards, not the dragged card",
   });
   function collect(node, result = []) {
     if (Array.isArray(node)) node.forEach((child) => collect(child, result));
-    else if (node?.props) {
+    else if (typeof node?.type === "function") {
+      collect(node.type(node.props), result);
+    } else if (node?.props) {
       if (node.type === "Slot") {
         result.push("slot");
         assert.equal(node.props.height, drag.feedback.draggedCardHeight, "slot must match the dragged card height");

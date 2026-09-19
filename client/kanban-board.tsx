@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, Fragment } from "react";
+import { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
-  Animated,
 } from "react-native";
 import { useSettings } from "@getpaseo/plugin/client";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
@@ -15,14 +14,13 @@ import {
   updateTask,
   reorderTask,
   type KanbanTask,
-  type KanbanLane,
-  type KanbanBoard,
 } from "../shared/kanban";
 import { useProjects, getProjectDisplayName } from "./use-projects";
-import { KanbanCard, KanbanCardPreview, KanbanDropSpacer } from "./kanban-card";
 import { TaskModal } from "./task-modal";
 import { LaneModal } from "./lane-modal";
 import { useKanbanDrag } from "./kanban-drag";
+import { KanbanLaneView } from "./kanban-lane";
+import { KanbanDragOverlay } from "./kanban-overlay";
 import {
   openTaskSession,
   openLaneSession,
@@ -38,24 +36,19 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
   const [activeTaskSession, setActiveTaskSession] = useState<TaskEditSession | null>(null);
   const [activeLaneSession, setActiveLaneSession] = useState<LaneEditSession | null>(null);
 
-  interface DroppingState {
-    taskId: string;
-    task: KanbanTask;
-    projectName: string | null;
-    targetLaneId: string;
-    targetIndex: number;
-  }
-  const [droppingState, setDroppingState] = useState<DroppingState | null>(null);
-  const dropSpacerYRef = useRef<number | null>(null);
-
-  const animPos = useRef(Animated?.ValueXY ? new Animated.ValueXY({ x: 0, y: 0 }) : null).current;
-  const animRotate = useRef(Animated?.Value ? new Animated.Value(1) : null).current;
-  const animScale = useRef(Animated?.Value ? new Animated.Value(1.03) : null).current;
-  const AnimatedView = (Animated && Animated.View) || View;
-
   const isReady = settings.status === "ready";
   const board = isReady ? settings.values : null;
   const revision = isReady ? settings.revision : "";
+
+  // Filter tasks based on selected project
+  const filteredTasks = useMemo(() => {
+    if (!board) return [];
+    if (selectedProjectId === "all") return board.tasks;
+    if (selectedProjectId === "unassigned") {
+      return board.tasks.filter((t) => t.projectId === null);
+    }
+    return board.tasks.filter((t) => t.projectId === selectedProjectId);
+  }, [board, selectedProjectId]);
 
   const handleMoveTask = async (taskId: string, targetLaneId: string) => {
     if (!board) return;
@@ -91,28 +84,21 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
     }
   };
 
+  const getTaskPreview = (taskId: string) => {
+    if (!board) return null;
+    const task = board.tasks.find((t) => t.id === taskId) ?? null;
+    return {
+      task,
+      projectDisplayName: task ? getProjectDisplayName(task.projectId, projects) : null,
+    };
+  };
+
   const drag = useKanbanDrag({
     lanes: board?.lanes ?? [],
     onMoveTask: handleMoveTask,
     onReorderTask: handleReorderTask,
+    getTaskPreview,
   });
-
-  const scrollRef = useRef<ScrollView | null>(null);
-  const currentScrollX = useRef(0);
-
-  // Smooth edge auto-scroll when dragging near viewport boundaries
-  useEffect(() => {
-    const velocity = drag.feedback.autoScrollVelocity ?? 0;
-    if (!velocity || !drag.feedback.isDragging) return;
-
-    const timer = setInterval(() => {
-      const nextOffset = Math.max(0, currentScrollX.current + velocity * 14);
-      currentScrollX.current = nextOffset;
-      scrollRef.current?.scrollTo({ x: nextOffset, animated: false });
-    }, 16);
-
-    return () => clearInterval(timer);
-  }, [drag.feedback.autoScrollVelocity, drag.feedback.isDragging]);
 
   const styles = useMemo(
     () =>
@@ -238,11 +224,6 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
           position: "relative",
           userSelect: "none",
         },
-        dragOverlay: {
-          position: "absolute",
-          zIndex: 9999,
-          pointerEvents: "none",
-        },
         lanesContainer: {
           flex: 1,
           padding: layout.compact ? 10 : 16,
@@ -252,91 +233,6 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
           flexDirection: "row",
           gap: layout.compact ? 10 : 14,
           paddingRight: 24,
-        },
-        laneColumn: {
-          width: layout.compact ? 270 : 300,
-          backgroundColor: theme.colors.surface1,
-          borderColor: theme.colors.border,
-          borderWidth: 2,
-          borderRadius: 10,
-          maxHeight: "100%",
-          padding: 10,
-          gap: 10,
-          userSelect: "none",
-        },
-        laneColumnHovered: {
-          borderColor: theme.colors.accent,
-          backgroundColor: theme.colors.surface2,
-        },
-        laneHeader: {
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingBottom: 8,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.colors.border,
-        },
-        laneTitleGroup: {
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 6,
-          flex: 1,
-        },
-        laneTitleText: {
-          fontSize: 14,
-          fontWeight: "700",
-          color: theme.colors.foreground,
-          userSelect: "none",
-        },
-        laneCountBadge: {
-          backgroundColor: theme.colors.surface2,
-          paddingHorizontal: 6,
-          paddingVertical: 2,
-          borderRadius: 10,
-        },
-        laneCountText: {
-          fontSize: 11,
-          color: theme.colors.foregroundMuted,
-          fontWeight: "600",
-        },
-        laneHeaderActions: {
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 4,
-        },
-        laneHeaderBtn: {
-          paddingHorizontal: 6,
-          paddingVertical: 3,
-          borderRadius: 4,
-          backgroundColor: theme.colors.surface2,
-        },
-        laneHeaderBtnText: {
-          fontSize: 11,
-          color: theme.colors.foreground,
-        },
-        cardsScroll: {
-          flex: 1,
-        },
-        cardsList: {
-          gap: 8,
-          paddingBottom: 8,
-        },
-        emptyLanePlaceholder: {
-          paddingVertical: 24,
-          alignItems: "center",
-          justifyContent: "center",
-          borderStyle: "dashed",
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-          borderRadius: 8,
-          marginVertical: 6,
-        },
-        emptyLaneText: {
-          fontSize: 12,
-          color: theme.colors.foregroundMuted,
-          textAlign: "center",
-          paddingHorizontal: 12,
-          userSelect: "none",
         },
         centerBox: {
           flex: 1,
@@ -353,140 +249,6 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
       }),
     [theme, layout.compact]
   );
-
-  // Filter tasks
-  const filteredTasks = useMemo(() => {
-    if (!board) return [];
-    if (selectedProjectId === "all") return board.tasks;
-    if (selectedProjectId === "unassigned") {
-      return board.tasks.filter((t) => t.projectId === null);
-    }
-    return board.tasks.filter((t) => t.projectId === selectedProjectId);
-  }, [board, selectedProjectId]);
-
-  const draggingTask = useMemo(() => {
-    if (!board || !drag.feedback.draggingTaskId) return null;
-    return board.tasks.find((t) => t.id === drag.feedback.draggingTaskId) ?? null;
-  }, [board, drag.feedback.draggingTaskId]);
-
-  const draggingTaskProjectName = useMemo(() => {
-    if (!draggingTask) return null;
-    return getProjectDisplayName(draggingTask.projectId, projects);
-  }, [draggingTask, projects]);
-
-  const activeOverlayTask = droppingState ? droppingState.task : draggingTask;
-  const activeOverlayProjectName = droppingState ? droppingState.projectName : draggingTaskProjectName;
-  const activeDraggingOrDroppingTaskId = droppingState ? droppingState.taskId : drag.feedback.draggingTaskId;
-
-  const handleDragRelease = (releaseX?: number, releaseY?: number) => {
-    if (!drag.feedback.isDragging || !draggingTask) {
-      drag.releaseGesture(releaseX, releaseY);
-      return;
-    }
-
-    const currentTask = draggingTask;
-    const currentProjectName = draggingTaskProjectName;
-    const targetLaneId =
-      drag.feedback.hoveredLaneId ??
-      drag.feedback.draggingSourceLaneId ??
-      board?.lanes[0]?.id ??
-      "";
-    const targetIndex = drag.feedback.targetIndex ?? 0;
-
-    const containerBounds = drag.getContainerBounds?.() ?? null;
-    const containerX = containerBounds?.x ?? 0;
-    const containerY = containerBounds?.y ?? 0;
-    const cardHalfWidth = layout.compact ? 125 : 140;
-
-    const fromX =
-      (drag.feedback.pointerX ?? releaseX ?? 0) - containerX - cardHalfWidth;
-    const fromY = (drag.feedback.pointerY ?? releaseY ?? 0) - containerY - 20;
-
-    const targetSlot = drag.getDropSlotPosition?.(targetLaneId, targetIndex);
-    let toX = fromX;
-    let toY = fromY;
-
-    if (targetSlot) {
-      toX = targetSlot.x;
-      const laneScroll = drag.getLaneScroll?.(targetLaneId) ?? 0;
-      const laneLayout = drag.getLaneLayout?.(targetLaneId);
-      const cardsViewport = drag.getCardsViewportLayout?.(targetLaneId);
-      if (
-        dropSpacerYRef.current !== null &&
-        drag.feedback.hoveredLaneId === targetLaneId
-      ) {
-        toY =
-          (laneLayout?.y ?? 0) +
-          (cardsViewport?.y ?? 0) -
-          laneScroll +
-          dropSpacerYRef.current;
-      } else {
-        toY = targetSlot.y;
-      }
-    }
-
-    if (!Animated || !animPos || !animRotate || !animScale) {
-      drag.releaseGesture(releaseX, releaseY);
-      dropSpacerYRef.current = null;
-      return;
-    }
-
-    animPos.setValue({ x: fromX, y: fromY });
-    animRotate.setValue(1);
-    animScale.setValue(1.03);
-
-    setDroppingState({
-      taskId: currentTask.id,
-      task: currentTask,
-      projectName: currentProjectName,
-      targetLaneId,
-      targetIndex,
-    });
-
-    Animated.parallel([
-      Animated.timing(animPos, {
-        toValue: { x: toX, y: toY },
-        duration: 180,
-        useNativeDriver: false,
-      }),
-      Animated.timing(animRotate, {
-        toValue: 0,
-        duration: 180,
-        useNativeDriver: false,
-      }),
-      Animated.timing(animScale, {
-        toValue: 1,
-        duration: 180,
-        useNativeDriver: false,
-      }),
-    ]).start(async () => {
-      try {
-        await drag.releaseGesture(releaseX, releaseY);
-      } finally {
-        setDroppingState(null);
-        dropSpacerYRef.current = null;
-      }
-    });
-  };
-
-  const handleDragCancel = () => {
-    if (droppingState) {
-      setDroppingState(null);
-      dropSpacerYRef.current = null;
-    }
-    drag.cancelGesture();
-  };
-
-  // Keep drag controller aware of the card order within each lane for hit-testing
-  useEffect(() => {
-    if (!board) return;
-    for (const lane of board.lanes) {
-      const laneTaskIds = filteredTasks
-        .filter((t) => t.laneId === lane.id)
-        .map((t) => t.id);
-      drag.setLaneCardOrder(lane.id, laneTaskIds);
-    }
-  }, [board, filteredTasks, drag]);
 
   if (settings.status === "loading") {
     return (
@@ -540,8 +302,17 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
         <View style={styles.headerTopRow}>
           <View style={styles.titleRow}>
             <Text style={styles.titleText}>任务看板</Text>
-            <View style={styles.laneCountBadge}>
-              <Text style={styles.laneCountText}>
+            <View style={{
+              backgroundColor: theme.colors.surface2,
+              paddingHorizontal: 6,
+              paddingVertical: 2,
+              borderRadius: 10,
+            }}>
+              <Text style={{
+                fontSize: 11,
+                color: theme.colors.foregroundMuted,
+                fontWeight: "600",
+              }}>
                 {board.tasks.length} 任务 · {board.lanes.length} 泳道
               </Text>
             </View>
@@ -672,219 +443,100 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
       {/* Main Board Lanes */}
       <View style={styles.lanesWrapper}>
         <ScrollView
-          ref={(instance) => {
-            scrollRef.current = instance;
-            drag.bindContainerRef(instance as unknown as Parameters<typeof drag.bindContainerRef>[0]);
-          }}
+          ref={drag.bindContainerRef}
           horizontal
           style={styles.lanesContainer}
           contentContainerStyle={styles.lanesContent}
           onLayout={(e) => drag.handleContainerLayout(e.nativeEvent.layout)}
-          onScroll={(e) => {
-            currentScrollX.current = e.nativeEvent.contentOffset.x;
-            drag.handleScroll(e.nativeEvent.contentOffset.x);
-          }}
+          onScroll={(e) => drag.handleContainerScroll(e.nativeEvent.contentOffset.x)}
           scrollEventThrottle={16}
         >
           {board.lanes.map((lane) => {
             const laneTasks = filteredTasks.filter((t) => t.laneId === lane.id);
-            const isHovered = droppingState
-              ? droppingState.targetLaneId === lane.id
-              : drag.isLaneHovered(lane.id);
-            const targetIndex = droppingState
-              ? (droppingState.targetLaneId === lane.id ? droppingState.targetIndex : -1)
-              : isHovered
-              ? (drag.feedback.targetIndex ?? laneTasks.length)
-              : -1;
-            const dropBeforeTaskId = isHovered
-              ? laneTasks.filter((task) => task.id !== activeDraggingOrDroppingTaskId)[targetIndex]?.id
-              : undefined;
-
             return (
-              <View
+              <KanbanLaneView
                 key={lane.id}
-                style={[styles.laneColumn, isHovered && styles.laneColumnHovered]}
-                onLayout={(e) => drag.registerLaneLayout(lane.id, e.nativeEvent.layout)}
-              >
-                <View style={styles.laneHeader}>
-                  <View style={styles.laneTitleGroup}>
-                    <Text style={styles.laneTitleText} numberOfLines={1}>
-                      {lane.title}
-                    </Text>
-                    <View style={styles.laneCountBadge}>
-                      <Text style={styles.laneCountText}>{laneTasks.length}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.laneHeaderActions}>
-                    <Pressable
-                      onPress={() => {
-                        if (!board) return;
-                        setActiveTaskSession(
-                          openTaskSession({
-                            mode: "create",
-                            baseBoard: board,
-                            baseRevision: revision,
-                            save: (b, r) => settings.save(b, r),
-                            defaultLaneId: lane.id,
-                            defaultProjectId:
-                              selectedProjectId === "all" || selectedProjectId === "unassigned"
-                                ? null
-                                : selectedProjectId,
-                          })
-                        );
-                      }}
-                      style={styles.laneHeaderBtn}
-                      hitSlop={6}
-                    >
-                      <Text style={styles.laneHeaderBtnText}>+ 添加</Text>
-                    </Pressable>
-
-                    <Pressable
-                      onPress={() => {
-                        if (!board) return;
-                        setActiveLaneSession(
-                          openLaneSession({
-                            mode: "edit",
-                            laneId: lane.id,
-                            baseBoard: board,
-                            baseRevision: revision,
-                            save: (b, r) => settings.save(b, r),
-                          })
-                        );
-                      }}
-                      style={styles.laneHeaderBtn}
-                      hitSlop={6}
-                    >
-                      <Text style={styles.laneHeaderBtnText}>管理</Text>
-                    </Pressable>
-                  </View>
-                </View>
-
-                <ScrollView
-                  style={styles.cardsScroll}
-                  showsVerticalScrollIndicator={false}
-                  onLayout={(e) => drag.registerCardsViewportLayout(lane.id, e.nativeEvent.layout)}
-                  onScroll={(e) => drag.handleLaneScroll(lane.id, e.nativeEvent.contentOffset.y)}
-                  scrollEventThrottle={16}
-                >
-                  <View style={styles.cardsList}>
-                    {laneTasks.map((task) => (
-                      <Fragment key={task.id}>
-                        {isHovered && dropBeforeTaskId === task.id && (
-                          <KanbanDropSpacer
-                            theme={theme}
-                            height={drag.feedback.draggedCardHeight}
-                            onLayout={(rect) => {
-                              dropSpacerYRef.current = rect.y;
-                            }}
-                          />
-                        )}
-                        <KanbanCard
-                          task={task}
-                          projectDisplayName={getProjectDisplayName(task.projectId, projects)}
-                          theme={theme}
-                          layout={layout}
-                          isDraggingThis={
-                            drag.isTaskDragging(task.id) ||
-                            droppingState?.taskId === task.id
+                lane={lane}
+                tasks={laneTasks}
+                projects={projects}
+                theme={theme}
+                layout={layout}
+                dragBinding={
+                  drag.bindLane
+                    ? drag.bindLane(lane.id)
+                    : {
+                        isHovered: drag.isLaneHovered ? drag.isLaneHovered(lane.id) : true,
+                        targetIndex: drag.feedback?.targetIndex ?? -1,
+                        isTaskDragging: drag.isTaskDragging || (() => false),
+                        draggedCardHeight: drag.feedback?.draggedCardHeight,
+                        isDragLocked: drag.isDragLocked || (() => false),
+                        registerLaneLayout: (layout) => drag.registerLaneLayout?.(lane.id, layout),
+                        registerCardsViewport: (layout) => drag.registerCardsViewportLayout?.(lane.id, layout),
+                        handleLaneScroll: (scrollY) => drag.handleLaneScroll?.(lane.id, scrollY),
+                        registerCardLayout: (taskId, layout) => drag.registerCardLayout?.(lane.id, taskId, layout),
+                        unregisterCardLayout: (taskId) => drag.unregisterCardLayout?.(lane.id, taskId),
+                        setDropSpacerY: () => {},
+                        setLaneCardOrder: (taskIds) => {
+                          if (Array.isArray(taskIds)) {
+                            drag.setLaneCardOrder?.(lane.id, taskIds);
                           }
-                          isDragLocked={() => drag.isDragLocked() || droppingState !== null}
-                          onPress={() => {
-                            if (!board) return;
-                            setActiveTaskSession(
-                              openTaskSession({
-                                mode: "edit",
-                                taskId: task.id,
-                                baseBoard: board,
-                                baseRevision: revision,
-                                save: (b, r) => settings.save(b, r),
-                              })
-                            );
-                          }}
-                          onDragStart={drag.startGesture}
-                          onDragMove={drag.moveGesture}
-                          onDragRelease={handleDragRelease}
-                          onDragCancel={handleDragCancel}
-                          onLayoutCard={(taskId, rect) =>
-                            drag.registerCardLayout(lane.id, taskId, rect)
-                          }
-                          onUnmountCard={(taskId) =>
-                            drag.unregisterCardLayout(lane.id, taskId)
-                          }
-                        />
-                      </Fragment>
-                    ))}
-
-                    {isHovered && !dropBeforeTaskId && (
-                      <KanbanDropSpacer
-                        theme={theme}
-                        height={drag.feedback.draggedCardHeight}
-                        onLayout={(rect) => {
-                          dropSpacerYRef.current = rect.y;
-                        }}
-                      />
-                    )}
-
-                    {laneTasks.length === 0 && !isHovered && (
-                      <View style={styles.emptyLanePlaceholder}>
-                        <Text style={styles.emptyLaneText}>
-                          暂无卡片，可点击右上角添加或拖动卡片至此
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </ScrollView>
-              </View>
+                        },
+                        startGesture: drag.startGesture || (() => {}),
+                        moveGesture: drag.moveGesture || (() => {}),
+                        releaseGesture: drag.releaseGesture || (() => {}),
+                        cancelGesture: drag.cancelGesture || (() => {}),
+                      }
+                }
+                onAddTask={(laneId) => {
+                  if (!board) return;
+                  setActiveTaskSession(
+                    openTaskSession({
+                      mode: "create",
+                      baseBoard: board,
+                      baseRevision: revision,
+                      save: (b, r) => settings.save(b, r),
+                      defaultLaneId: laneId,
+                      defaultProjectId:
+                        selectedProjectId === "all" || selectedProjectId === "unassigned"
+                          ? null
+                          : selectedProjectId,
+                    })
+                  );
+                }}
+                onManageLane={(laneId) => {
+                  if (!board) return;
+                  setActiveLaneSession(
+                    openLaneSession({
+                      mode: "edit",
+                      laneId,
+                      baseBoard: board,
+                      baseRevision: revision,
+                      save: (b, r) => settings.save(b, r),
+                    })
+                  );
+                }}
+                onSelectTask={(task) => {
+                  if (!board) return;
+                  setActiveTaskSession(
+                    openTaskSession({
+                      mode: "edit",
+                      taskId: task.id,
+                      baseBoard: board,
+                      baseRevision: revision,
+                      save: (b, r) => settings.save(b, r),
+                    })
+                  );
+                }}
+              />
             );
           })}
         </ScrollView>
 
-        {((drag.feedback.isDragging && draggingTask && typeof drag.feedback.pointerX === "number") ||
-          droppingState !== null) &&
-          activeOverlayTask && (
-            <AnimatedView
-              pointerEvents="none"
-              style={[
-                styles.dragOverlay,
-                droppingState && animPos && animRotate && animScale
-                  ? {
-                      left: animPos.x,
-                      top: animPos.y,
-                      transform: [
-                        {
-                          rotate: animRotate.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: ["0deg", "2.5deg"],
-                          }),
-                        },
-                        { scale: animScale },
-                      ],
-                    }
-                  : typeof drag.feedback.pointerX === "number"
-                  ? {
-                      left:
-                        drag.feedback.pointerX -
-                        (drag.getContainerBounds()?.x ?? 0) -
-                        (layout.compact ? 125 : 140),
-                      top:
-                        (drag.feedback.pointerY ?? 0) -
-                        (drag.getContainerBounds()?.y ?? 0) -
-                        20,
-                      transform: [{ rotate: "2.5deg" }, { scale: 1.03 }],
-                    }
-                  : { display: "none" },
-              ]}
-            >
-              <KanbanCardPreview
-                task={activeOverlayTask}
-                projectDisplayName={activeOverlayProjectName}
-                theme={theme}
-                layout={layout}
-                animated={true}
-              />
-            </AnimatedView>
-          )}
+        <KanbanDragOverlay
+          drag={drag}
+          theme={theme}
+          layout={layout}
+        />
       </View>
 
       {/* Modals with Session Baseline Locking */}
