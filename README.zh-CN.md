@@ -30,8 +30,14 @@
 
 ### 快速安装（推荐）
 
-无需克隆源码或手动编译，直接使用 Paseo CLI 从 GitHub 一键安装：
+无需克隆源码或手动编译，推荐直接使用 Paseo CLI 安装：
 
+**方式一：通过 NPM 官方包安装（推荐）**
+```bash
+paseo plugin install npm:paseo-kanban
+```
+
+**方式二：直接通过 GitHub 仓库安装**
 ```bash
 paseo plugin add breathi3552/paseo-kanban
 ```

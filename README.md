@@ -30,8 +30,14 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 
 ### Quick Install (Recommended)
 
-No manual build or git cloning needed. Install directly via the Paseo CLI:
+No manual build or git cloning needed. You can install directly via npm or GitHub:
 
+**Via NPM (Release package):**
+```bash
+paseo plugin install npm:paseo-kanban
+```
+
+**Via GitHub:**
 ```bash
 paseo plugin add breathi3552/paseo-kanban
 ```

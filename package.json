@@ -1,8 +1,31 @@
 {
   "name": "paseo-kanban",
-  "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "A lightweight, responsive Kanban board plugin for Paseo workspaces",
   "type": "module",
+  "license": "MIT",
+  "author": "breathi3552",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/breathi3552/paseo-kanban.git"
+  },
+  "bugs": {
+    "url": "https://github.com/breathi3552/paseo-kanban/issues"
+  },
+  "homepage": "https://github.com/breathi3552/paseo-kanban#readme",
+  "keywords": [
+    "paseo",
+    "paseo-plugin",
+    "kanban",
+    "board"
+  ],
+  "files": [
+    "paseo-plugin.json",
+    "index.client.tsx",
+    "index.server.ts",
+    "client/",
+    "shared/"
+  ],
   "scripts": {
     "test": "node --experimental-strip-types --test test/kanban.test.mjs test/kanban-session.test.mjs test/drag-hit-test.test.mjs test/kanban-drag.test.mjs test/kanban-card-drag.test.mjs test/projects.test.mjs test/i18n.test.mjs",
     "typecheck": "tsc --noEmit"
