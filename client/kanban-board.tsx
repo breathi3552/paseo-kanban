@@ -30,7 +30,7 @@ import {
 
 export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
   const settings = useSettings(kanbanSettings);
-  const { projects, isError: projectsError } = useProjects();
+  const { projects, resolveProjectName, isError: projectsError } = useProjects();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
   const [activeTaskSession, setActiveTaskSession] = useState<TaskEditSession | null>(null);
@@ -74,7 +74,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
     const task = board.tasks.find((t) => t.id === taskId) ?? null;
     return {
       task,
-      projectDisplayName: task ? getProjectDisplayName(task.projectId, projects) : null,
+      projectDisplayName: task ? resolveProjectName(task.projectId) : null,
     };
   };
 
@@ -490,6 +490,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                 lane={lane}
                 tasks={laneTasks}
                 projects={projects}
+                resolveProjectName={resolveProjectName}
                 theme={theme}
                 layout={layout}
                 dragBinding={drag.bindLane(lane.id)}

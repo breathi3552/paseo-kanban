@@ -18,6 +18,7 @@ export interface KanbanLaneViewProps {
   onAddTask: (laneId: string) => void;
   onManageLane: (laneId: string) => void;
   onSelectTask: (task: KanbanTask) => void;
+  resolveProjectName?: (projectId: string | null) => string | null;
 }
 
 function KanbanLaneViewInner({
@@ -30,6 +31,7 @@ function KanbanLaneViewInner({
   onAddTask,
   onManageLane,
   onSelectTask,
+  resolveProjectName,
 }: KanbanLaneViewProps) {
   const {
     isHovered,
@@ -200,7 +202,11 @@ function KanbanLaneViewInner({
               )}
               <KanbanCard
                 task={task}
-                projectDisplayName={getProjectDisplayName(task.projectId, projects)}
+                projectDisplayName={
+                  resolveProjectName
+                    ? resolveProjectName(task.projectId)
+                    : getProjectDisplayName(task.projectId, projects)
+                }
                 theme={theme}
                 layout={layout}
                 binding={bindCard(task.id, () => onSelectTask(task), PanResponder)}
