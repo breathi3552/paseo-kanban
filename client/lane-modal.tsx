@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Modal, TextInput, Icon } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { LaneEditSession } from "./kanban-session";
+import { useI18n } from "./i18n";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 
@@ -21,6 +22,7 @@ export function LaneModal({
   theme,
   layout,
 }: LaneModalProps) {
+  const { t } = useI18n();
   const snapshot = useSyncExternalStore(
     session.subscribe,
     session.getSnapshot,
@@ -159,7 +161,7 @@ export function LaneModal({
 
   return (
     <Modal
-      title={session.mode === "edit" ? "管理泳道" : "新增泳道"}
+      title={session.mode === "edit" ? t("laneModal.titleEdit") : t("laneModal.titleCreate")}
       icon={<Icon name="Columns3" size={18} color={theme.colors.foreground} />}
       open={open}
       onOpenChange={(next) => {
@@ -179,10 +181,10 @@ export function LaneModal({
         )}
 
         <View style={styles.fieldGroup}>
-          <Text style={styles.label}>泳道名称 *</Text>
+          <Text style={styles.label}>{t("laneModal.nameLabel")}</Text>
           <TextInput
             style={styles.input}
-            placeholder="例如：待测试、发布中..."
+            placeholder={t("laneModal.namePlaceholder")}
             placeholderTextColor={theme.colors.foregroundMuted}
             value={snapshot.title}
             onChangeText={(t) => session.setTitle(t)}
@@ -193,8 +195,8 @@ export function LaneModal({
           <View style={styles.warningBanner}>
             <Text style={styles.warningText}>
               {snapshot.lanesCount <= 1
-                ? "看板必须至少保留一条泳道，无法删除此泳道。"
-                : `此泳道当前包含 ${snapshot.tasksInLaneCount} 个任务，需清空或移走任务后方可删除。`}
+                ? t("laneModal.cannotDeleteLast")
+                : t("laneModal.cannotDeleteHasTasks", { count: snapshot.tasksInLaneCount })}
             </Text>
           </View>
         )}
@@ -208,12 +210,12 @@ export function LaneModal({
                 style={styles.deleteButton}
                 disabled={isSaving}
               >
-                <Text style={styles.deleteButtonText}>删除此泳道</Text>
+                <Text style={styles.deleteButtonText}>{t("laneModal.deleteLane")}</Text>
               </Pressable>
             ) : (
               <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
                 <Text style={{ fontSize: 13, color: theme.colors.statusDanger }}>
-                  确认删除？
+                  {t("laneModal.confirmDeletePrompt")}
                 </Text>
                 <Pressable
                   onPress={handleDelete}
@@ -221,14 +223,14 @@ export function LaneModal({
                   disabled={isSaving}
                 >
                   <Text style={[styles.deleteButtonText, { color: "#fff" }]}>
-                    确认删除
+                    {t("laneModal.confirmDelete")}
                   </Text>
                 </Pressable>
                 <Pressable
                   onPress={() => setShowDeleteConfirm(false)}
                   style={styles.cancelButton}
                 >
-                  <Text style={styles.cancelButtonText}>取消</Text>
+                  <Text style={styles.cancelButtonText}>{t("laneModal.cancel")}</Text>
                 </Pressable>
               </View>
             )}
@@ -242,7 +244,7 @@ export function LaneModal({
             style={styles.cancelButton}
             disabled={isSaving}
           >
-            <Text style={styles.cancelButtonText}>取消</Text>
+            <Text style={styles.cancelButtonText}>{t("laneModal.cancel")}</Text>
           </Pressable>
 
           <Pressable
@@ -251,7 +253,11 @@ export function LaneModal({
             disabled={isSaving}
           >
             <Text style={styles.saveButtonText}>
-              {isSaving ? "保存中..." : session.mode === "edit" ? "保存修改" : "添加泳道"}
+              {isSaving
+                ? t("laneModal.saving")
+                : session.mode === "edit"
+                ? t("laneModal.saveChanges")
+                : t("laneModal.submitCreate")}
             </Text>
           </Pressable>
         </View>

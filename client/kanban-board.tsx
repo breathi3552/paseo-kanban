@@ -27,8 +27,11 @@ import {
   type TaskEditSession,
   type LaneEditSession,
 } from "./kanban-session";
+import { useI18n } from "./i18n";
 
-export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
+export function KanbanBoardView(props: PluginSurfaceProps) {
+  const { theme, layout } = props;
+  const { t, language } = useI18n(props);
   const settings = useSettings(kanbanSettings);
   const { projects, resolveProjectName, isError: projectsError } = useProjects();
 
@@ -61,6 +64,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
       targetIndex,
       filter: selectedProjectId,
       save: (b, r) => settings.save(b, r),
+      language,
     });
     if (!result.success) {
       setReorderError(result.error);
@@ -97,6 +101,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
           selectedProjectId === "all" || selectedProjectId === "unassigned"
             ? null
             : selectedProjectId,
+        language,
       })
     );
   };
@@ -110,6 +115,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
         baseBoard: board,
         baseRevision: revision,
         save: (b, r) => settings.save(b, r),
+        language,
       })
     );
   };
@@ -122,6 +128,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
         baseBoard: board,
         baseRevision: revision,
         save: (b, r) => settings.save(b, r),
+        language,
       })
     );
   };
@@ -135,6 +142,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
         baseBoard: board,
         baseRevision: revision,
         save: (b, r) => settings.save(b, r),
+        language,
       })
     );
   };
@@ -293,7 +301,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
     return (
       <View style={[styles.container, styles.centerBox]}>
         <ActivityIndicator size="large" color={theme.colors.accent} />
-        <Text style={styles.centerText}>正在加载看板数据...</Text>
+        <Text style={styles.centerText}>{t("kanban.loading")}</Text>
       </View>
     );
   }
@@ -302,10 +310,10 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
     return (
       <View style={[styles.container, styles.centerBox]}>
         <Text style={[styles.centerText, { color: theme.colors.statusDanger }]}>
-          加载看板配置失败：{settings.error}
+          {t("kanban.loadError", { error: settings.error })}
         </Text>
         <Pressable onPress={() => settings.reload()} style={styles.secondaryButton}>
-          <Text style={styles.secondaryButtonText}>重试加载</Text>
+          <Text style={styles.secondaryButtonText}>{t("kanban.retryLoad")}</Text>
         </Pressable>
       </View>
     );
@@ -315,17 +323,17 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
     return (
       <View style={[styles.container, styles.centerBox]}>
         <Text style={[styles.centerText, { color: theme.colors.statusWarning ?? theme.colors.statusDanger }]}>
-          看板配置格式异常：{settings.error}
+          {t("kanban.formatError", { error: settings.error })}
         </Text>
         <Text style={[styles.centerText, { color: theme.colors.foregroundMuted, fontSize: 12 }]}>
-          数据未被悄悄覆盖。若需使用默认结构可重置，或重试加载。
+          {t("kanban.formatErrorHint")}
         </Text>
         <View style={{ flexDirection: "row", gap: 10 }}>
           <Pressable onPress={() => settings.reload()} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>重试加载</Text>
+            <Text style={styles.secondaryButtonText}>{t("kanban.retryLoad")}</Text>
           </Pressable>
           <Pressable onPress={() => settings.reset()} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>重置为默认结构</Text>
+            <Text style={styles.primaryButtonText}>{t("kanban.resetDefault")}</Text>
           </Pressable>
         </View>
       </View>
@@ -340,7 +348,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
           <View style={styles.titleRow}>
-            <Text style={styles.titleText}>任务看板</Text>
+            <Text style={styles.titleText}>{t("kanban.title")}</Text>
             <View style={{
               backgroundColor: theme.colors.surface2,
               paddingHorizontal: 6,
@@ -352,7 +360,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                 color: theme.colors.foregroundMuted,
                 fontWeight: "600",
               }}>
-                {board.tasks.length} 任务 · {board.lanes.length} 泳道
+                {t("kanban.stats", { tasks: board.tasks.length, lanes: board.lanes.length })}
               </Text>
             </View>
           </View>
@@ -362,14 +370,14 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
               onPress={openNewLane}
               style={styles.secondaryButton}
             >
-              <Text style={styles.secondaryButtonText}>+ 新增泳道</Text>
+              <Text style={styles.secondaryButtonText}>{t("kanban.addLane")}</Text>
             </Pressable>
 
             <Pressable
               onPress={() => openNewTask()}
               style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonText}>+ 新建任务</Text>
+              <Text style={styles.primaryButtonText}>{t("kanban.newTask")}</Text>
             </Pressable>
           </View>
         </View>
@@ -377,7 +385,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
         {/* Project Filter */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View style={styles.filterRow}>
-            <Text style={styles.filterLabel}>项目筛选:</Text>
+            <Text style={styles.filterLabel}>{t("kanban.filterLabel")}</Text>
             <Pressable
               onPress={() => {
                 if (drag.isDragLocked()) return;
@@ -394,7 +402,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                   selectedProjectId === "all" && styles.filterChipTextSelected,
                 ]}
               >
-                全部
+                {t("kanban.filterAll")}
               </Text>
             </Pressable>
 
@@ -414,7 +422,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
                   selectedProjectId === "unassigned" && styles.filterChipTextSelected,
                 ]}
               >
-                未关联项目
+                {t("kanban.filterUnassigned")}
               </Text>
             </Pressable>
 
@@ -446,7 +454,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
 
             {projectsError && (
               <Text style={{ fontSize: 11, color: theme.colors.statusWarning ?? theme.colors.foregroundMuted }}>
-                (项目列表更新受限)
+                {t("kanban.projectsError")}
               </Text>
             )}
           </View>
@@ -457,7 +465,9 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
       {(settings.saveError || reorderError) && (
         <View style={styles.conflictBanner}>
           <Text style={styles.conflictText}>
-            {reorderError ? `保存失败：${reorderError}` : `保存冲突或错误：${settings.saveError}`}
+            {reorderError
+              ? t("kanban.saveFailed", { error: reorderError })
+              : t("kanban.conflictError", { error: settings.saveError })}
           </Text>
           <Pressable
             onPress={() => {
@@ -466,7 +476,7 @@ export function KanbanBoardView({ theme, layout }: PluginSurfaceProps) {
             }}
             style={styles.conflictAction}
           >
-            <Text style={{ fontSize: 12, color: theme.colors.foreground }}>刷新最新数据</Text>
+            <Text style={{ fontSize: 12, color: theme.colors.foreground }}>{t("kanban.refresh")}</Text>
           </Pressable>
         </View>
       )}

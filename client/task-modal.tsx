@@ -5,6 +5,7 @@ import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanLane } from "../shared/kanban";
 import type { ProjectItem } from "./use-projects";
 import type { TaskEditSession } from "./kanban-session";
+import { useI18n } from "./i18n";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 
@@ -27,6 +28,7 @@ export function TaskModal({
   theme,
   layout,
 }: TaskModalProps) {
+  const { t } = useI18n();
   const snapshot = useSyncExternalStore(
     session.subscribe,
     session.getSnapshot,
@@ -240,7 +242,7 @@ export function TaskModal({
 
   return (
     <Modal
-      title={session.mode === "edit" ? "编辑任务" : "创建任务"}
+      title={session.mode === "edit" ? t("taskModal.titleEdit") : t("taskModal.titleCreate")}
       icon={<Icon name="PanelsTopLeft" size={18} color={theme.colors.foreground} />}
       open={open}
       onOpenChange={(next) => {
@@ -266,10 +268,10 @@ export function TaskModal({
           )}
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>任务标题 *</Text>
+            <Text style={styles.label}>{t("taskModal.titleLabel")}</Text>
             <TextInput
               style={styles.input}
-              placeholder="输入任务标题"
+              placeholder={t("taskModal.titlePlaceholder")}
               placeholderTextColor={theme.colors.foregroundMuted}
               value={snapshot.title}
               onChangeText={(t) => session.setTitle(t)}
@@ -277,7 +279,7 @@ export function TaskModal({
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>所属泳道</Text>
+            <Text style={styles.label}>{t("taskModal.laneLabel")}</Text>
             <View style={styles.selectorRow}>
               {lanes.map((lane) => {
                 const isSelected = lane.id === snapshot.laneId;
@@ -305,7 +307,7 @@ export function TaskModal({
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>关联项目</Text>
+            <Text style={styles.label}>{t("taskModal.projectLabel")}</Text>
             <View style={styles.selectorRow}>
               <Pressable
                 onPress={() => session.setProjectId(null)}
@@ -320,7 +322,7 @@ export function TaskModal({
                     snapshot.projectId === null && styles.optionChipTextSelected,
                   ]}
                 >
-                  未关联项目
+                  {t("taskModal.noProject")}
                 </Text>
               </Pressable>
               {projects.map((proj) => {
@@ -349,12 +351,12 @@ export function TaskModal({
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>描述</Text>
+            <Text style={styles.label}>{t("taskModal.descLabel")}</Text>
             <TextInput
               style={styles.multilineInput}
               multiline
               numberOfLines={3}
-              placeholder="可选的任务补充描述..."
+              placeholder={t("taskModal.descPlaceholder")}
               placeholderTextColor={theme.colors.foregroundMuted}
               value={snapshot.description}
               onChangeText={(t) => session.setDescription(t)}
@@ -364,7 +366,10 @@ export function TaskModal({
           {/* Subtasks Section */}
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>
-              子步骤 ({snapshot.subtasks.filter((s) => s.completed).length}/{snapshot.subtasks.length})
+              {t("taskModal.subtasksLabel", {
+                completed: snapshot.subtasks.filter((s) => s.completed).length,
+                total: snapshot.subtasks.length,
+              })}
             </Text>
 
             {snapshot.subtasks.map((subtask) => (
@@ -392,7 +397,7 @@ export function TaskModal({
                   onChangeText={(txt) =>
                     session.updateSubtask(subtask.id, { title: txt })
                   }
-                  placeholder="子步骤内容"
+                  placeholder={t("taskModal.subtaskPlaceholder")}
                   placeholderTextColor={theme.colors.foregroundMuted}
                 />
 
@@ -408,7 +413,7 @@ export function TaskModal({
             <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
               <TextInput
                 style={[styles.input, { flex: 1 }]}
-                placeholder="添加新的子步骤..."
+                placeholder={t("taskModal.newSubtaskPlaceholder")}
                 placeholderTextColor={theme.colors.foregroundMuted}
                 value={newSubtaskTitle}
                 onChangeText={(t) => setNewSubtaskTitle(t)}
@@ -421,7 +426,7 @@ export function TaskModal({
                   { backgroundColor: theme.colors.surface2, justifyContent: "center" },
                 ]}
               >
-                <Text style={styles.optionChipText}>添加步骤</Text>
+                <Text style={styles.optionChipText}>{t("taskModal.addStep")}</Text>
               </Pressable>
             </View>
           </View>
@@ -435,12 +440,12 @@ export function TaskModal({
                   style={styles.deleteButton}
                   disabled={isSaving}
                 >
-                  <Text style={styles.deleteButtonText}>删除此任务</Text>
+                  <Text style={styles.deleteButtonText}>{t("taskModal.deleteTask")}</Text>
                 </Pressable>
               ) : (
                 <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
                   <Text style={{ fontSize: 13, color: theme.colors.statusDanger }}>
-                    确定删除？
+                    {t("taskModal.confirmDeletePrompt")}
                   </Text>
                   <Pressable
                     onPress={handleDelete}
@@ -448,14 +453,14 @@ export function TaskModal({
                     disabled={isSaving}
                   >
                     <Text style={[styles.deleteButtonText, { color: "#fff" }]}>
-                      确认删除
+                      {t("taskModal.confirmDelete")}
                     </Text>
                   </Pressable>
                   <Pressable
                     onPress={() => setShowDeleteConfirm(false)}
                     style={[styles.optionChip, { backgroundColor: theme.colors.surface2 }]}
                   >
-                    <Text style={styles.optionChipText}>取消</Text>
+                    <Text style={styles.optionChipText}>{t("taskModal.cancel")}</Text>
                   </Pressable>
                 </View>
               )}
@@ -469,7 +474,7 @@ export function TaskModal({
               style={styles.cancelButton}
               disabled={isSaving}
             >
-              <Text style={styles.cancelButtonText}>取消</Text>
+              <Text style={styles.cancelButtonText}>{t("taskModal.cancel")}</Text>
             </Pressable>
 
             <Pressable
@@ -478,7 +483,11 @@ export function TaskModal({
               disabled={isSaving}
             >
               <Text style={styles.saveButtonText}>
-                {isSaving ? "保存中..." : session.mode === "edit" ? "保存修改" : "创建"}
+                {isSaving
+                  ? t("taskModal.saving")
+                  : session.mode === "edit"
+                  ? t("taskModal.saveChanges")
+                  : t("taskModal.submitCreate")}
               </Text>
             </Pressable>
           </View>

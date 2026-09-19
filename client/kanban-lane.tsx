@@ -5,6 +5,7 @@ import type { KanbanLane, KanbanTask } from "../shared/kanban";
 import { KanbanCard, KanbanDropSpacer } from "./kanban-card";
 import { getProjectDisplayName, type ProjectItem } from "./use-projects";
 import type { LaneDragBinding } from "./kanban-drag";
+import { useI18n } from "./i18n";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 
@@ -33,6 +34,7 @@ function KanbanLaneViewInner({
   onSelectTask,
   resolveProjectName,
 }: KanbanLaneViewProps) {
+  const { t } = useI18n();
   const {
     isHovered,
     targetIndex,
@@ -169,7 +171,7 @@ function KanbanLaneViewInner({
             style={styles.laneHeaderBtn}
             hitSlop={6}
           >
-            <Text style={styles.laneHeaderBtnText}>+ 添加</Text>
+            <Text style={styles.laneHeaderBtnText}>{t("lane.add")}</Text>
           </Pressable>
 
           <Pressable
@@ -177,7 +179,7 @@ function KanbanLaneViewInner({
             style={styles.laneHeaderBtn}
             hitSlop={6}
           >
-            <Text style={styles.laneHeaderBtnText}>管理</Text>
+            <Text style={styles.laneHeaderBtnText}>{t("lane.manage")}</Text>
           </Pressable>
         </View>
       </View>
@@ -225,7 +227,7 @@ function KanbanLaneViewInner({
           {tasks.length === 0 && !isHovered && (
             <View style={styles.emptyLanePlaceholder}>
               <Text style={styles.emptyLaneText}>
-                暂无卡片，可点击右上角添加或拖动卡片至此
+                {t("lane.emptyHint")}
               </Text>
             </View>
           )}

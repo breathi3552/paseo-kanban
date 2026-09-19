@@ -4,6 +4,7 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanTask } from "../shared/kanban";
 import type { CardDragBinding } from "./kanban-drag";
+import { useI18n } from "./i18n";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 
@@ -22,6 +23,7 @@ export function KanbanCard({
   layout,
   binding,
 }: KanbanCardProps) {
+  const { t } = useI18n();
   const bindingRef = useRef(binding);
   bindingRef.current = binding;
 
@@ -116,7 +118,7 @@ export function KanbanCard({
           <View
             style={styles.dragHandle}
             accessibilityRole="button"
-            accessibilityLabel="拖动手柄"
+            accessibilityLabel={t("card.dragHandle")}
             {...binding.handlePanHandlers}
           >
             <Icon name="GripVertical" size={14} color={theme.colors.foregroundMuted} />
@@ -138,7 +140,10 @@ export function KanbanCard({
           {task.subtasks.length > 0 && (
             <View style={styles.subtaskBadge}>
               <Text style={styles.subtaskBadgeText}>
-                子步骤 {completedSubtasksCount}/{task.subtasks.length}
+                {t("card.subtasksCount", {
+                  completed: completedSubtasksCount,
+                  total: task.subtasks.length,
+                })}
               </Text>
             </View>
           )}
@@ -161,6 +166,7 @@ export function KanbanCardPreview({
   layout: { compact: boolean };
   animated?: boolean;
 }) {
+  const { t } = useI18n();
   const completedSubtasksCount = useMemo(
     () => task.subtasks.filter((s) => s.completed).length,
     [task.subtasks]
@@ -263,7 +269,10 @@ export function KanbanCardPreview({
         {task.subtasks.length > 0 && (
           <View style={styles.subtaskBadge}>
             <Text style={styles.subtaskBadgeText}>
-              子步骤 {completedSubtasksCount}/{task.subtasks.length}
+              {t("card.subtasksCount", {
+                completed: completedSubtasksCount,
+                total: task.subtasks.length,
+              })}
             </Text>
           </View>
         )}
