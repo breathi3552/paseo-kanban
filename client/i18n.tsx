@@ -1,6 +1,5 @@
 import * as React from "react";
 import { useState, useEffect, useMemo } from "react";
-import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 
 export type SupportedLanguage = "zh" | "en";
 
@@ -8,7 +7,6 @@ export type TranslationParams = Record<string, string | number | boolean | null 
 
 export const translations = {
   zh: {
-    // General & Navigation
     "kanban.sidebarTitle": "看板",
     "kanban.title": "任务看板",
     "kanban.loading": "正在加载看板数据...",
@@ -16,8 +14,6 @@ export const translations = {
     "kanban.addLane": "+ 新增泳道",
     "kanban.newTask": "+ 新建任务",
     "kanban.refresh": "刷新最新数据",
-
-    // Error & Recovery States
     "kanban.loadError": "加载看板配置失败：{error}",
     "kanban.formatError": "看板配置格式异常：{error}",
     "kanban.formatErrorHint": "数据未被悄悄覆盖。若需使用默认结构可重置，或重试加载。",
@@ -25,23 +21,15 @@ export const translations = {
     "kanban.resetDefault": "重置为默认结构",
     "kanban.saveFailed": "保存失败：{error}",
     "kanban.conflictError": "保存冲突或错误：{error}",
-
-    // Project Filter
     "kanban.filterLabel": "项目筛选:",
     "kanban.filterAll": "全部",
     "kanban.filterUnassigned": "未关联项目",
     "kanban.projectsError": "(项目列表更新受限)",
-
-    // Kanban Lane
     "lane.add": "+ 添加",
     "lane.manage": "管理",
     "lane.emptyHint": "暂无卡片，可点击右上角添加或拖动卡片至此",
-
-    // Kanban Card
     "card.dragHandle": "拖动手柄",
     "card.subtasksCount": "子步骤 {completed}/{total}",
-
-    // Lane Modal
     "laneModal.titleEdit": "管理泳道",
     "laneModal.titleCreate": "新增泳道",
     "laneModal.nameLabel": "泳道名称 *",
@@ -55,8 +43,6 @@ export const translations = {
     "laneModal.saving": "保存中...",
     "laneModal.saveChanges": "保存修改",
     "laneModal.submitCreate": "添加泳道",
-
-    // Task Modal
     "taskModal.titleEdit": "编辑任务",
     "taskModal.titleCreate": "创建任务",
     "taskModal.titleLabel": "任务标题 *",
@@ -79,7 +65,6 @@ export const translations = {
     "taskModal.submitCreate": "创建",
   },
   en: {
-    // General & Navigation
     "kanban.sidebarTitle": "Kanban",
     "kanban.title": "Task Kanban",
     "kanban.loading": "Loading kanban board data...",
@@ -87,8 +72,6 @@ export const translations = {
     "kanban.addLane": "+ Add Lane",
     "kanban.newTask": "+ New Task",
     "kanban.refresh": "Refresh latest data",
-
-    // Error & Recovery States
     "kanban.loadError": "Failed to load kanban settings: {error}",
     "kanban.formatError": "Kanban settings format error: {error}",
     "kanban.formatErrorHint": "Data was not silently overwritten. Reset to default structure if needed, or retry loading.",
@@ -96,23 +79,15 @@ export const translations = {
     "kanban.resetDefault": "Reset to Default",
     "kanban.saveFailed": "Save failed: {error}",
     "kanban.conflictError": "Save conflict or error: {error}",
-
-    // Project Filter
     "kanban.filterLabel": "Project Filter:",
     "kanban.filterAll": "All",
     "kanban.filterUnassigned": "No Project",
     "kanban.projectsError": "(Project list update restricted)",
-
-    // Kanban Lane
     "lane.add": "+ Add",
     "lane.manage": "Manage",
     "lane.emptyHint": "No cards yet. Click '+' in the top right or drag cards here.",
-
-    // Kanban Card
     "card.dragHandle": "Drag handle",
     "card.subtasksCount": "Subtasks {completed}/{total}",
-
-    // Lane Modal
     "laneModal.titleEdit": "Manage Lane",
     "laneModal.titleCreate": "Add Lane",
     "laneModal.nameLabel": "Lane Name *",
@@ -126,8 +101,6 @@ export const translations = {
     "laneModal.saving": "Saving...",
     "laneModal.saveChanges": "Save Changes",
     "laneModal.submitCreate": "Add Lane",
-
-    // Task Modal
     "taskModal.titleEdit": "Edit Task",
     "taskModal.titleCreate": "Create Task",
     "taskModal.titleLabel": "Task Title *",
@@ -153,18 +126,9 @@ export const translations = {
 
 export type TranslationKey = keyof typeof translations.zh;
 
-/**
- * Normalizes any locale string into supported languages.
- * - Chinese: "zh", "zh-CN", "zh-TW", "zh-HK", "zh-Hans", "zh-Hant", "zh-SG", etc. -> "zh"
- * - All other languages: "en", "ja", "ko", "es", "fr", "ru", "de", etc. -> "en"
- */
 export function normalizeLanguage(locale?: string | null): SupportedLanguage {
-  if (!locale || typeof locale !== "string") return "en";
-  const trimmed = locale.trim().toLowerCase();
-  if (trimmed.startsWith("zh")) {
-    return "zh";
-  }
-  return "en";
+  if (!locale) return "en";
+  return locale.trim().toLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
 let languageOverride: SupportedLanguage | null = null;
@@ -187,13 +151,9 @@ export interface DetectLanguageOptions {
     locale?: string;
     language?: string;
   };
-  layout?: {
-    compact?: boolean;
-    platform?: "ios" | "android" | "web";
-  };
 }
 
-interface BrowserGlobals {
+interface EnvironmentGlobals {
   localStorage?: {
     getItem(key: string): string | null;
   };
@@ -204,113 +164,64 @@ interface BrowserGlobals {
   };
   navigator?: {
     language?: string;
-    languages?: readonly string[];
   };
   window?: {
-    addEventListener(event: string, listener: (event?: unknown) => void): void;
-    removeEventListener?(event: string, listener: (event?: unknown) => void): void;
-  };
-  MutationObserver?: {
-    new (callback: () => void): {
-      observe(target: unknown, options: { attributes: boolean; attributeFilter: string[] }): void;
-      disconnect(): void;
-    };
+    addEventListener(event: string, listener: (event: { key?: string }) => void): void;
   };
   i18n?: {
     language?: string;
   };
 }
 
-function getBrowserGlobals(): BrowserGlobals | undefined {
-  if (typeof globalThis !== "undefined") {
-    return globalThis as unknown as BrowserGlobals;
-  }
-  return undefined;
-}
+const env = globalThis as typeof globalThis & EnvironmentGlobals;
 
-/**
- * Detects Paseo system language across multiple sources:
- * 1. Manual override (if set)
- * 2. Host props (e.g. host.locale or host.language)
- * 3. Paseo app setting persisted in localStorage ("@paseo:app-settings")
- * 4. Document element language attribute (document.documentElement.lang)
- * 5. Global i18n instance (globalThis.i18n?.language)
- * 6. Standard Intl / navigator locale
- */
 export function detectPaseoLanguage(hostProps?: DetectLanguageOptions): SupportedLanguage {
   if (languageOverride) {
     return languageOverride;
   }
 
-  // Check props passed from Paseo
-  if (hostProps) {
-    const propLocale =
-      hostProps.locale ??
-      hostProps.language ??
-      hostProps.host?.locale ??
-      hostProps.host?.language;
-    if (propLocale && typeof propLocale === "string" && propLocale !== "system") {
-      return normalizeLanguage(propLocale);
-    }
+  const propLocale =
+    hostProps?.locale ??
+    hostProps?.language ??
+    hostProps?.host?.locale ??
+    hostProps?.host?.language;
+  if (propLocale && propLocale !== "system") {
+    return normalizeLanguage(propLocale);
   }
 
-  const globals = getBrowserGlobals();
-
-  // Check Paseo app settings in localStorage (Paseo Web / Desktop Electron)
-  if (globals?.localStorage) {
+  if (env.localStorage) {
     try {
-      const raw = globals.localStorage.getItem("@paseo:app-settings");
+      const raw = env.localStorage.getItem("@paseo:app-settings");
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (
-          parsed &&
-          typeof parsed.language === "string" &&
-          parsed.language !== "system"
-        ) {
+        if (parsed?.language && parsed.language !== "system") {
           return normalizeLanguage(parsed.language);
         }
       }
-    } catch {
-      // Ignore storage read/parse error
-    }
+    } catch {}
   }
 
-  // Check HTML document lang attribute
-  if (globals?.document?.documentElement?.lang) {
-    const docLang = globals.document.documentElement.lang;
-    if (docLang && typeof docLang === "string") {
-      return normalizeLanguage(docLang);
-    }
+  const docLang = env.document?.documentElement?.lang;
+  if (docLang) {
+    return normalizeLanguage(docLang);
   }
 
-  // Check global i18n object if Paseo exposes it
-  if (globals?.i18n?.language) {
-    const i18nLang = globals.i18n.language;
-    if (i18nLang && typeof i18nLang === "string") {
-      return normalizeLanguage(i18nLang);
-    }
+  const i18nLang = env.i18n?.language;
+  if (i18nLang) {
+    return normalizeLanguage(i18nLang);
   }
 
-  // Check standard Intl locale
-  if (typeof Intl !== "undefined" && typeof Intl.DateTimeFormat === "function") {
-    try {
-      const intlLocale = Intl.DateTimeFormat().resolvedOptions().locale;
-      if (intlLocale) {
-        return normalizeLanguage(intlLocale);
-      }
-    } catch {
-      // Ignore Intl errors
-    }
+  const intlLocale =
+    typeof Intl?.DateTimeFormat === "function"
+      ? Intl.DateTimeFormat().resolvedOptions().locale
+      : undefined;
+  if (intlLocale) {
+    return normalizeLanguage(intlLocale);
   }
 
-  // Check navigator language
-  if (globals?.navigator) {
-    const navLocale =
-      globals.navigator.language ||
-      (globals.navigator.languages && globals.navigator.languages[0]);
-    if (navLocale) {
-      return normalizeLanguage(navLocale);
-    }
+  const navLocale = env.navigator?.language;
+  if (navLocale) {
+    return normalizeLanguage(navLocale);
   }
 
   return "en";
@@ -330,39 +241,17 @@ function notifyLanguageChange() {
 
 function ensureGlobalListeners() {
   if (globalListenersInitialized) return;
-  const globals = getBrowserGlobals();
-  if (!globals?.window) return;
-
   globalListenersInitialized = true;
 
-  // Listen to cross-window storage events (e.g. Paseo settings changed in another window)
-  globals.window.addEventListener("storage", (e: unknown) => {
-    const storageEvent = e as { key?: string } | undefined;
-    if (storageEvent?.key === "@paseo:app-settings") {
+  env.window?.addEventListener("storage", (e) => {
+    if (e.key === "@paseo:app-settings") {
       notifyLanguageChange();
     }
   });
 
-  // Re-check when window gains focus
-  globals.window.addEventListener("focus", () => {
+  env.window?.addEventListener("focus", () => {
     notifyLanguageChange();
   });
-
-  // Observe document lang attribute changes if MutationObserver is available
-  if (globals.MutationObserver && globals.document?.documentElement) {
-    const observer = new globals.MutationObserver(() => {
-      notifyLanguageChange();
-    });
-    observer.observe(globals.document.documentElement, {
-      attributes: true,
-      attributeFilter: ["lang"],
-    });
-  }
-
-  // Periodic fallback check (every 1.5 seconds) for in-window updates
-  setInterval(() => {
-    notifyLanguageChange();
-  }, 1500);
 }
 
 export function getLanguage(hostProps?: DetectLanguageOptions): SupportedLanguage {
@@ -380,21 +269,13 @@ export function subscribeLanguage(listener: (lang: SupportedLanguage) => void): 
   };
 }
 
-/**
- * Format string with parameter interpolation.
- */
 export function formatString(template: string, params?: TranslationParams): string {
   if (!params) return template;
   return template.replace(/\{(\w+)\}/g, (match, key) => {
-    return key in params && params[key] !== null && params[key] !== undefined
-      ? String(params[key])
-      : match;
+    return params[key] != null ? String(params[key]) : match;
   });
 }
 
-/**
- * Translate a key given a target language or default detected language.
- */
 export function t(
   key: TranslationKey,
   langOrParams?: SupportedLanguage | TranslationParams,
@@ -421,23 +302,10 @@ export interface I18nContextValue {
   t: (key: TranslationKey, params?: TranslationParams) => string;
 }
 
-export const I18nContext =
-  typeof React.createContext === "function"
-    ? React.createContext<I18nContextValue | null>(null)
-    : null;
-
 export function useI18n(hostProps?: DetectLanguageOptions): I18nContextValue {
-  const context =
-    I18nContext && typeof React.useContext === "function"
-      ? React.useContext(I18nContext)
-      : null;
-
-  const [lang, setLang] = useState<SupportedLanguage>(() => {
-    return context ? context.language : detectPaseoLanguage(hostProps);
-  });
+  const [lang, setLang] = useState<SupportedLanguage>(() => detectPaseoLanguage(hostProps));
 
   useEffect(() => {
-    if (context) return;
     ensureGlobalListeners();
     const immediate = detectPaseoLanguage(hostProps);
     if (immediate !== lang) {
@@ -446,17 +314,15 @@ export function useI18n(hostProps?: DetectLanguageOptions): I18nContextValue {
     return subscribeLanguage((newLang) => {
       setLang(newLang);
     });
-  }, [context, hostProps?.host?.language, hostProps?.locale, hostProps?.language]);
-
-  const activeLang = context ? context.language : lang;
+  }, [hostProps?.host?.language, hostProps?.locale, hostProps?.language]);
 
   const tBound = useMemo(
-    () => (key: TranslationKey, params?: TranslationParams) => t(key, activeLang, params),
-    [activeLang]
+    () => (key: TranslationKey, params?: TranslationParams) => t(key, lang, params),
+    [lang]
   );
 
   return {
-    language: activeLang,
+    language: lang,
     t: tBound,
   };
 }

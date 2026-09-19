@@ -362,9 +362,7 @@ export class KanbanDragController {
         onPanResponderMove: (_e: any, gs: any) => {
           this.handlePointerMove({ x: gs.moveX, y: gs.moveY });
         },
-        onPanResponderRelease: (_e: any, gs: any) => {
-          this.handlePointerUp({ x: gs.moveX, y: gs.moveY });
-        },
+        onPanResponderRelease: () => this.handlePointerUp(),
         onPanResponderTerminate: () => {
           this.handlePointerCancel();
         },
@@ -385,9 +383,7 @@ export class KanbanDragController {
         onPanResponderMove: (_e: any, gs: any) => {
           this.handlePointerMove({ x: gs.moveX, y: gs.moveY });
         },
-        onPanResponderRelease: (_e: any, gs: any) => {
-          this.handlePointerUp({ x: gs.moveX, y: gs.moveY });
-        },
+        onPanResponderRelease: () => this.handlePointerUp(),
         onPanResponderTerminate: () => {
           this.handlePointerCancel();
         },
@@ -500,13 +496,15 @@ export class KanbanDragController {
     this.clearPendingTimer();
     if (!this.activeSession) return;
 
+    point ??= {
+      x: this.activeSession.lastPointerX,
+      y: this.activeSession.lastPointerY,
+    };
     const wasActivated = this.activeSession.isActivated;
-    const dist = point
-      ? Math.hypot(
-          point.x - this.activeSession.startX,
-          point.y - this.activeSession.startY
-        )
-      : 0;
+    const dist = Math.hypot(
+      point.x - this.activeSession.startX,
+      point.y - this.activeSession.startY
+    );
     const onPress = this.pendingOnPress;
     this.pendingOnPress = null;
 

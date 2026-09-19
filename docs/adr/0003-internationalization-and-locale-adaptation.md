@@ -23,8 +23,8 @@
    - 归一化规则（`normalizeLanguage`）：大小写不敏感，凡以 `zh` 开头者映射为 `zh`，其余所有情况一律映射为 `en`。
 
 2. **跨端安全的全局监听与热更新（Dynamic Reactive Subscription）**：
-   - 通过 `globalThis` 安全嗅探浏览器全局对象（`window`、`localStorage`、`document`、`MutationObserver`），不破坏 React Native 跨端编译约束。
-   - 注册 `storage` 事件（捕获跨窗口配置变更）、`focus` 事件（切回激活即时检查）与 `MutationObserver`（监听 `lang` 属性变动），配合轻量轮询兜底，通过 `subscribeLanguage` 驱动全局视图热更新。
+   - 通过 `globalThis` 安全嗅探运行环境全局对象（`window`、`localStorage`、`document`），不破坏 React Native 跨端编译约束。
+   - 注册 `storage` 事件（捕获跨窗口配置变更）与 `focus` 事件（切回激活即时检查），通过 `subscribeLanguage` 驱动全局视图热更新。
    - 侧边栏项（`client.addSidebarItem`）在 `index.client.tsx` 中订阅语言切换，语言变动时执行安全重注，实现宿主外壳与内容区同步更新。
 
 3. **词条字典完整性与参数插值协议**：

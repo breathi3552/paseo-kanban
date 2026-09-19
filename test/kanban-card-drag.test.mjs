@@ -265,6 +265,62 @@ test("long press grabs the card immediately, seamlessly continues dragging on mo
   renderer.unmount();
 });
 
+test("stationary left click opens task details without requiring a mouse move", async () => {
+  const controller = new KanbanDragController({ lanes: ["lane"] });
+  let clicks = 0;
+  const renderer = componentRenderer();
+  const tree = renderer.render({
+    task: { id: "task", laneId: "lane", title: "Task", subtasks: [] },
+    projectDisplayName: null,
+    theme: { colors: {} },
+    layout: { compact: false },
+    binding: controller.bindCard("lane", "task", () => { clicks++; }, {
+      create: (handlers) => ({ panHandlers: handlers }),
+    }),
+  });
+  const event = { nativeEvent: { pageX: 120, pageY: 240, button: 0 } };
+  // PanResponder's moveX/moveY stay zero until a move event occurs.
+  const gesture = { x0: 120, y0: 240, moveX: 0, moveY: 0, dx: 0, dy: 0 };
+  tree.props.onPanResponderGrant(event, gesture);
+  await tree.props.onPanResponderRelease(event, gesture);
+  assert.equal(clicks, 1, "a stationary left click must open task details");
+  assert.equal(controller.isDragLocked(), false);
+
+  tree.props.onPanResponderGrant(event, gesture);
+  tree.props.onPanResponderMove(event, { ...gesture, moveX: 123, moveY: 240, dx: 3 });
+  await tree.props.onPanResponderRelease(event, { ...gesture, moveX: 123, moveY: 240, dx: 3 });
+  assert.equal(clicks, 2, "slight mouse jitter must still open task details exactly once");
+  renderer.unmount();
+});
+
+for (const source of ["body", "handle"]) {
+  test(`${source} drag release retains its recorded position and never opens details`, async () => {
+    const controller = new KanbanDragController({ lanes: ["lane"] });
+    let clicks = 0;
+    const releases = [];
+    controller.setReleaseHandler(async (x, y) => {
+      releases.push({ x, y });
+      controller.cancelGesture();
+    });
+    const binding = controller.bindCard("lane", "task", () => { clicks++; }, {
+      create: (handlers) => ({ panHandlers: handlers }),
+    });
+    const handlers = source === "body" ? binding.cardPanHandlers : binding.handlePanHandlers;
+    const event = { nativeEvent: {} };
+    const gesture = { x0: 120, y0: 240, moveX: 0, moveY: 0, dx: 0, dy: 0 };
+    handlers.onPanResponderGrant(event, gesture);
+    if (source === "body") {
+      handlers.onPanResponderMove(event, { ...gesture, moveX: 140, moveY: 260, dx: 20, dy: 20 });
+      // Returning to the origin after activating a drag must not become a click.
+      handlers.onPanResponderMove(event, { ...gesture, moveX: 120, moveY: 240 });
+    }
+    assert.equal(controller.getFeedback().isDragging, true);
+    await handlers.onPanResponderRelease(event, gesture);
+    assert.deepEqual(releases, [{ x: 120, y: 240 }]);
+    assert.equal(clicks, 0);
+  });
+}
+
 test("KanbanDragOverlay: 落位动画浮层渲染与动态预览任务快照绑定", () => {
   let committed = false;
   const mockAnimated = {
