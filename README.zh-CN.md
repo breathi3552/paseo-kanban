@@ -15,14 +15,14 @@
   - 支持关联本地已有的 Paseo 项目。
 - **项目维度筛选**：一键按关联的 Paseo 项目过滤看板卡片，聚焦当前目标。
 - **流畅拖拽交互**：精准的拖拽命中测试（Hit-Testing），支持同泳道排序与跨泳道状态流转。
-- **版本化数据持久化**：基于 Paseo 原生 settings API 存储，内置乐观并发版本控制（CAS），杜绝多会话覆写与状态不一致。
+- **版本化数据持久化**：通过 Paseo settings API 存储看板，使用乐观并发版本控制（CAS）处理多会话写入冲突。
 
 ---
 
 ## 环境要求
 
-- **Paseo 宿主版本承诺**：`>= 0.8.0`（声明于 `paseo-plugin.json`）。作为 Paseo 工作区插件，插件的生产运行时环境由 Paseo 宿主应用提供并托管执行，不在 `package.json` 对消费端强加额外的 `engines.node` 限制。
-- **开发与 CI 环境基线**：Node.js 24（显式声明于 `.nvmrc` 与 `.node-version`）。本地参与开发、运行质量检查护栏（`npm run check`）、代码格式化、类型检查与自动化测试必须基于 Node 24，依赖其原生的 `--experimental-strip-types` 类型擦除与原生测试运行器（`node --test`）。
+- **Paseo 宿主**：`>= 0.8.0`（声明于 `paseo-plugin.json`），由 Paseo 运行插件。
+- **开发与 CI**：使用 Node.js 24（声明于 `.nvmrc` 与 `.node-version`）执行质量检查、TypeScript 类型擦除和原生测试。
 
 ---
 
@@ -30,7 +30,7 @@
 
 ### 快速安装（推荐）
 
-无需克隆源码或手动编译，推荐直接使用 Paseo CLI 安装：
+通过 Paseo CLI 从 npm 或 GitHub 安装：
 
 **方式一：通过 NPM 官方包安装（推荐）**
 
@@ -116,9 +116,7 @@ npm run check
   npm run format
   ```
 
-维护者可在 GitHub Actions 的 **Release to GitHub and npm** 工作流中选择 `patch` / `minor` / `major` 一键发布 GitHub Release 与 npm 包；首次使用需配置 `NPM_TOKEN` 和仓库写入权限。操作及失败重试说明见 [开发与宿主验收指南](./docs/development.md#24-一键发布github-actions)。
-
-详细开发贡献流程、发布前检查机制与真实宿主环境手工验收指南，请参阅 [开发与宿主验收指南](./docs/development.md)。
+维护者在 GitHub Actions 的 **Release to GitHub and npm** 工作流中选择 `patch` / `minor` / `major` 发布版本。配置、失败重试和宿主验收流程见 [开发与宿主验收指南](./docs/development.md#24-一键发布github-actions)。
 
 ---
 

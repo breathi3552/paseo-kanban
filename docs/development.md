@@ -1,6 +1,6 @@
-# 开发、发布前检查与宿主验收指南 (Development & Acceptance Guide)
+# 开发、发布与宿主验收指南 (Development & Acceptance Guide)
 
-本指南面向 Paseo Kanban 插件的维护者与贡献者，说明本地开发规范、统一质量护栏、发布包静态检查机制以及在真实 Paseo 宿主上的手工验收流程与边界限制。
+本指南介绍本地检查、发布包校验、GitHub Actions 发版和 Paseo 宿主验收。
 
 ---
 
@@ -10,12 +10,12 @@
 
 - **开发与 CI 基线**：本项目使用 **Node.js 24** 作为开发与 CI 护栏基线，声明于根目录 `.nvmrc` 与 `.node-version`。
   - 依赖 Node 24 原生 `--experimental-strip-types` 与原生测试运行器（`node --test`）。
-- **宿主运行时承诺**：Paseo 宿主环境要求 `>= 0.8.0`（声明于 `paseo-plugin.json`）。`package.json` 中不设消费端 `engines` 限制，避免向消费端或宿主传递工具链版本要求。
+- **宿主运行时**：`paseo-plugin.json` 声明 Paseo 版本要求 `>= 0.8.0`。Node.js 24 是开发工具链要求，不是插件消费者的运行时要求。
 
 ### 1.2 安装依赖
 
 ```bash
-# 干净安装所有依赖（保证无原生编译依赖）
+# 按锁文件安装依赖
 npm ci
 ```
 
@@ -56,7 +56,7 @@ npm run check:package
 1. **必要文件齐全性**：
    - 客户端入口：`index.client.tsx`（或 `index.client.ts`）
    - 服务端入口：`index.server.ts`（或 `index.server.tsx`）
-   - _（注：Paseo 通用规范仅要求至少具备客户端或服务端任一入口；本项目因同时注册前端侧栏界面与服务端看板设置，故约定双入口均须齐全）_
+   - 本插件注册客户端侧栏和服务端设置，因此同时检查两个入口。
    - 插件清单：`paseo-plugin.json`
    - 包元数据：`package.json`
    - 源码目录：`client/` 与 `shared/`
@@ -68,17 +68,16 @@ npm run check:package
      - 静态动态导入 `import("...")`
      - CommonJS 别名 `import x = require("...")`
      - TS 类型查询 `import("...").Type`
-   - **Type-only 引用处理说明**：Paseo 宿主在编译和类型推导 TS 源码时，相对导入的目标文件必须真实存在于包内；因此类型导入与运行时导入一同严格检查相对闭包。
-   - 确保所有相对导入均能在包内解析到对应文件（支持 `.ts`, `.tsx`, `.d.ts`, `.json` 及目录 `index`），杜绝因缺少文件导致宿主加载失败。
-3. **防止非运行时文件与敏感信息泄漏**：
+   - 宿主编译 TS 源码时也需要 type-only 引用的目标文件；检查所有相对导入是否能解析到包内文件（支持 `.ts`, `.tsx`, `.d.ts`, `.json` 及目录 `index`）。
+3. **排除开发文件与敏感信息**：
    - 自动拦截测试目录与文件（`test/`, `*.test.*`, `*.spec.*`）
    - 自动拦截开发脚本与 CI（`scripts/`, `.github/`, `.agents/`, `skills/`）
    - 自动拦截工具链配置（`tsconfig.json`, `eslint.config.*`, `.prettierrc`, `.nvmrc`, `.node-version` 等）
    - 自动拦截私密与环境配置（`.env`, `.env.*`, `*.pem`, `*.key`）
 4. **清单与包元数据合规**：
    - `paseo-plugin.json` 包含合法 `id` 与 `requirements.paseo` semver 范围（`>=0.8.0`）。
-   - `package.json` 版本号符合标准 SemVer（不锁死 0.1.0）。
-   - 宿主依赖（`@getpaseo/plugin`, `react`, `react-native`, `zod`）严格保留在 `devDependencies`，不进入 `dependencies`。
+   - `package.json` 版本号符合标准 SemVer。
+   - 宿主提供的依赖（`@getpaseo/plugin`, `react`, `react-native`, `zod`）位于 `devDependencies`。
 
 ### 2.3 预览打包产物
 
@@ -90,25 +89,33 @@ npm pack --dry-run
 
 ### 2.4 一键发布（GitHub Actions）
 
-仓库使用 [Release to GitHub and npm](../.github/workflows/release.yml) 工作流发布版本。维护者首次使用前需要：
+[Release to GitHub and npm](../.github/workflows/release.yml) 工作流由维护者手动触发，依次发布 npm 包和 GitHub Release。
 
-1. 确认 npm 上 `paseo-kanban` 包的发布权限，在仓库 **Settings → Secrets and variables → Actions** 配置 `NPM_TOKEN`（具备该包发布权限的 npm automation / granular access token；若账户启用 2FA，须允许自动化发布）。不要把 token 写进仓库。工作流使用 npm provenance，仓库需为公开仓库。
-2. 确认发布工作流的 `contents: write` 权限生效，且 `main` 的分支规则允许 `github-actions[bot]` 推送版本提交和 tag；若分支规则禁止推送，需先调整发布流程或规则，不要绕开审查策略。
-3. 先在真实 Paseo 宿主按第 3 节做手工验收；工作流的 `npm run check` 不替代宿主验收。
+**发布准备**
 
-发布权限：工作流只在 `main` 上、且首次触发账号 ID 为 `243264979`（`breathi3552`）并且当前重跑账号也是 `breathi3552` 时执行发布 job；其他账号即使有仓库写权限可以点击 Run workflow，也只会得到被跳过的 job，不会使用 npm secret。**这不是仓库权限边界**：有权修改 `main` 或工作流的协作者可移除检查。保持仓库写权限仅授予可信人员；如需每次发版二次确认，可使用 GitHub Environment 的 Required reviewers。修改账号或转移仓库时须同步更新工作流中的账号校验。
+1. 在仓库 **Settings → Secrets and variables → Actions** 配置 `NPM_TOKEN`：使用对 `paseo-kanban` 有发布权限的 npm granular access token，包权限选择 **Read and write (publish and stage)**，并为自动发布启用 **Bypass 2FA**。将 token 保存在仓库 Secret 中。公开仓库支持工作流使用的 npm provenance。
+2. 确认发布工作流拥有 `contents: write` 权限。当前规则允许 `github-actions[bot]` 向 `main` 推送版本提交和新 tag。
+3. 按第 3 节在 Paseo 宿主中验收插件交互。
 
-当前远端启用两个无豁免的 Ruleset：[保护 `main`](https://github.com/breathi3552/paseo-kanban/rules/23888496)（禁止删除、强推，要求线性历史）及 [保护 `v*` tag](https://github.com/breathi3552/paseo-kanban/rules/23888501)（禁止删除、改写）。它们允许现有 `GITHUB_TOKEN` 追加版本提交和创建新 tag。**目前没有要求 PR / CI 状态检查**：现有工作流直接推送 `main`，而该 token 的推送不会再次触发 CI；贸然开启这两项会阻断一键发布。若未来需要禁止所有协作者直推 `main`，应先改造为发布用 GitHub App + Ruleset 豁免（或经 PR 合并的发版流程），再启用 PR / CI 要求；不要误以为上述规则已经提供了这一限制。
+npm [计划在 2027 年 1 月停用 token 直接发包](https://docs.npmjs.com/about-access-tokens/#direct-publishing-is-being-deprecated)。届时将此工作流迁移到 [Trusted Publishing（OIDC）](https://docs.npmjs.com/trusted-publishers/)；当前工作流仍使用 `NPM_TOKEN`。
 
-发布操作：在 GitHub **Actions → Release to GitHub and npm → Run workflow** 中选择 `main`、选择 `patch` / `minor` / `major`（对应 SemVer 版本升级），保持 `retry_tag` 为空并运行。工作流会更新 `package.json` 和 `package-lock.json`，执行 `npm ci` 与 `npm run check`，原子推送版本提交和 `vX.Y.Z` tag，发布 npm 包（含 provenance），**npm 成功后**创建 GitHub Release。普通 `GITHUB_TOKEN` 推送不会额外触发 CI，因此检查直接在发布工作流内执行。首次运行前建议核实当前仓库版本尚未存在于 npm；npm 已发布的版本不能覆盖。
+**发布权限与分支规则**
 
-如果推送 tag 后 npm 发布或 GitHub Release 创建失败，**不要再次选择升级**。在同一页面选择 `main`，填入已有的 `retry_tag`（如 `v0.1.2`）后重试：工作流仅从该 tag 的提交发布，检查 tag 属于 `main` 且与 package/lockfile 版本一致；若 npm 已有该版本则跳过重复发布，仅补建 GitHub Release。若在推送前失败，修复后直接重新运行升级即可。工作流不会自行定时发布；只有维护者手动触发并配置好凭证后才会向远端发版。
+工作流仅在 `main` 上由账号 `breathi3552`（GitHub ID `243264979`）发起或重跑时执行发布 job。其他有写权限的账号仍可发起工作流，但发布 job 会跳过。仓库写权限仅授予可信人员；能修改 `main` 的人员也能修改此校验。更换账号或仓库所有者时须同步更新校验条件。
+
+远端启用两个 Ruleset：[保护 `main`](https://github.com/breathi3552/paseo-kanban/rules/23888496)（禁止删除和强推、要求线性历史）与 [保护 `v*` tag](https://github.com/breathi3552/paseo-kanban/rules/23888501)（禁止删除和改写）。现有发布流程直接向 `main` 推送版本提交，因此这两项规则保留正常追加提交与创建 tag 的权限。要强制 PR 审核和 CI 状态检查，需先将发布推送改为可获得规则豁免的 GitHub App，或改用经 PR 合并的发版流程。
+
+**发布与重试**
+
+在 GitHub **Actions → Release to GitHub and npm → Run workflow** 中选择 `main`、选择 `patch` / `minor` / `major`，保持 `retry_tag` 为空。工作流更新 `package.json` 与 `package-lock.json`，运行 `npm ci` 和 `npm run check`，原子推送版本提交和 `vX.Y.Z` tag，发布 npm 包（含 provenance），最后创建 GitHub Release。GitHub Actions 的 `GITHUB_TOKEN` 推送不会触发常规 CI；发布工作流自行完成检查。
+
+若 tag 已推送而 npm 或 GitHub Release 步骤失败，填入该版本的 `retry_tag`（如 `v0.1.2`）重试。工作流会校验 tag 与包版本，并跳过 npm 上已有的版本。推送之前失败时，排除故障后重新选择版本升级即可。
 
 ---
 
 ## 3. 宿主手工验收指南 (Manual Host Acceptance Guide)
 
-静态检查保证了包的静态闭环，最终功能与交互体验需要在真实 Paseo 宿主环境中执行以下步骤验收：
+`npm run check` 检查源码、测试和发布包结构；宿主加载、布局和交互行为按以下步骤在 Paseo 中验收：
 
 ### 3.1 宿主前置条件
 
@@ -123,8 +130,8 @@ npm pack --dry-run
   ```
 - **或本地发布包安装测试**：
   ```bash
-  npm pack
-  paseo plugin install /absolute/path/to/paseo-kanban-0.1.0.tgz
+  PACKAGE_TARBALL=$(npm pack --silent)
+  paseo plugin install "./$PACKAGE_TARBALL"
   ```
 - **检查运行状态**：
   ```bash
@@ -176,17 +183,3 @@ npm pack --dry-run
 2. **插件热重载**：
    - 执行 `paseo plugin reload paseo-kanban`。
    - 确认守护进程热重载插件成功，客户端界面正常同步，无需重启 Paseo 守护进程。
-
----
-
-## 4. 实际未验证限制与边界声明 (Limitations & Boundaries)
-
-为保证工程透明度，特别声明以下限制与边界：
-
-1. **静态完整性 ≠ 宿主运行时执行**：
-   - `npm run check:package` 与自动化测试是静态包完整性分析（AST 导入解析、清单校验、敏感文件排查），**不冒充或替代真实 Paseo 宿主与 React Native 渲染引擎的加载执行**。
-2. **自动化未触及真实 Paseo 守护进程**：
-   - 本地护栏未修改用户现有的本地 Paseo 守护进程配置（`config.json`），未启动后台守护进程。
-   - 手工验收部分需由测试者或维护者在具备 Paseo 桌面环境的真实宿主上按照第 3 节执行。
-3. **未执行真实远端发布**：
-   - 阶段任务中严格杜绝执行 `npm publish`，未向公共 npm 仓库或远端私有源推送任何版本包。

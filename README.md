@@ -21,8 +21,8 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 
 ## Requirements
 
-- **Paseo Host Runtime Commitment**: `>= 0.8.0` (declared in `paseo-plugin.json`). As a Paseo workspace plugin, production runtime execution is managed and hosted by the Paseo application environment. No consumer-side Node version restriction is imposed in `package.json`.
-- **Development & CI Baseline**: Node.js 24 (pinned in `.nvmrc` and `.node-version`). Node 24 is required for local contributors and CI automation workflows running quality checks (`npm run check`), type stripping (`--experimental-strip-types`), and native test suites (`node --test`).
+- **Paseo host**: `>= 0.8.0` (declared in `paseo-plugin.json`). The host runs the plugin.
+- **Development and CI**: Node.js 24 (pinned in `.nvmrc` and `.node-version`) for checks, TypeScript stripping, and native tests.
 
 ---
 
@@ -30,7 +30,7 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 
 ### Quick Install (Recommended)
 
-No manual build or git cloning needed. You can install directly via npm or GitHub:
+Install directly from npm or GitHub:
 
 **Via NPM (Release package):**
 
@@ -116,7 +116,7 @@ npm run check
   npm run format
   ```
 
-Maintainers can publish a new GitHub Release and npm package in one run of the **Release to GitHub and npm** GitHub Action: select `patch`, `minor`, or `major`. Configure `NPM_TOKEN` and repository write permissions first. For setup, recovery, and manual host acceptance, see the [Development & Acceptance Guide](./docs/development.md#24-一键发布github-actions).
+Maintainers publish through the **Release to GitHub and npm** GitHub Action by selecting `patch`, `minor`, or `major`. See the [Development & Acceptance Guide](./docs/development.md#24-一键发布github-actions) for setup, recovery, and host acceptance.
 
 ---
 
