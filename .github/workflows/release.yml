@@ -26,8 +26,9 @@ concurrency:
 
 jobs:
   release:
-    # Never create a version from a feature branch or an arbitrary workflow revision.
-    if: github.ref == 'refs/heads/main'
+    # Only the owner's account may publish, including on reruns. Others can
+    # request a run, but the job (and its secrets) will be skipped.
+    if: github.ref == 'refs/heads/main' && github.actor_id == '243264979' && github.triggering_actor == 'breathi3552'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout main and tags

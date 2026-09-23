@@ -93,8 +93,10 @@ npm pack --dry-run
 仓库使用 [Release to GitHub and npm](../.github/workflows/release.yml) 工作流发布版本。维护者首次使用前需要：
 
 1. 确认 npm 上 `paseo-kanban` 包的发布权限，在仓库 **Settings → Secrets and variables → Actions** 配置 `NPM_TOKEN`（具备该包发布权限的 npm automation / granular access token；若账户启用 2FA，须允许自动化发布）。不要把 token 写进仓库。工作流使用 npm provenance，仓库需为公开仓库。
-2. 确认 Actions 具有读写仓库权限（**Settings → Actions → General → Workflow permissions → Read and write permissions**），且 `main` 的分支规则允许 `github-actions[bot]` 推送版本提交和 tag；若分支规则禁止推送，需先调整发布流程或规则，不要绕开审查策略。
+2. 确认发布工作流的 `contents: write` 权限生效，且 `main` 的分支规则允许 `github-actions[bot]` 推送版本提交和 tag；若分支规则禁止推送，需先调整发布流程或规则，不要绕开审查策略。
 3. 先在真实 Paseo 宿主按第 3 节做手工验收；工作流的 `npm run check` 不替代宿主验收。
+
+发布权限：工作流只在 `main` 上、且首次触发账号 ID 为 `243264979`（`breathi3552`）并且当前重跑账号也是 `breathi3552` 时执行发布 job；其他账号即使有仓库写权限可以点击 Run workflow，也只会得到被跳过的 job，不会使用 npm secret。**这不是仓库权限边界**：有权修改 `main` 或工作流的协作者可移除检查。要防止这一点，还需限制仓库写权限、为 `main` / `.github/workflows/release.yml` 设置保护规则；如需每次发版二次确认，可使用 GitHub Environment 的 Required reviewers。修改账号或转移仓库时须同步更新工作流中的账号校验。
 
 发布操作：在 GitHub **Actions → Release to GitHub and npm → Run workflow** 中选择 `main`、选择 `patch` / `minor` / `major`（对应 SemVer 版本升级），保持 `retry_tag` 为空并运行。工作流会更新 `package.json` 和 `package-lock.json`，执行 `npm ci` 与 `npm run check`，原子推送版本提交和 `vX.Y.Z` tag，发布 npm 包（含 provenance），**npm 成功后**创建 GitHub Release。普通 `GITHUB_TOKEN` 推送不会额外触发 CI，因此检查直接在发布工作流内执行。首次运行前建议核实当前仓库版本尚未存在于 npm；npm 已发布的版本不能覆盖。
 
