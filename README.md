@@ -8,9 +8,9 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 
 ## Features
 
-- **Flexible Swimlanes**: Default lanes (`To Plan`, `In Progress`, `Done`) with full support for adding, renaming, and deleting custom lanes.
+- **Flexible Swimlanes**: Three initial lanes that you can rename, with support for adding and deleting custom lanes.
 - **Rich Task Cards**:
-  - Task title and multi-line markdown description.
+  - Task title and multi-line description.
   - Subtasks checklist with completion toggles and live progress tracking.
   - Native Paseo project association.
 - **Project Filtering**: Instantly filter board cards by linked Paseo project to keep context focused.
@@ -76,56 +76,20 @@ paseo plugin link .
 
 ## Development & Testing
 
-### Install Dependencies
+Install dependencies and run the full quality check:
 
 ```bash
-npm install
-# or clean install:
 npm ci
-```
-
-### Unified Quality Guardrails (Check)
-
-Runs typecheck, automated test suites, linting, format verification, and release package checks in sequence:
-
-```bash
 npm run check
 ```
 
-### Individual Quality Tasks
-
-- **Package Verification**: Validates release package contents, entrypoints, and TypeScript AST relative imports:
-  ```bash
-  npm run check:package
-  ```
-- **Run Tests**: Cross-platform auto-discovery of all `test/*.test.mjs` suites:
-  ```bash
-  npm test
-  ```
-- **Type Checking**: Validates TypeScript types across client and server entry points:
-  ```bash
-  npm run typecheck
-  ```
-- **Linting**: Static code analysis with ESLint:
-  ```bash
-  npm run lint
-  ```
-- **Formatting**: Check or format code style with Prettier:
-  ```bash
-  npm run format:check
-  npm run format
-  ```
-
-Maintainers publish through the **Release to GitHub and npm** GitHub Action by selecting `patch`, `minor`, or `major`. See the [Development & Acceptance Guide](./docs/development.md#24-一键发布github-actions) for setup, recovery, and host acceptance.
+Individual commands (`npm test`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run check:package`) are defined in [`package.json`](./package.json). For publishing, recovery, and host acceptance, see the [development guide](./docs/development.md#21-一键发布github-actions).
 
 ---
 
 ## Architecture & Design
 
-The complete architectural breakdown and interactive visual diagram are archived in the repository:
-
-- **Interactive Architecture Viewer**: Open [`docs/architecture/paseo-kanban.architecture.html`](./docs/architecture/paseo-kanban.architecture.html) in your browser.
-- **Architecture Schema & Model**: [`docs/architecture/paseo-kanban.architecture.json`](./docs/architecture/paseo-kanban.architecture.json).
+Core terminology and design decisions are documented in [`CONTEXT.md`](./CONTEXT.md) and [`docs/adr/`](./docs/adr/).
 
 ---
 

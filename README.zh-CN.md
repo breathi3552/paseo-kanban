@@ -76,56 +76,20 @@ paseo plugin link .
 
 ## 开发与测试
 
-### 安装依赖
+安装依赖并运行完整检查：
 
 ```bash
-npm install
-# 或干净安装验证：
 npm ci
-```
-
-### 统一质量护栏检查
-
-按顺序执行类型检查、自动化测试套件、静态代码检查、代码格式验证及发布包完整性检查：
-
-```bash
 npm run check
 ```
 
-### 各独立质量命令
-
-- **发布包完整性检查**：静态校验发布包产物清单、入口完整性与 TypeScript AST 相对导入闭包：
-  ```bash
-  npm run check:package
-  ```
-- **运行单元测试**：跨平台自动发现并执行所有 `test/*.test.mjs` 测试套件：
-  ```bash
-  npm test
-  ```
-- **类型检查**：校验前端组件与服务端扩展的 TypeScript 类型完整性：
-  ```bash
-  npm run typecheck
-  ```
-- **代码规范检查 (Lint)**：基于 ESLint 开展轻量静态检查：
-  ```bash
-  npm run lint
-  ```
-- **代码格式检查与格式化 (Format)**：基于 Prettier 校验或自动格式化：
-  ```bash
-  npm run format:check
-  npm run format
-  ```
-
-维护者在 GitHub Actions 的 **Release to GitHub and npm** 工作流中选择 `patch` / `minor` / `major` 发布版本。配置、失败重试和宿主验收流程见 [开发与宿主验收指南](./docs/development.md#24-一键发布github-actions)。
+单项命令（`npm test`、`npm run typecheck`、`npm run lint`、`npm run format:check`、`npm run check:package`）见 [`package.json`](./package.json)。发布、失败重试与宿主验收见[开发指南](./docs/development.md#21-一键发布github-actions)。
 
 ---
 
 ## 架构设计
 
-完整的插件架构图景与交互式全景模型已归档于仓库：
-
-- **交互式架构全景图**：直接使用浏览器打开 [`docs/architecture/paseo-kanban.architecture.html`](./docs/architecture/paseo-kanban.architecture.html) 查看。
-- **架构定义元数据**：[`docs/architecture/paseo-kanban.architecture.json`](./docs/architecture/paseo-kanban.architecture.json)。
+核心术语和架构决策见 [`CONTEXT.md`](./CONTEXT.md) 与 [`docs/adr/`](./docs/adr/)。
 
 ---
 

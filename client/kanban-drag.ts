@@ -90,7 +90,6 @@ export interface TaskPreviewItem {
 
 export interface KanbanDragOptions {
   lanes?: ({ id: string } | string)[];
-  onMoveTask?: (taskId: string, targetLaneId: string) => void | Promise<void>;
   onReorderTask?: (
     taskId: string,
     targetLaneId: string,
@@ -175,10 +174,6 @@ export class KanbanDragController {
   private containerRef: ContainerRefTarget | null = null;
   private scrollX: number = 0;
   private activeSession: ActiveDragSession | null = null;
-  private onMoveTask?: (
-    taskId: string,
-    targetLaneId: string,
-  ) => void | Promise<void>;
   private onReorderTask?: (
     taskId: string,
     targetLaneId: string,
@@ -231,9 +226,6 @@ export class KanbanDragController {
     if (options?.lanes) {
       this.setLanes(options.lanes);
     }
-    if (options?.onMoveTask) {
-      this.setOnMoveTask(options.onMoveTask);
-    }
     if (options?.onReorderTask) {
       this.setOnReorderTask(options.onReorderTask);
     }
@@ -251,12 +243,6 @@ export class KanbanDragController {
         this.activeSession.lastPointerY,
       );
     }
-  };
-
-  setOnMoveTask = (
-    fn: (taskId: string, targetLaneId: string) => void | Promise<void>,
-  ) => {
-    this.onMoveTask = fn;
   };
 
   setOnReorderTask = (
@@ -908,8 +894,6 @@ export class KanbanDragController {
             drop.targetLaneId,
             drop.targetIndex,
           );
-        } else if (this.onMoveTask && drop.targetLaneId !== drop.sourceLaneId) {
-          await this.onMoveTask(drop.taskId, drop.targetLaneId);
         }
       }
     } finally {
@@ -1396,21 +1380,17 @@ export interface UseKanbanDragReturn {
 export function useKanbanDrag(
   options: KanbanDragOptions = {},
 ): UseKanbanDragReturn {
-  const { lanes = [], onMoveTask, onReorderTask, getTaskPreview } = options;
+  const { lanes = [], onReorderTask, getTaskPreview } = options;
   const controllerRef = useRef<KanbanDragController | null>(null);
   if (!controllerRef.current) {
     controllerRef.current = new KanbanDragController({
       lanes,
-      onMoveTask,
       onReorderTask,
     });
   }
   const controller = controllerRef.current;
 
   controller.setLanes(lanes);
-  if (onMoveTask) {
-    controller.setOnMoveTask(onMoveTask);
-  }
   if (onReorderTask) {
     controller.setOnReorderTask(onReorderTask);
   }

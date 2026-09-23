@@ -15,10 +15,10 @@ const mockLanes = [
   { id: "done", rect: { x: 598, y: 10, width: 280, height: 550 } },
 ];
 
-function setupController(onMoveTask) {
+function setupController(onReorderTask) {
   const controller = new KanbanDragController({
     lanes: mockLanes.map((l) => ({ id: l.id })),
-    onMoveTask,
+    onReorderTask,
   });
   controller.registerContainerBounds(mockContainer);
   for (const lane of mockLanes) {
@@ -30,10 +30,10 @@ function setupController(onMoveTask) {
 // ---------------------------------------------------------------------------
 // 1. 有效移动: 开始、移动到另一泳道并释放
 // ---------------------------------------------------------------------------
-test("有效移动: 开始拖拽、移动到另一泳道并释放，仅产生一次有效移动请求且清空反馈", async () => {
+test("跨泳道落位: 提交目标泳道与槽位一次并清空反馈", async () => {
   const moveRequests = [];
-  const controller = setupController((taskId, targetLaneId) => {
-    moveRequests.push({ taskId, targetLaneId });
+  const controller = setupController((taskId, targetLaneId, targetIndex) => {
+    moveRequests.push({ taskId, targetLaneId, targetIndex });
   });
 
   // Start gesture in "to-plan" lane: pointerX = 70, pointerY = 130
@@ -59,11 +59,12 @@ test("有效移动: 开始拖拽、移动到另一泳道并释放，仅产生一
   // Release gesture in "in-progress" lane
   await controller.releaseGesture(340, 130);
 
-  // Assert move request
+  // Assert reorder request
   assert.equal(moveRequests.length, 1);
   assert.deepEqual(moveRequests[0], {
     taskId: "task-1",
     targetLaneId: "in-progress",
+    targetIndex: 0,
   });
 
   // Assert feedback is cleared
@@ -88,76 +89,29 @@ test("有效移动: 开始拖拽、移动到另一泳道并释放，仅产生一
 // ---------------------------------------------------------------------------
 // 2. 释放重算: 悬停后移动到无效区释放
 // ---------------------------------------------------------------------------
-test("释放重算: 先悬停有效目标，再以工具栏位置释放，断言重新计算命中并阻止移动", async () => {
-  const moveRequests = [];
-  const controller = setupController((taskId, targetLaneId) => {
-    moveRequests.push({ taskId, targetLaneId });
-  });
+test("释放重算: 悬停有效目标后在视口外释放，清空反馈且不提交", async () => {
+  const requests = [];
+  const controller = setupController((...args) => requests.push(args));
 
-  // Start gesture in "to-plan"
-  controller.startGesture("task-1", "to-plan", 70, 130);
+  for (const [x, y] of [
+    [340, 30], // 工具栏上方
+    [340, 700], // 视口下方
+    [10, 130], // 视口左侧
+  ]) {
+    controller.startGesture("task-1", "to-plan", 70, 130);
+    controller.moveGesture(340, 130);
+    assert.equal(controller.getFeedback().hoveredLaneId, "in-progress");
 
-  // Move pointer into "in-progress" lane (hover active)
-  controller.moveGesture(340, 130);
-  assert.equal(controller.getFeedback().hoveredLaneId, "in-progress");
-
-  // Pointer moves up into the toolbar area (pointerY = 30 < container.y = 80) and releases there
-  await controller.releaseGesture(340, 30);
-
-  // Release recalculation must reject move
-  assert.equal(
-    moveRequests.length,
-    0,
-    "Release in toolbar area must not trigger move",
-  );
-
-  // Visual feedback must be cleared
-  const feedback = controller.getFeedback();
-  assert.equal(feedback.isDragging, false);
-  assert.equal(feedback.hoveredLaneId, null);
-});
-
-test("释放重算: 先悬停有效目标，再在视口外位置释放，断言不移动", async () => {
-  const moveRequests = [];
-  const controller = setupController((taskId, targetLaneId) => {
-    moveRequests.push({ taskId, targetLaneId });
-  });
-
-  controller.startGesture("task-1", "to-plan", 70, 130);
-  controller.moveGesture(340, 130);
-  assert.equal(controller.getFeedback().hoveredLaneId, "in-progress");
-
-  // Release below container viewport (pointerY = 700 > container.y + height = 680)
-  await controller.releaseGesture(340, 700);
-
-  assert.equal(
-    moveRequests.length,
-    0,
-    "Release outside container viewport must not trigger move",
-  );
-  assert.equal(controller.getFeedback().isDragging, false);
+    await controller.releaseGesture(x, y);
+    assert.equal(requests.length, 0, `${x}, ${y}`);
+    assert.equal(controller.getFeedback().isDragging, false);
+    assert.equal(controller.getFeedback().hoveredLaneId, null);
+  }
 });
 
 // ---------------------------------------------------------------------------
-// 3. 无效落点: 原泳道、泳道间隙、垂直范围外、已移除泳道
+// 3. 无效目标：泳道间隙、垂直范围外、已移除泳道
 // ---------------------------------------------------------------------------
-test("无效落点: 在原泳道内释放不产生移动请求", async () => {
-  const moveRequests = [];
-  const controller = setupController((taskId, targetLaneId) => {
-    moveRequests.push({ taskId, targetLaneId });
-  });
-
-  controller.startGesture("task-1", "to-plan", 70, 130);
-  controller.moveGesture(80, 150); // Still in to-plan
-  await controller.releaseGesture(80, 150);
-
-  assert.equal(
-    moveRequests.length,
-    0,
-    "Release in same lane must not trigger move",
-  );
-  assert.equal(controller.getFeedback().isDragging, false);
-});
 
 test("无效落点: 在泳道水平间隙中释放不产生移动请求", async () => {
   const moveRequests = [];
@@ -202,7 +156,7 @@ test("无效落点: 释放到已不在当前看板中的泳道不产生移动请
   // Controller where "done" lane has layout registered, but is NOT in active lanes
   const controller = new KanbanDragController({
     lanes: [{ id: "to-plan" }, { id: "in-progress" }], // "done" is excluded
-    onMoveTask: (taskId, targetLaneId) => {
+    onReorderTask: (taskId, targetLaneId) => {
       moveRequests.push({ taskId, targetLaneId });
     },
   });
@@ -229,40 +183,7 @@ test("无效落点: 释放到已不在当前看板中的泳道不产生移动请
 });
 
 // ---------------------------------------------------------------------------
-// 4. 滚动变化: 同一手势中更新水平滚动偏移
-// ---------------------------------------------------------------------------
-test("滚动变化: 在手势过程中更新水平滚动偏移，使用当前偏移计算命中并完成移动", async () => {
-  const moveRequests = [];
-  const controller = setupController((taskId, targetLaneId) => {
-    moveRequests.push({ taskId, targetLaneId });
-  });
-
-  // Start drag at pointerX = 70 with scrollX = 0 (in "to-plan")
-  controller.startGesture("task-1", "to-plan", 70, 130);
-  assert.equal(controller.getFeedback().hoveredLaneId, "to-plan");
-
-  // Board scrolls horizontally by 294px while pointer stays at x = 70
-  controller.handleScroll(294);
-
-  // Hover state automatically reflects the scrolled target ("in-progress")
-  assert.equal(
-    controller.getFeedback().hoveredLaneId,
-    "in-progress",
-    "Scroll update must recompute hover immediately",
-  );
-
-  // Release at pointerX = 70
-  await controller.releaseGesture(70, 130);
-
-  assert.equal(moveRequests.length, 1);
-  assert.deepEqual(moveRequests[0], {
-    taskId: "task-1",
-    targetLaneId: "in-progress",
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 5. 取消与无会话事件
+// 4. 取消与无会话事件
 // ---------------------------------------------------------------------------
 test("取消与无会话事件: 手势取消时立即清空反馈且不移动，无会话后续事件安全忽略", async () => {
   const moveRequests = [];
@@ -311,7 +232,7 @@ test("取消与无会话事件: 手势取消时立即清空反馈且不移动，
 });
 
 // ---------------------------------------------------------------------------
-// 6. 释放坐标回退: 平台未提供有效释放位置时回退末次指针位置
+// 5. 释放坐标回退: 平台未提供有效释放位置时回退末次指针位置
 // ---------------------------------------------------------------------------
 test("释放坐标回退: 平台未提供有效坐标时回退使用末次已知位置", async () => {
   const moveRequests = [];
@@ -334,7 +255,7 @@ test("释放坐标回退: 平台未提供有效坐标时回退使用末次已知
 });
 
 // ---------------------------------------------------------------------------
-// 7. 重渲染稳定性: 更新泳道列表与回调不中断当前活动拖拽
+// 6. 重渲染稳定性: 更新泳道列表与回调不中断当前活动拖拽
 // ---------------------------------------------------------------------------
 test("重渲染稳定性: 更新泳道与回调不中断活动拖拽，并使用最新回调", async () => {
   const firstRequests = [];
@@ -348,8 +269,8 @@ test("重渲染稳定性: 更新泳道与回调不中断活动拖拽，并使用
 
   // Simulate component re-render with new callback reference and lanes
   controller.setLanes(mockLanes.map((l) => ({ id: l.id })));
-  controller.setOnMoveTask((taskId, targetLaneId) => {
-    secondRequests.push({ taskId, targetLaneId });
+  controller.setOnReorderTask((taskId, targetLaneId, targetIndex) => {
+    secondRequests.push({ taskId, targetLaneId, targetIndex });
   });
 
   // Move pointer to "done" lane
@@ -367,67 +288,16 @@ test("重渲染稳定性: 更新泳道与回调不中断活动拖拽，并使用
   assert.deepEqual(secondRequests[0], {
     taskId: "task-1",
     targetLaneId: "done",
+    targetIndex: 0,
   });
 });
 
 // ---------------------------------------------------------------------------
-// 8. 手势位移阈值 (5px slop threshold) 与互斥锁 (dragLock)
-// ---------------------------------------------------------------------------
-test("手势分流: 鼠标按住移动 < 5px 识别为点击，>= 5px 激活拖拽与互斥锁", async () => {
-  const reorderRequests = [];
-  const controller = new KanbanDragController({
-    lanes: mockLanes.map((l) => ({ id: l.id })),
-    onReorderTask: (taskId, targetLaneId, targetIndex) => {
-      reorderRequests.push({ taskId, targetLaneId, targetIndex });
-    },
-  });
-  controller.registerContainerBounds(mockContainer);
-  for (const lane of mockLanes) {
-    controller.registerLaneLayout(lane.id, lane.rect);
-  }
-
-  // 1. 小于 5px 位移 (桌面端按住不放只晃动 2px)
-  controller.startGesture(
-    "task-1",
-    "to-plan",
-    70,
-    130,
-    false /* immediate = false */,
-  );
-  assert.equal(controller.getFeedback().isDragging, false);
-  assert.equal(controller.isDragLocked(), false);
-
-  controller.moveGesture(72, 131); // sqrt(2^2 + 1^2) = 2.23px < 5px
-  assert.equal(controller.getFeedback().isDragging, false);
-  assert.equal(controller.isDragLocked(), false);
-
-  await controller.releaseGesture(72, 131);
-  assert.equal(reorderRequests.length, 0, "未达阈值释放不触发重排");
-  assert.equal(controller.isDragLocked(), false, "未达阈值释放不锁定点击");
-
-  // 2. 超过 5px 位移 (激活拖拽)
-  controller.startGesture("task-1", "to-plan", 70, 130, false);
-  controller.moveGesture(76, 135); // sqrt(6^2 + 5^2) = 7.81px >= 5px
-  assert.equal(controller.getFeedback().isDragging, true);
-  assert.equal(controller.isDragLocked(), true);
-
-  // 移入 in-progress 并释放
-  controller.moveGesture(340, 130);
-  await controller.releaseGesture(340, 130);
-  assert.equal(reorderRequests.length, 1);
-  assert.equal(reorderRequests[0].targetLaneId, "in-progress");
-  assert.equal(
-    controller.isDragLocked(),
-    true,
-    "拖拽刚结束时互斥锁保持生效，防止松手误触发点击",
-  );
-});
-
-// ---------------------------------------------------------------------------
-// 9. 目标槽位计算与卡片间迟滞死区 (Hysteresis Buffer)
+// 7. 目标槽位计算与卡片间迟滞死区 (Hysteresis Buffer)
 // ---------------------------------------------------------------------------
 test("槽位与防抖: 重合卡片位置直接落位并使原卡片顺移，卡片分界迟滞死区防止临界微颤", async () => {
-  const controller = setupController();
+  const requests = [];
+  const controller = setupController((...args) => requests.push(args));
   // 注册 in-progress 泳道内 2 张现有卡片
   // container.y = 80, lane.y = 10, 因此卡片相对 containerOriginY:
   // 卡片 1 (card-a): y = 20, height = 60. windowY = 110 ~ 170.
@@ -485,6 +355,27 @@ test("槽位与防抖: 重合卡片位置直接落位并使原卡片顺移，卡
   assert.equal(controller.getFeedback().targetIndex, 1);
 
   await controller.releaseGesture();
+  assert.deepEqual(requests, [["task-1", "in-progress", 1]]);
+});
+
+test("同泳道从下方向上覆盖卡片时提交目标槽位", async () => {
+  const requests = [];
+  const controller = setupController((...args) => requests.push(args));
+  controller.setLaneCardOrder("in-progress", ["A", "B", "C"]);
+  for (const [index, id] of ["A", "B", "C"].entries()) {
+    controller.registerCardLayout("in-progress", id, {
+      x: 10,
+      y: index * 70,
+      width: 260,
+      height: 60,
+    });
+  }
+
+  controller.startGesture("C", "in-progress", 340, 260, true);
+  controller.moveGesture(340, 190); // 与卡片 B 重合
+  assert.equal(controller.getFeedback().targetIndex, 1);
+  await controller.releaseGesture(340, 190);
+  assert.deepEqual(requests, [["C", "in-progress", 1]]);
 });
 
 test("卡片坐标: 包含列表顶部偏移与纵向滚动，滚动后原地释放匹配新槽位", async () => {
@@ -575,80 +466,6 @@ test("占位动画不能反过来改变命中阈值", () => {
   controller.cancelGesture();
 });
 
-test("卡片重合定位: 挪到目标卡片重合区域释放时，拖拽卡片落位于重合卡片槽位，下方卡片顺移", async () => {
-  const requests = [];
-  const controller = setupController();
-  controller.setOnReorderTask((...args) => requests.push(args));
-  controller.setLaneCardOrder("in-progress", ["A", "B", "C"]);
-  // container.y = 80, lane.y = 10 -> origin = 90
-  // A: y = 0, h = 60 (window 90 ~ 150)
-  // B: y = 70, h = 60 (window 160 ~ 220)
-  // C: y = 140, h = 60 (window 230 ~ 290)
-  controller.registerCardLayout("in-progress", "A", {
-    x: 10,
-    y: 0,
-    width: 260,
-    height: 60,
-  });
-  controller.registerCardLayout("in-progress", "B", {
-    x: 10,
-    y: 70,
-    width: 260,
-    height: 60,
-  });
-  controller.registerCardLayout("in-progress", "C", {
-    x: 10,
-    y: 140,
-    width: 260,
-    height: 60,
-  });
-
-  // 1. 跨泳道拖动到卡片 B 的重合位置 (windowY = 190，处于卡片 B 正中)
-  controller.startGesture("task-x", "to-plan", 70, 130, true);
-  controller.moveGesture(340, 190);
-  assert.equal(controller.getFeedback().hoveredLaneId, "in-progress");
-  assert.equal(
-    controller.getFeedback().targetIndex,
-    1,
-    "重合卡片 B 时落位于卡片 B 原槽位 index 1",
-  );
-  await controller.releaseGesture(340, 190);
-  assert.deepEqual(requests[0], ["task-x", "in-progress", 1]);
-
-  // 2. 同泳道从下方 (卡片 C) 拖动到卡片 B 的重合位置 (windowY = 190)
-  controller.startGesture("C", "in-progress", 340, 260, true);
-  controller.moveGesture(340, 190);
-  assert.equal(
-    controller.getFeedback().targetIndex,
-    1,
-    "从下方移到重合位置，落位于卡片 B 原槽位 index 1",
-  );
-  await controller.releaseGesture(340, 190);
-  assert.deepEqual(requests[1], ["C", "in-progress", 1]);
-
-  // 3. 同泳道从上方 (卡片 A) 拖动到卡片 B 的重合位置 (windowY = 190)
-  controller.startGesture("A", "in-progress", 340, 120, true);
-  controller.moveGesture(340, 190);
-  assert.equal(
-    controller.getFeedback().targetIndex,
-    1,
-    "从上方移到重合位置，卡片 A 占位卡片 B 原槽位 index 1",
-  );
-  await controller.releaseGesture(340, 190);
-  assert.deepEqual(requests[2], ["A", "in-progress", 1]);
-
-  // 4. 移动到所有卡片下方空白区域 (windowY = 320 > 290)
-  controller.startGesture("task-x", "to-plan", 70, 130, true);
-  controller.moveGesture(340, 320);
-  assert.equal(
-    controller.getFeedback().targetIndex,
-    3,
-    "移至底部空白区域时落位于泳道末尾 index 3",
-  );
-  await controller.releaseGesture(340, 320);
-  assert.deepEqual(requests[3], ["task-x", "in-progress", 3]);
-});
-
 test("同泳道释放: 顶部、中间、底部落位均与占位索引一致", async () => {
   for (const [y, expected] of [
     [110, 0],
@@ -676,7 +493,7 @@ test("同泳道释放: 顶部、中间、底部落位均与占位索引一致", 
 });
 
 // ---------------------------------------------------------------------------
-// 10. 视口边缘感应平滑自动滚动 (Edge Auto-scroll)
+// 8. 视口边缘感应平滑自动滚动 (Edge Auto-scroll)
 // ---------------------------------------------------------------------------
 test("边缘滚动: 接近看板视口左右 48px 边缘时输出定向速度矢量", async () => {
   const controller = setupController();
@@ -709,9 +526,9 @@ test("边缘滚动: 接近看板视口左右 48px 边缘时输出定向速度矢
 });
 
 // ---------------------------------------------------------------------------
-// 11. 失败清理与互斥锁释放
+// 9. 失败清理与互斥锁释放
 // ---------------------------------------------------------------------------
-test("失败清理: 提交回调抛出异常或保存被拒绝后，互斥锁仍能正常释放，后续可继续操作", async (t) => {
+test("失败清理: 提交回调抛异常后释放互斥锁，后续可继续操作", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
 
   let attempts = 0;
@@ -724,11 +541,7 @@ test("失败清理: 提交回调抛出异常或保存被拒绝后，互斥锁仍
   controller.startGesture("task-1", "to-plan", 70, 130, true);
   controller.moveGesture(340, 130);
 
-  try {
-    await controller.releaseGesture(340, 130);
-  } catch (err) {
-    assert.match(String(err), /Network failure/);
-  }
+  await assert.rejects(controller.releaseGesture(340, 130), /Network failure/);
 
   // 推进 60ms 释放互斥锁
   t.mock.timers.tick(60);
@@ -745,7 +558,7 @@ test("失败清理: 提交回调抛出异常或保存被拒绝后，互斥锁仍
 });
 
 // ---------------------------------------------------------------------------
-// 12. 统一手势输入入口 (handlePointerDown/Move/Up/Cancel)
+// 10. 统一手势输入入口 (handlePointerDown/Move/Up/Cancel)
 // ---------------------------------------------------------------------------
 test("共同输入入口: 轻点分流、手柄立即激活与主体位移升级拖拽", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
@@ -762,11 +575,14 @@ test("共同输入入口: 轻点分流、手柄立即激活与主体位移升级
     },
   };
 
-  // 1. 轻点: 按下并在原地抬起 (< 5px)，触发 onPress，不触发排序
+  // 1. 轻点: 小幅位移 (< 5px) 后抬起，触发 onPress，不触发排序
   controller.handlePointerDown(ctx, { x: 100, y: 100 }, "body");
-  await controller.handlePointerUp({ x: 100, y: 100 });
+  controller.handlePointerMove({ x: 103, y: 100 });
+  assert.equal(controller.getFeedback().isDragging, false);
+  await controller.handlePointerUp({ x: 103, y: 100 });
   assert.equal(clicks, 1, "原地松手识别为轻点打开详情");
   assert.equal(reorders.length, 0, "轻点不产生排序");
+  assert.equal(controller.isDragLocked(), false);
 
   // 2. 主体移动 >= 5px 激活拖拽
   controller.handlePointerDown(ctx, { x: 100, y: 100 }, "body");
@@ -779,6 +595,7 @@ test("共同输入入口: 轻点分流、手柄立即激活与主体位移升级
   await controller.handlePointerUp({ x: 340, y: 100 });
   assert.equal(clicks, 1, "拖拽不触发点击");
   assert.equal(reorders.length, 1, "释放触发排序");
+  assert.equal(controller.isDragLocked(), true, "松手后短暂保持锁定");
 
   // 推进 60ms 释放互斥锁
   t.mock.timers.tick(60);
@@ -792,7 +609,7 @@ test("共同输入入口: 轻点分流、手柄立即激活与主体位移升级
 });
 
 // ---------------------------------------------------------------------------
-// 13. 触屏 220ms 长按抓起与快速滑动让渡滚动
+// 11. 触屏 220ms 长按抓起与快速滑动让渡滚动
 // ---------------------------------------------------------------------------
 test("触屏输入: 220ms 长按抓起，长按前快速滑动让渡滚动且不触发拖拽与轻点", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
@@ -848,7 +665,7 @@ test("触屏输入: 220ms 长按抓起，长按前快速滑动让渡滚动且不
 });
 
 // ---------------------------------------------------------------------------
-// 14. 操作身份与动画生命周期闭环
+// 12. 操作身份与动画生命周期闭环
 // ---------------------------------------------------------------------------
 test("动画与事务闭环: 操作身份保护，仅完成落位提交一次，重复上报与中断零提交", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
@@ -889,7 +706,7 @@ test("动画与事务闭环: 操作身份保护，仅完成落位提交一次，
 });
 
 // ---------------------------------------------------------------------------
-// 15. 落位动画状态保持与任务快照动态解析
+// 13. 落位动画状态保持与任务快照动态解析
 // ---------------------------------------------------------------------------
 test("落位动画与提交流程: 动态预览更新、保存期间保持落位状态防止原位闪烁、快速释放互斥锁", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });

@@ -9,6 +9,7 @@ import {
   updateTask,
   deleteTask,
   reorderTask,
+  filterTasksByProject,
 } from "../shared/kanban.ts";
 
 test("KanbanBoardSchema: parses empty object into default lanes and empty tasks", () => {
@@ -187,39 +188,6 @@ test("Task operations: create, update, delete, cross-lane movement, and project 
   assert.equal(initial.tasks.length, 0);
 });
 
-test("Task operations: updateTask supports immutable subtasks replacement with validation", () => {
-  const initial = KanbanBoardSchema.parse({});
-  const b1 = addTask(initial, {
-    id: "task-1",
-    title: "Task 1",
-    laneId: "to-plan",
-    subtasks: [{ id: "s1", title: "Sub 1", completed: false }],
-  });
-
-  const b2 = updateTask(b1, "task-1", {
-    subtasks: [
-      { id: "s1", title: "Renamed Sub 1", completed: true },
-      { id: "s2", title: "New Sub 2", completed: false },
-    ],
-  });
-
-  assert.equal(b2.tasks[0].subtasks.length, 2);
-  assert.equal(b2.tasks[0].subtasks[0].title, "Renamed Sub 1");
-  assert.equal(b2.tasks[0].subtasks[0].completed, true);
-
-  // Rejects duplicate subtask IDs in patch
-  assert.throws(
-    () =>
-      updateTask(b1, "task-1", {
-        subtasks: [
-          { id: "dup", title: "A", completed: false },
-          { id: "dup", title: "B", completed: false },
-        ],
-      }),
-    /Duplicate subtask ID/,
-  );
-});
-
 test("Task reorder operations: intra-lane, cross-lane, clamping, and visible-relative splice", () => {
   const initial = KanbanBoardSchema.parse({});
   const b1 = addTask(initial, {
@@ -244,8 +212,16 @@ test("Task reorder operations: intra-lane, cross-lane, clamping, and visible-rel
     id: "t4",
     title: "Task 4",
     laneId: "in-progress",
-    projectId: "projB",
   });
+
+  assert.deepEqual(
+    filterTasksByProject(b4.tasks, "projA").map((t) => t.id),
+    ["t1", "t3"],
+  );
+  assert.deepEqual(
+    filterTasksByProject(b4.tasks, "unassigned").map((t) => t.id),
+    ["t4"],
+  );
 
   // 1. Intra-lane move down: t1 from index 0 to index 2 in to-plan
   const reordered1 = reorderTask(b4, "t1", "to-plan", 2);
@@ -272,6 +248,13 @@ test("Task reorder operations: intra-lane, cross-lane, clamping, and visible-rel
     "in-progress",
   );
 
+  // 目标泳道为空时按泳道顺序插入全量数组
+  const movedToEmptyLane = reorderTask(b4, "t1", "done", 0);
+  assert.deepEqual(
+    movedToEmptyLane.tasks.map((t) => `${t.id}:${t.laneId}`),
+    ["t2:to-plan", "t3:to-plan", "t4:in-progress", "t1:done"],
+  );
+
   // 4. Clamping: negative index clamps to 0, huge index clamps to end
   const clampedLow = reorderTask(b4, "t3", "to-plan", -10);
   assert.deepEqual(
@@ -284,9 +267,8 @@ test("Task reorder operations: intra-lane, cross-lane, clamping, and visible-rel
     ["t2", "t3", "t1"],
   );
 
-  // 5. Relative splice under project filter (projA visible = [t1, t3], t2 belongs to projB)
-  // Moving t3 to before t1 among projA items (targetIndex = 0 in visible items)
-  const relativeMove = reorderTask(b4, "t3", "to-plan", 0, ["t1", "t3"]);
+  // 5. 项目筛选下从可见槽位插入全量数组；t2 隐藏但仍留在看板中
+  const relativeMove = reorderTask(b4, "t3", "to-plan", 0, "projA");
   const toPlanTasksRel = relativeMove.tasks
     .filter((t) => t.laneId === "to-plan")
     .map((t) => t.id);
@@ -361,10 +343,7 @@ test("Task reorder with project filter: no-anchor cross-lane append, self-only n
   // Same lane self-only visible no-op:
   // In to-plan under projA, t1 is the only visible task (t2 is hidden projB).
   // Dropping at slot 0 must keep t1 at its original position relative to t2.
-  const sameLaneSelfOnly = reorderTask(b4, "t1", "to-plan", 0, {
-    type: "project",
-    projectId: "projA",
-  });
+  const sameLaneSelfOnly = reorderTask(b4, "t1", "to-plan", 0, "projA");
   assert.deepEqual(
     sameLaneSelfOnly.tasks.map((t) => t.id),
     ["t1", "t2", "t3", "t4"],

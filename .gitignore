@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Personal architecture reference (kept locally)
+docs/architecture/
+
 # Build artifacts and caches
 dist/
 build/

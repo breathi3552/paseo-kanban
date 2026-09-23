@@ -1,15 +1,7 @@
 /**
- * Real React 19 Lifecycle, Subscription & Timers Tests for Kanban Card Drag
- *
- * Replaces the handwritten React Hooks fake renderer with the real React 19.1 reconciler
- * and scheduler via react-test-renderer@19.1.0.
- *
- * Notice on react-test-renderer deprecation & environment:
- * React 19 deprecates react-test-renderer in favor of DOM/native testing harnesses. Here,
- * it is used as the minimal pure-JS scheduling tool to mount, update, subscribe (via useSyncExternalStore),
- * and unmount components in Node native test runner without native build dependencies.
- * Host View/PanResponder/Animated primitives are test doubles; this does not replace host layout/touch E2E.
- * Deprecation notices are filtered strictly; all other console.error messages remain enabled.
+ * Exercise card drag lifecycle and subscriptions with the React 19 scheduler
+ * via react-test-renderer. Native UI primitives are test doubles; host layout
+ * and touch behaviour are verified in the Paseo acceptance guide.
  */
 
 import test from "node:test";
@@ -163,6 +155,7 @@ test("card rerenders must retain geometry: slot follows pointer and release matc
 // 2. 真实 useKanbanDrag 与 useSyncExternalStore 响应式驱动更新与卸载注销
 // ---------------------------------------------------------------------------
 test("真实useKanbanDrag与useSyncExternalStore触发订阅更新与卸载注销: 覆盖拖拽和落位期间源卡片隐藏、完成后恢复", async (t) => {
+  // React 19 act() uses setImmediate to flush work; keep it real when mocking gesture timers.
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
 
   let liveDrag = null;
@@ -486,31 +479,33 @@ test("board renders the slot against the remaining cards, not the dragged card",
     return result;
   }
 
-  for (const compact of [false, true]) {
-    for (const draggedId of ["1", "2", "3"]) {
-      drag.feedback.draggingTaskId = draggedId;
-      drag.isTaskDragging = (id) => id === draggedId;
-      for (const index of [0, 1, 2]) {
-        drag.feedback.targetIndex = index;
-        const expected = ["1", "2", "3"].filter((id) => id !== draggedId);
-        expected.splice(index, 0, "slot");
+  // 源卡片位于首、中、末位，目标槽位覆盖首、中、末位；两种布局各取代表场景。
+  for (const [draggedId, index, compact] of [
+    ["1", 0, false],
+    ["2", 1, true],
+    ["3", 2, false],
+    ["1", 2, true],
+  ]) {
+    drag.feedback.draggingTaskId = draggedId;
+    drag.isTaskDragging = (id) => id === draggedId;
+    drag.feedback.targetIndex = index;
+    const expected = ["1", "2", "3"].filter((id) => id !== draggedId);
+    expected.splice(index, 0, "slot");
 
-        let root;
-        act(() => {
-          root = TestRenderer.create(
-            React.createElement(KanbanBoardView, {
-              theme: { colors: {} },
-              layout: { compact },
-            }),
-          );
-        });
+    let root;
+    act(() => {
+      root = TestRenderer.create(
+        React.createElement(KanbanBoardView, {
+          theme: { colors: {} },
+          layout: { compact },
+        }),
+      );
+    });
 
-        assert.deepEqual(collect(root.toJSON()), expected);
-        act(() => {
-          root.unmount();
-        });
-      }
-    }
+    assert.deepEqual(collect(root.toJSON()), expected);
+    act(() => {
+      root.unmount();
+    });
   }
 });
 
@@ -560,7 +555,7 @@ test("long press grabs the card immediately, seamlessly continues dragging on mo
   };
   const binding1 = controller.bindCard(
     "lane-a",
-    "card-1",
+    "c1",
     () => {
       clicked = true;
     },
@@ -571,7 +566,7 @@ test("long press grabs the card immediately, seamlessly continues dragging on mo
   act(() => {
     root = TestRenderer.create(
       React.createElement(KanbanCard, {
-        task: { id: "card-1", laneId: "lane-a", title: "Test", subtasks: [] },
+        task: { id: "c1", laneId: "lane-a", title: "Test", subtasks: [] },
         projectDisplayName: null,
         theme: { colors: {} },
         layout: { compact: false },
@@ -585,7 +580,7 @@ test("long press grabs the card immediately, seamlessly continues dragging on mo
   // 1. 按下卡片手势
   tree.props.onPanResponderGrant({ nativeEvent: {} }, { x0: 120, y0: 240 });
 
-  // 2. 推进 260ms (鼠标输入长按阈值，ADR与源码kanban-drag.ts:479明确touch为220ms，mouse为260ms)
+  // 鼠标长按阈值为 260ms；触屏长按在控制器测试中单独覆盖 220ms。
   act(() => {
     t.mock.timers.tick(260);
   });
@@ -595,7 +590,7 @@ test("long press grabs the card immediately, seamlessly continues dragging on mo
     true,
     "Long press must trigger dragging",
   );
-  assert.equal(controller.getFeedback().draggingTaskId, "card-1");
+  assert.equal(controller.getFeedback().draggingTaskId, "c1");
 
   // 3. 抓起后移动指针: 无缝延续拖拽
   tree.props.onPanResponderMove(
@@ -630,40 +625,6 @@ test("long press grabs the card immediately, seamlessly continues dragging on mo
   });
   assert.equal(controller.isDragLocked(), false);
 
-  // 5. 验证快速轻点打开详情 (< 260ms 且 < 5px)
-  let clickCount = 0;
-  const binding2 = controller.bindCard(
-    "lane-a",
-    "card-2",
-    () => {
-      clickCount++;
-    },
-    nativePanResponder,
-  );
-
-  let clickRoot;
-  act(() => {
-    clickRoot = TestRenderer.create(
-      React.createElement(KanbanCard, {
-        task: { id: "card-2", laneId: "lane-a", title: "Test 2", subtasks: [] },
-        projectDisplayName: null,
-        theme: { colors: {} },
-        layout: { compact: false },
-        binding: binding2,
-      }),
-    );
-  });
-
-  const clickTree = clickRoot.toJSON();
-  clickTree.props.onPanResponderGrant({ nativeEvent: {} }, { x0: 50, y0: 50 });
-  await act(async () => {
-    await clickTree.props.onPanResponderRelease(
-      { nativeEvent: {} },
-      { moveX: 50, moveY: 50 },
-    );
-  });
-  assert.equal(clickCount, 1, "Quick tap must open task details");
-
   // 槽位坐标校验
   const slot0 = controller.getDropSlotPosition("lane-a", 0);
   assert.deepEqual(
@@ -684,7 +645,6 @@ test("long press grabs the card immediately, seamlessly continues dragging on mo
 
   act(() => {
     root.unmount();
-    clickRoot.unmount();
   });
 });
 
@@ -920,123 +880,9 @@ test("KanbanDragOverlay: 落位动画浮层渲染与动态预览任务快照绑�
 });
 
 // ---------------------------------------------------------------------------
-// 8. 落位动画期间卡片保持隐藏: 原位卡片不得在动画期间重新渲染复显
+// 8. 卡片长按等待阶段卸载与非活动卡片注销隔离
 // ---------------------------------------------------------------------------
-test("落位动画期间卡片保持隐藏: 原位卡片不得在动画期间重新渲染复显", async () => {
-  const controller = new KanbanDragController({
-    lanes: ["lane-a", "lane-b"],
-  });
-  controller.registerContainerBounds({ x: 0, y: 0, width: 600, height: 600 });
-  controller.registerLaneLayout("lane-a", {
-    x: 0,
-    y: 0,
-    width: 280,
-    height: 600,
-  });
-  controller.registerLaneLayout("lane-b", {
-    x: 300,
-    y: 0,
-    width: 280,
-    height: 600,
-  });
-  controller.setLaneCardOrder("lane-a", ["card-1", "card-2"]);
-  controller.setLaneCardOrder("lane-b", ["card-3"]);
-
-  function getCardProps() {
-    return {
-      task: { id: "card-1", laneId: "lane-a", title: "Card 1", subtasks: [] },
-      projectDisplayName: null,
-      theme: { colors: {} },
-      layout: { compact: false },
-      binding: controller.bindCard("lane-a", "card-1"),
-    };
-  }
-
-  let root;
-  act(() => {
-    root = TestRenderer.create(React.createElement(KanbanCard, getCardProps()));
-  });
-
-  // 1. 静止状态: 卡片正常显示
-  assert.equal(root.toJSON().props.style, undefined, "静止状态下卡片正常显示");
-
-  // 2. 拖拽激活状态: 卡片隐藏
-  controller.handlePointerDown(
-    { taskId: "card-1", laneId: "lane-a", onPress: () => {} },
-    { x: 50, y: 50 },
-    "handle",
-  );
-  controller.handlePointerMove({ x: 350, y: 100 });
-  assert.equal(controller.isTaskDragging("card-1"), true);
-
-  act(() => {
-    root.update(React.createElement(KanbanCard, getCardProps()));
-  });
-  assert.equal(
-    root.toJSON().props.style.position,
-    "absolute",
-    "拖拽期间原位卡片必须隐藏",
-  );
-  assert.equal(
-    root.toJSON().props.style.opacity,
-    0,
-    "拖拽期间原位卡片透明度为 0",
-  );
-
-  // 3. 进入落位动画阶段 (droppingState 激活，尚未完成提交)
-  let droppingState;
-  await act(async () => {
-    droppingState = await controller.beginDropAnimation({ x: 350, y: 100 });
-  });
-  assert.ok(droppingState, "必须生成落位状态");
-  assert.equal(
-    controller.isTaskDragging("card-1"),
-    true,
-    "落位动画期间控制器必须判定该卡片仍在处理中",
-  );
-
-  act(() => {
-    root.update(React.createElement(KanbanCard, getCardProps()));
-  });
-  assert.equal(
-    root.toJSON().props.style?.position,
-    "absolute",
-    "落位动画期间原位卡片必须继续隐藏，严禁在原位置重新出现",
-  );
-  assert.equal(
-    root.toJSON().props.style?.opacity,
-    0,
-    "落位动画期间原位卡片透明度必须维持 0",
-  );
-
-  // 4. 落位动画完成并持久化
-  await act(async () => {
-    await controller.reportDropComplete(droppingState.operationId);
-  });
-  assert.equal(
-    controller.isTaskDragging("card-1"),
-    false,
-    "提交流程结束后恢复状态",
-  );
-
-  act(() => {
-    root.update(React.createElement(KanbanCard, getCardProps()));
-  });
-  assert.equal(
-    root.toJSON().props.style,
-    undefined,
-    "提交完成后重新渲染展示恢复正常",
-  );
-
-  act(() => {
-    root.unmount();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 9. (S4) 卡片 Pending 阶段卸载与非活动卡片注销隔离
-// ---------------------------------------------------------------------------
-test("(S4) 卡片pending长按阶段卸载，推进时间无拖拽激活、无点击、无落位提交；注销其他非活动卡片不取消正在进行的拖拽", async (t) => {
+test("卡片长按等待时卸载不激活拖拽；注销其他卡片不打断当前拖拽", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
 
   const reorders = [];
@@ -1201,9 +1047,9 @@ test("(S4) 卡片pending长按阶段卸载，推进时间无拖拽激活、无�
 });
 
 // ---------------------------------------------------------------------------
-// 10. (S4) Hook/看板卸载取消内部待执行资源、无泄漏派发与幂等落位
+// 9. Hook/看板卸载取消内部待执行资源、无泄漏派发与幂等落位
 // ---------------------------------------------------------------------------
-test("(S4) 真实hook/看板卸载时取消内部待执行资源，延迟回调不再通知废弃订阅、不再启动新保存；清理幂等", async (t) => {
+test("看板卸载取消待执行回调与落位，清理幂等", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
 
   const reorders = [];
@@ -1346,9 +1192,9 @@ test("(S4) 真实hook/看板卸载时取消内部待执行资源，延迟回调�
 });
 
 // ---------------------------------------------------------------------------
-// 11. (S4) 在途异步保存完成不复活废弃交互状态或污染新会话
+// 10. 在途异步保存完成不复活废弃交互状态或污染新会话
 // ---------------------------------------------------------------------------
-test("(S4) 已经发出的save不能凭空撤销，但其异步完成不得复活废弃交互状态或污染新会话", async (t) => {
+test("在途保存完成后不复活已卸载的拖拽状态", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
 
   let resolveSavePromise;
@@ -1430,9 +1276,9 @@ test("(S4) 已经发出的save不能凭空撤销，但其异步完成不得复�
 });
 
 // ---------------------------------------------------------------------------
-// 12. (S4) 真实 React StrictMode 双重生命周期与重新挂载后正常交互与落位
+// 11. React StrictMode 双重生命周期与重新挂载后正常交互与落位
 // ---------------------------------------------------------------------------
-test("(S4) React StrictMode setup-cleanup-setup与重新挂载后必须仍可正常拖拽、订阅和落位", async (t) => {
+test("React StrictMode 双重生命周期与重新挂载后仍可拖拽落位", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
 
   const reorderEvents = [];

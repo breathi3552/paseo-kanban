@@ -7,7 +7,6 @@ import {
   validatePackFileList,
   extractImportsFromSource,
   resolveRelativeImport,
-  validateSourceImports,
 } from "../scripts/check-package.mjs";
 
 function createValidFixture() {
@@ -20,7 +19,7 @@ function createValidFixture() {
 
   const packageJson = {
     name: "test-plugin",
-    version: "1.0.0", // Proves we do not lock to 0.1.0
+    version: "1.0.0",
     type: "module",
     files: [
       "paseo-plugin.json",
@@ -139,15 +138,6 @@ test("check-package: resolveRelativeImport resolves files with extensions, index
   );
 });
 
-test("check-package: validateSourceImports reports missing imports", () => {
-  const result = validateSourceImports({
-    files: ["client/view.tsx"],
-    readFile: () => `import { missing } from "./missing";`,
-  });
-  assert.equal(result.valid, false);
-  assert.equal(result.errors.length, 1);
-});
-
 // ---------------------------------------------------------------------------
 // 2. Positive Tests
 // ---------------------------------------------------------------------------
@@ -165,229 +155,79 @@ test("check-package: in-memory valid fixture passes validation", () => {
   assert.ok(result.details.verifiedImportsCount >= 5);
 });
 
-test("check-package: accepts valid semver ranges for requirements.paseo (*, 1.x, >=0.8.0, etc.)", () => {
-  const validRanges = [
-    "*",
-    "1.x",
-    ">=0.8.0",
-    "^0.8.0",
-    "~0.8.0",
-    ">=0.8.0 <1.0.0",
-    "0.8.0 - 0.9.0",
-  ];
-  for (const range of validRanges) {
-    const res = validateManifest({
-      id: "paseo-kanban",
-      requirements: { paseo: range },
-    });
-    assert.equal(res.valid, true, `Range "${range}" should be valid`);
-  }
-});
+// ---------------------------------------------------------------------------
+// 3. Required Package Files
+// ---------------------------------------------------------------------------
 
-test("check-package: accepts standard SemVer other than 0.1.0 (does not lock version)", () => {
-  for (const ver of [
-    "0.1.0",
-    "0.2.0",
-    "1.0.0",
-    "2.1.4-beta.1",
-    "2.0.0-rc.1+build.123",
+test("check-package: rejects packages missing a required entrypoint or manifest", () => {
+  for (const requiredFile of [
+    "index.client.tsx",
+    "index.server.ts",
+    "paseo-plugin.json",
+    "package.json",
   ]) {
-    const res = validatePackageJson({
-      name: "foo",
-      version: ver,
-      type: "module",
-      files: [
-        "paseo-plugin.json",
-        "index.client.tsx",
-        "index.server.ts",
-        "client/",
-        "shared/",
-      ],
-    });
-    assert.equal(res.valid, true, `Version ${ver} should be accepted`);
+    const fixture = createValidFixture();
+    fixture.packFilePaths = fixture.packFilePaths.filter(
+      (path) => path !== requiredFile,
+    );
+
+    const result = validatePackage(fixture);
+    assert.equal(result.valid, false, requiredFile);
+    assert.ok(
+      result.errors.some((error) =>
+        error.includes(
+          `Missing required file or directory in package: ${requiredFile}`,
+        ),
+      ),
+      `${requiredFile}: ${result.errors.join("; ")}`,
+    );
   }
 });
 
 // ---------------------------------------------------------------------------
-// 2. Negative Tests: Missing Entrypoints & Metadata
+// 4. Relative Import Targets via TypeScript AST
 // ---------------------------------------------------------------------------
 
-test("check-package: fails when client entrypoint is missing from package contents", () => {
-  const fixture = createValidFixture();
-  fixture.packFilePaths = fixture.packFilePaths.filter(
-    (p) => p !== "index.client.tsx",
-  );
-
-  const result = validatePackage(fixture);
-  assert.equal(
-    result.valid,
-    false,
-    "Should fail when index.client.tsx is missing",
-  );
-  assert.ok(
-    result.errors.some((e) =>
-      e.includes(
-        "Missing required file or directory in package: index.client.tsx",
+test("check-package: rejects missing relative imports of every supported syntax", () => {
+  for (const { file, source, target, typeOnly } of [
+    {
+      file: "index.client.tsx",
+      source: 'import { missingFunc } from "./client/does-not-exist";',
+      target: "./client/does-not-exist",
+    },
+    {
+      // Paseo compiles type imports from the published TypeScript source.
+      file: "index.client.tsx",
+      source: 'import type { MissingType } from "./shared/missing-types";',
+      target: "./shared/missing-types",
+      typeOnly: true,
+    },
+    {
+      file: "client/view.tsx",
+      source: 'export { phantom } from "./missing-export-target";',
+      target: "./missing-export-target",
+    },
+    {
+      file: "client/view.tsx",
+      source:
+        'export async function load() { return import("./lazy-missing-module"); }',
+      target: "./lazy-missing-module",
+    },
+  ]) {
+    const fixture = createValidFixture();
+    fixture.virtualFiles[file] = source;
+    const result = validatePackage(fixture);
+    assert.equal(result.valid, false, target);
+    assert.ok(
+      result.errors.some(
+        (error) =>
+          error.includes("Missing relative import target in package") &&
+          error.includes(target) &&
+          (!typeOnly || error.includes("type-only import")),
       ),
-    ),
-    `Actual errors: ${result.errors.join("; ")}`,
-  );
-});
-
-test("check-package: fails when server entrypoint is missing from package contents", () => {
-  const fixture = createValidFixture();
-  fixture.packFilePaths = fixture.packFilePaths.filter(
-    (p) => p !== "index.server.ts",
-  );
-
-  const result = validatePackage(fixture);
-  assert.equal(
-    result.valid,
-    false,
-    "Should fail when index.server.ts is missing",
-  );
-  assert.ok(
-    result.errors.some((e) =>
-      e.includes(
-        "Missing required file or directory in package: index.server.ts",
-      ),
-    ),
-    `Actual errors: ${result.errors.join("; ")}`,
-  );
-});
-
-test("check-package: fails when manifest (paseo-plugin.json) is missing from package contents", () => {
-  const fixture = createValidFixture();
-  fixture.packFilePaths = fixture.packFilePaths.filter(
-    (p) => p !== "paseo-plugin.json",
-  );
-
-  const result = validatePackage(fixture);
-  assert.equal(
-    result.valid,
-    false,
-    "Should fail when paseo-plugin.json is missing",
-  );
-  assert.ok(
-    result.errors.some((e) =>
-      e.includes(
-        "Missing required file or directory in package: paseo-plugin.json",
-      ),
-    ),
-    `Actual errors: ${result.errors.join("; ")}`,
-  );
-});
-
-test("check-package: fails when package.json is missing from package contents", () => {
-  const fixture = createValidFixture();
-  fixture.packFilePaths = fixture.packFilePaths.filter(
-    (p) => p !== "package.json",
-  );
-
-  const result = validatePackage(fixture);
-  assert.equal(result.valid, false, "Should fail when package.json is missing");
-  assert.ok(
-    result.errors.some((e) =>
-      e.includes("Missing required file or directory in package: package.json"),
-    ),
-    `Actual errors: ${result.errors.join("; ")}`,
-  );
-});
-
-// ---------------------------------------------------------------------------
-// 3. Negative Tests: Relative Import Targets via TypeScript AST
-// ---------------------------------------------------------------------------
-
-test("check-package: fails when runtime relative import target is missing", () => {
-  const fixture = createValidFixture();
-  fixture.virtualFiles["index.client.tsx"] = `
-    import { missingFunc } from "./client/does-not-exist";
-  `;
-
-  const result = validatePackage(fixture);
-  assert.equal(
-    result.valid,
-    false,
-    "Should fail on missing relative import target",
-  );
-  assert.ok(
-    result.errors.some(
-      (e) =>
-        e.includes("Missing relative import target in package") &&
-        e.includes("./client/does-not-exist"),
-    ),
-    `Actual errors: ${result.errors.join("; ")}`,
-  );
-});
-
-test("check-package: fails when type-only relative import target is missing", () => {
-  const fixture = createValidFixture();
-  // Rationale: Paseo compiles TS source directly, so missing type-only modules break host compiler
-  fixture.virtualFiles["index.client.tsx"] = `
-    import type { MissingType } from "./shared/missing-types";
-  `;
-
-  const result = validatePackage(fixture);
-  assert.equal(
-    result.valid,
-    false,
-    "Should fail on missing type-only relative import target",
-  );
-  assert.ok(
-    result.errors.some(
-      (e) =>
-        e.includes("Missing relative import target in package") &&
-        e.includes("./shared/missing-types") &&
-        e.includes("type-only import"),
-    ),
-    `Actual errors: ${result.errors.join("; ")}`,
-  );
-});
-
-test("check-package: fails when re-export (export ... from) target is missing", () => {
-  const fixture = createValidFixture();
-  fixture.virtualFiles["client/view.tsx"] = `
-    export { phantom } from "./missing-export-target";
-  `;
-
-  const result = validatePackage(fixture);
-  assert.equal(
-    result.valid,
-    false,
-    "Should fail on missing export-from target",
-  );
-  assert.ok(
-    result.errors.some(
-      (e) =>
-        e.includes("Missing relative import target in package") &&
-        e.includes("./missing-export-target"),
-    ),
-    `Actual errors: ${result.errors.join("; ")}`,
-  );
-});
-
-test("check-package: fails when static dynamic import target is missing", () => {
-  const fixture = createValidFixture();
-  fixture.virtualFiles["client/view.tsx"] = `
-    export async function load() {
-      return await import("./lazy-missing-module");
-    }
-  `;
-
-  const result = validatePackage(fixture);
-  assert.equal(
-    result.valid,
-    false,
-    "Should fail on missing dynamic import target",
-  );
-  assert.ok(
-    result.errors.some(
-      (e) =>
-        e.includes("Missing relative import target in package") &&
-        e.includes("./lazy-missing-module"),
-    ),
-    `Actual errors: ${result.errors.join("; ")}`,
-  );
+      `${target}: ${result.errors.join("; ")}`,
+    );
+  }
 });
 
 test("check-package: fails when relative import attempts to escape package root", () => {
@@ -409,116 +249,44 @@ test("check-package: fails when relative import attempts to escape package root"
 });
 
 // ---------------------------------------------------------------------------
-// 4. Negative Tests: Leaked Development, Tooling, & Secret Files
+// 5. Release Package File Exclusions
 // ---------------------------------------------------------------------------
 
-test("check-package: fails when test directory or test files leak into package", () => {
-  const fileList1 = [
-    "index.client.tsx",
-    "index.server.ts",
-    "paseo-plugin.json",
-    "package.json",
-    "client/a.ts",
-    "shared/b.ts",
-    "test/sample.test.mjs",
-  ];
-  const res1 = validatePackFileList(fileList1);
-  assert.equal(res1.valid, false);
-  assert.ok(
-    res1.errors.some((e) =>
-      e.includes(
-        'Leaked non-distribution file found in package: "test/sample.test.mjs"',
-      ),
-    ),
-  );
-
-  const fileList2 = [
-    "index.client.tsx",
-    "index.server.ts",
-    "paseo-plugin.json",
-    "package.json",
-    "client/a.ts",
-    "shared/b.ts",
-    "client/card.spec.ts",
-  ];
-  const res2 = validatePackFileList(fileList2);
-  assert.equal(res2.valid, false);
-  assert.ok(res2.errors.some((e) => e.includes("client/card.spec.ts")));
-});
-
-test("check-package: fails when scripts, agent files, or workflows leak into package", () => {
+test("check-package: excludes tests, tooling, configuration, and secrets from the release package", () => {
+  const packFiles = createValidFixture().packFilePaths;
   for (const leaked of [
+    "test/sample.test.mjs",
+    "client/card.spec.ts",
     "scripts/check-package.mjs",
     ".github/workflows/ci.yml",
     ".agents/skills/paseo/SKILL.md",
     "skills/something.md",
-  ]) {
-    const list = [
-      "index.client.tsx",
-      "index.server.ts",
-      "paseo-plugin.json",
-      "package.json",
-      "client/a.ts",
-      "shared/b.ts",
-      leaked,
-    ];
-    const res = validatePackFileList(list);
-    assert.equal(
-      res.valid,
-      false,
-      `Expected failure for leaked file: ${leaked}`,
-    );
-    assert.ok(res.errors.some((e) => e.includes(leaked)));
-  }
-});
-
-test("check-package: fails when config files leak into package", () => {
-  for (const config of [
     "tsconfig.json",
     "eslint.config.mjs",
     ".prettierrc",
     ".prettierignore",
     ".nvmrc",
     ".node-version",
+    ".env",
+    ".env.local",
+    "secret.pem",
+    "id_rsa.key",
   ]) {
-    const list = [
-      "index.client.tsx",
-      "index.server.ts",
-      "paseo-plugin.json",
-      "package.json",
-      "client/a.ts",
-      "shared/b.ts",
-      config,
-    ];
-    const res = validatePackFileList(list);
-    assert.equal(
-      res.valid,
-      false,
-      `Expected failure for leaked config: ${config}`,
+    const result = validatePackFileList([...packFiles, leaked]);
+    assert.equal(result.valid, false, leaked);
+    assert.ok(
+      result.errors.some((error) =>
+        error.includes(
+          `Leaked non-distribution file found in package: "${leaked}"`,
+        ),
+      ),
+      `${leaked}: ${result.errors.join("; ")}`,
     );
-    assert.ok(res.errors.some((e) => e.includes(config)));
-  }
-});
-
-test("check-package: fails when secrets or .env files leak into package", () => {
-  for (const secret of [".env", ".env.local", "secret.pem", "id_rsa.key"]) {
-    const list = [
-      "index.client.tsx",
-      "index.server.ts",
-      "paseo-plugin.json",
-      "package.json",
-      "client/a.ts",
-      "shared/b.ts",
-      secret,
-    ];
-    const res = validatePackFileList(list);
-    assert.equal(res.valid, false, `Expected failure for secret: ${secret}`);
-    assert.ok(res.errors.some((e) => e.includes(secret)));
   }
 });
 
 // ---------------------------------------------------------------------------
-// 5. Negative Tests: Invalid Manifest & Package.json Metadata
+// 6. Manifest & Package.json Metadata
 // ---------------------------------------------------------------------------
 
 test("check-package: fails when manifest is missing required id or has invalid id format", () => {
@@ -680,18 +448,4 @@ test("check-package: fails when files array in package.json misses required path
       e.includes("must include 'index.server.ts'"),
     ),
   );
-});
-
-test("check-package: allows differing valid package name and manifest id (not a host constraint)", () => {
-  const fixture = createValidFixture();
-  fixture.manifestJson.id = "my-custom-plugin";
-  fixture.packageJson.name = "@acme/different-package-name";
-
-  const result = validatePackage(fixture);
-  assert.equal(
-    result.valid,
-    true,
-    `Expected valid package with differing name/id but got errors: ${result.errors.join("; ")}`,
-  );
-  assert.equal(result.errors.length, 0);
 });

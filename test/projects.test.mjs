@@ -24,7 +24,6 @@ test("项目名称解析: 空关联、已知项目显示名称、未知项目回
   assert.equal(resolve("p2"), "用户界面");
   assert.equal(getProjectDisplayName("p1", projects), "基础设施");
   assert.equal(getProjectDisplayName("unknown", projects), "unknown");
-  assert.equal(getProjectDisplayName("p1", resolve), "基础设施");
 
   // 3. 未知项目回退其 ID
   assert.equal(resolve("p-unknown"), "p-unknown");
@@ -38,92 +37,40 @@ test("项目名称解析: 空关联、已知项目显示名称、未知项目回
   assert.equal(resolveRenamed("p2"), "p2", "已移除项目回退为 ID");
 });
 
-test("请求乱序控制: A 先发、B 后发先完成、A 最后完成，A 的成功或失败不能覆盖 B", async () => {
-  let state = {
-    projects: [],
-    error: null,
-    isLoading: true,
-  };
-
+test("请求乱序控制: 较早请求的成功或失败都不能覆盖最新结果", async () => {
+  let state = { projects: [], error: null, isLoading: true };
   const controller = fetchProjectsWithOrderControl((next) => {
     state = { ...state, ...next };
   });
 
-  let resolveA;
-  const promiseA = new Promise((resolve) => {
-    resolveA = resolve;
+  let resolveOld;
+  const oldResult = new Promise((resolve) => {
+    resolveOld = resolve;
   });
-
-  let resolveB;
-  const promiseB = new Promise((resolve) => {
-    resolveB = resolve;
-  });
-
-  // A 先发
-  controller.execute(() => promiseA);
-
-  // B 后发
-  controller.execute(() => promiseB);
-
-  // B 先成功完成
-  resolveB({
+  const oldRequest = controller.execute(() => oldResult);
+  await controller.execute(async () => ({
     projects: [{ projectId: "pB", projectDisplayName: "项目B" }],
-  });
-  await promiseB;
-  // 等待 microtask
-  await new Promise((r) => setImmediate(r));
+  }));
 
+  resolveOld({ projects: [{ projectId: "pA", projectDisplayName: "项目A" }] });
+  await oldRequest;
   assert.deepEqual(state.projects, [
     { projectId: "pB", projectDisplayName: "项目B" },
   ]);
   assert.equal(state.error, null);
 
-  // A 随后完成（旧请求迟到）
-  resolveA({
-    projects: [{ projectId: "pA", projectDisplayName: "项目A" }],
+  let rejectOld;
+  const oldFailure = new Promise((_, reject) => {
+    rejectOld = reject;
   });
-  await promiseA;
-  await new Promise((r) => setImmediate(r));
+  const failedRequest = controller.execute(() => oldFailure);
+  await controller.execute(async () => ({
+    projects: [{ projectId: "pLatest", projectDisplayName: "最新项目" }],
+  }));
 
-  // A 的结果被丢弃，保留 B 的结果
-  assert.deepEqual(
-    state.projects,
-    [{ projectId: "pB", projectDisplayName: "项目B" }],
-    "旧请求 A 不能覆盖新请求 B 的结果",
-  );
-
-  // 再次验证：如果 A 抛错迟到，也不能将错误覆盖到当前状态
-  const promiseC = new Promise(() => {});
-  controller.execute(() => promiseC);
-
-  let rejectD;
-  const promiseD = new Promise((_, reject) => {
-    rejectD = reject;
-  });
-  // 先发一个会被超车的慢失败请求
-  const slowFailController = fetchProjectsWithOrderControl((next) => {
-    state = { ...state, ...next };
-  });
-  slowFailController.execute(() => promiseD);
-  slowFailController.execute(() =>
-    Promise.resolve({
-      projects: [{ projectId: "pLatest", projectDisplayName: "最新项目" }],
-    }),
-  );
-
-  await new Promise((r) => setImmediate(r));
-  assert.deepEqual(state.projects, [
-    { projectId: "pLatest", projectDisplayName: "最新项目" },
-  ]);
-
-  // 此时慢失败请求 D 发生错误
-  rejectD(new Error("Old network timeout"));
-  try {
-    await promiseD;
-  } catch {}
-  await new Promise((r) => setImmediate(r));
-
-  assert.equal(state.error, null, "过期的失败不能覆盖较新的成功状态");
+  rejectOld(new Error("Old network timeout"));
+  await failedRequest;
+  assert.equal(state.error, null);
   assert.deepEqual(state.projects, [
     { projectId: "pLatest", projectDisplayName: "最新项目" },
   ]);
@@ -180,12 +127,11 @@ test("生命周期注销: unmount 卸载后忽略在途响应并不更新状态"
     resolvePending = resolve;
   });
 
-  controller.execute(() => pendingPromise);
+  const request = controller.execute(() => pendingPromise);
   controller.destroy();
 
   resolvePending({ projects: [{ projectId: "px", projectDisplayName: "X" }] });
-  await pendingPromise;
-  await new Promise((r) => setImmediate(r));
+  await request;
 
   assert.equal(updateCount, 0, "卸载后不更新状态");
 });
