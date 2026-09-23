@@ -88,6 +88,18 @@ npm pack --dry-run
 
 用于人工复核最终 tarball 文件结构及压缩体积。
 
+### 2.4 一键发布（GitHub Actions）
+
+仓库使用 [Release to GitHub and npm](../.github/workflows/release.yml) 工作流发布版本。维护者首次使用前需要：
+
+1. 确认 npm 上 `paseo-kanban` 包的发布权限，在仓库 **Settings → Secrets and variables → Actions** 配置 `NPM_TOKEN`（具备该包发布权限的 npm automation / granular access token；若账户启用 2FA，须允许自动化发布）。不要把 token 写进仓库。工作流使用 npm provenance，仓库需为公开仓库。
+2. 确认 Actions 具有读写仓库权限（**Settings → Actions → General → Workflow permissions → Read and write permissions**），且 `main` 的分支规则允许 `github-actions[bot]` 推送版本提交和 tag；若分支规则禁止推送，需先调整发布流程或规则，不要绕开审查策略。
+3. 先在真实 Paseo 宿主按第 3 节做手工验收；工作流的 `npm run check` 不替代宿主验收。
+
+发布操作：在 GitHub **Actions → Release to GitHub and npm → Run workflow** 中选择 `main`、选择 `patch` / `minor` / `major`（对应 SemVer 版本升级），保持 `retry_tag` 为空并运行。工作流会更新 `package.json` 和 `package-lock.json`，执行 `npm ci` 与 `npm run check`，原子推送版本提交和 `vX.Y.Z` tag，发布 npm 包（含 provenance），**npm 成功后**创建 GitHub Release。普通 `GITHUB_TOKEN` 推送不会额外触发 CI，因此检查直接在发布工作流内执行。首次运行前建议核实当前仓库版本尚未存在于 npm；npm 已发布的版本不能覆盖。
+
+如果推送 tag 后 npm 发布或 GitHub Release 创建失败，**不要再次选择升级**。在同一页面选择 `main`，填入已有的 `retry_tag`（如 `v0.1.2`）后重试：工作流仅从该 tag 的提交发布，检查 tag 属于 `main` 且与 package/lockfile 版本一致；若 npm 已有该版本则跳过重复发布，仅补建 GitHub Release。若在推送前失败，修复后直接重新运行升级即可。工作流不会自行定时发布；只有维护者手动触发并配置好凭证后才会向远端发版。
+
 ---
 
 ## 3. 宿主手工验收指南 (Manual Host Acceptance Guide)

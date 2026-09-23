@@ -116,7 +116,7 @@ npm run check
   npm run format
   ```
 
-For comprehensive contribution guidelines, pre-publish package checks, and manual host acceptance steps, see the [Development & Acceptance Guide](./docs/development.md).
+Maintainers can publish a new GitHub Release and npm package in one run of the **Release to GitHub and npm** GitHub Action: select `patch`, `minor`, or `major`. Configure `NPM_TOKEN` and repository write permissions first. For setup, recovery, and manual host acceptance, see the [Development & Acceptance Guide](./docs/development.md#24-一键发布github-actions).
 
 ---
 

@@ -116,6 +116,8 @@ npm run check
   npm run format
   ```
 
+维护者可在 GitHub Actions 的 **Release to GitHub and npm** 工作流中选择 `patch` / `minor` / `major` 一键发布 GitHub Release 与 npm 包；首次使用需配置 `NPM_TOKEN` 和仓库写入权限。操作及失败重试说明见 [开发与宿主验收指南](./docs/development.md#24-一键发布github-actions)。
+
 详细开发贡献流程、发布前检查机制与真实宿主环境手工验收指南，请参阅 [开发与宿主验收指南](./docs/development.md)。
 
 ---
