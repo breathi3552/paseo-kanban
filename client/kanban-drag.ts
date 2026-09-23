@@ -1,4 +1,9 @@
 import { useRef, useSyncExternalStore, useEffect } from "react";
+import type {
+  GestureResponderHandlers,
+  PanResponderCallbacks,
+  PanResponderInstance,
+} from "react-native";
 import type { KanbanTask } from "../shared/kanban";
 
 export interface Rect {
@@ -98,16 +103,17 @@ export interface ContainerRefTarget {
   measureInWindow?: (
     callback: (x: number, y: number, width: number, height: number) => void,
   ) => void;
+  scrollTo?: (options: { x: number; animated: boolean }) => void;
 }
 
 export interface PanResponderFactory {
-  create: (config: any) => { panHandlers: any };
+  create: (config: PanResponderCallbacks) => PanResponderInstance;
 }
 
 export interface CardDragBinding {
   readonly isDragging: boolean;
-  readonly cardPanHandlers: any;
-  readonly handlePanHandlers: any;
+  readonly cardPanHandlers?: GestureResponderHandlers;
+  readonly handlePanHandlers?: GestureResponderHandlers;
   readonly onLayout: (rect: Rect) => void;
   readonly onUnmount: () => void;
 }
@@ -193,7 +199,10 @@ export class KanbanDragController {
   private cancelHandler?: () => void;
   private panResponderFactory: PanResponderFactory | null = null;
   private cardCallbacks: Map<string, () => void> = new Map();
-  private cardResponders: Map<string, { body: any; handle: any }> = new Map();
+  private cardResponders: Map<
+    string,
+    { body: PanResponderInstance; handle: PanResponderInstance }
+  > = new Map();
   private pendingInputKind: "mouse" | "touch" = "mouse";
   private operationSeq: number = 0;
   private currentOperationId: string | null = null;
@@ -428,7 +437,7 @@ export class KanbanDragController {
       const body = factory.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (_e: any, gs: any) => {
+        onPanResponderGrant: (_e, gs) => {
           const cb = this.cardCallbacks.get(key);
           this.handlePointerDown(
             { taskId, laneId, onPress: cb },
@@ -436,7 +445,7 @@ export class KanbanDragController {
             "body",
           );
         },
-        onPanResponderMove: (_e: any, gs: any) => {
+        onPanResponderMove: (_e, gs) => {
           this.handlePointerMove({ x: gs.moveX, y: gs.moveY });
         },
         onPanResponderRelease: () => this.handlePointerUp(),
@@ -449,7 +458,7 @@ export class KanbanDragController {
       const handle = factory.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (_e: any, gs: any) => {
+        onPanResponderGrant: (_e, gs) => {
           const cb = this.cardCallbacks.get(key);
           this.handlePointerDown(
             { taskId, laneId, onPress: cb },
@@ -457,7 +466,7 @@ export class KanbanDragController {
             "handle",
           );
         },
-        onPanResponderMove: (_e: any, gs: any) => {
+        onPanResponderMove: (_e, gs) => {
           this.handlePointerMove({ x: gs.moveX, y: gs.moveY });
         },
         onPanResponderRelease: () => this.handlePointerUp(),
@@ -1358,7 +1367,7 @@ export interface UseKanbanDragReturn {
   getTaskPreview?: (taskId: string) => TaskPreviewItem | null;
   setGetTaskPreview?: (fn?: (taskId: string) => TaskPreviewItem | null) => void;
   bindLane: (laneId: string) => LaneDragBinding;
-  bindContainerRef: (instance: any) => void;
+  bindContainerRef: (instance: ContainerRefTarget | null) => void;
   handleContainerLayout: (layout: Rect) => void;
   handleContainerScroll: (scrollX: number) => void;
   getContainerBounds: () => Rect | null;
@@ -1427,7 +1436,7 @@ export function useKanbanDrag(
     controller.getDroppingState,
   );
 
-  const containerScrollRef = useRef<any>(null);
+  const containerScrollRef = useRef<ContainerRefTarget | null>(null);
   const currentScrollX = useRef(0);
 
   useEffect(() => {
@@ -1448,7 +1457,10 @@ export function useKanbanDrag(
       if (!curVelocity || !liveFeedback.isDragging) return;
       const nextOffset = Math.max(0, currentScrollX.current + curVelocity * 14);
       currentScrollX.current = nextOffset;
-      containerScrollRef.current?.scrollTo({ x: nextOffset, animated: false });
+      containerScrollRef.current?.scrollTo?.({
+        x: nextOffset,
+        animated: false,
+      });
     }, 16);
 
     return () => clearInterval(timer);
@@ -1463,7 +1475,7 @@ export function useKanbanDrag(
     controller.handleScroll(scrollX);
   };
 
-  const bindContainerRef = (instance: any) => {
+  const bindContainerRef = (instance: ContainerRefTarget | null) => {
     containerScrollRef.current = instance;
     controller.bindContainerRef(instance);
   };

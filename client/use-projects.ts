@@ -48,7 +48,9 @@ export function fetchProjectsWithOrderControl(
   let isDestroyed = false;
 
   return {
-    execute: async (fetchFn: () => Promise<any>): Promise<void> => {
+    execute: async (
+      fetchFn: () => Promise<{ projects?: ProjectItem[] | null } | null>,
+    ): Promise<void> => {
       const requestId = ++latestRequestId;
       try {
         const result = await fetchFn();
@@ -56,7 +58,7 @@ export function fetchProjectsWithOrderControl(
           return;
         }
         onUpdate({
-          projects: (result?.projects ?? []) as ProjectItem[],
+          projects: result?.projects ?? [],
           error: null,
           isLoading: false,
         });

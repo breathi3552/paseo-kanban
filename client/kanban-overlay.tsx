@@ -1,5 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore, memo } from "react";
 import { Animated, View, StyleSheet } from "react-native";
+import type { ViewStyle } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanTask } from "../shared/kanban";
 import { KanbanCardPreview } from "./kanban-card";
@@ -151,7 +152,7 @@ function KanbanDragOverlayInner({
   const containerY = containerBounds?.y ?? 0;
   const cardHalfWidth = layout.compact ? 125 : 140;
 
-  let overlayStyle: any;
+  let overlayStyle: Animated.WithAnimatedValue<ViewStyle>;
   if (curDropping && animPos && animRotate && animScale) {
     overlayStyle = {
       left: animPos.x,
