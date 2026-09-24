@@ -51,9 +51,8 @@ export function KanbanBoardView(props: KanbanBoardProps) {
     isError: projectsError,
   } = useProjects();
 
-  // Resolve once per opening: late workspace context must not switch the filter.
   const [selectedProjectId, setSelectedProjectId] = useState(
-    () => props.initialProjectId || "all",
+    props.initialProjectId || "all",
   );
   const [activeTaskSession, setActiveTaskSession] =
     useState<TaskEditSession | null>(null);
@@ -61,7 +60,6 @@ export function KanbanBoardView(props: KanbanBoardProps) {
     useState<LaneEditSession | null>(null);
   const [reorderError, setReorderError] = useState<string | null>(null);
 
-  // Keep the workspace/current project selectable even if its name is unavailable.
   const selectableProjects = useMemo(() => {
     const missingIds = new Set([props.initialProjectId, selectedProjectId]);
     const missingProjects = [...missingIds]
@@ -343,10 +341,7 @@ export function KanbanBoardView(props: KanbanBoardProps) {
 
   if (settings.status === "loading") {
     return (
-      <View
-        style={[styles.container, styles.centerBox]}
-        onLayout={handleLayout}
-      >
+      <View style={[styles.container, styles.centerBox]}>
         <ActivityIndicator size="large" color={theme.colors.accent} />
         <Text style={styles.centerText}>{t("kanban.loading")}</Text>
       </View>
@@ -355,10 +350,7 @@ export function KanbanBoardView(props: KanbanBoardProps) {
 
   if (settings.status === "error") {
     return (
-      <View
-        style={[styles.container, styles.centerBox]}
-        onLayout={handleLayout}
-      >
+      <View style={[styles.container, styles.centerBox]}>
         <Text style={[styles.centerText, { color: theme.colors.statusDanger }]}>
           {t("kanban.loadError", { error: settings.error })}
         </Text>
@@ -376,10 +368,7 @@ export function KanbanBoardView(props: KanbanBoardProps) {
 
   if (settings.status === "invalid") {
     return (
-      <View
-        style={[styles.container, styles.centerBox]}
-        onLayout={handleLayout}
-      >
+      <View style={[styles.container, styles.centerBox]}>
         <Text
           style={[
             styles.centerText,

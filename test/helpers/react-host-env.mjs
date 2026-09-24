@@ -115,7 +115,6 @@ export const mockReactNative = {
 };
 
 export function loadClientModule(file, moduleOverrides = {}) {
-  // Keep one module graph per test host, including the entry and shared code.
   const cache = new Map();
   function load(modulePath) {
     const filePath = [modulePath, `${modulePath}.tsx`, `${modulePath}.ts`].find(

@@ -9,11 +9,5 @@ export function KanbanWorkspacePanel(props: PluginWorkspacePanelProps) {
     props.workspaceId,
     (workspace) => workspace.projectId,
   );
-  return (
-    <KanbanBoardView
-      key={`${props.host.id}:${props.workspaceId}`}
-      {...props}
-      initialProjectId={projectId}
-    />
-  );
+  return <KanbanBoardView {...props} initialProjectId={projectId} />;
 }

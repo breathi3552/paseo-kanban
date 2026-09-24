@@ -8,7 +8,6 @@ import {
   mockReactNative,
 } from "./helpers/react-host-env.mjs";
 
-// Language detection is a host/browser boundary, not a mocked plugin module.
 globalThis.localStorage = {
   getItem: () => JSON.stringify({ language: "en" }),
 };
@@ -177,18 +176,15 @@ function createHost({
 
 test("看板同时提供侧边栏和普通工作区标签页，卸载时清理注册", () => {
   const host = createHost();
-  try {
-    assert.equal(host.sidebars.get("kanban").surface, "kanban");
-    assert.ok(host.surfaces.get("kanban").Component);
-    assert.equal(host.panels.get("kanban")?.context, "workspace");
-    assert.equal(
-      host.panels.get("kanban").title,
-      host.sidebars.get("kanban").title,
-    );
-    assert.equal(host.panels.get("kanban").icon, "PanelsTopLeft");
-  } finally {
-    host.cleanup();
-  }
+  assert.equal(host.sidebars.get("kanban").surface, "kanban");
+  assert.ok(host.surfaces.get("kanban").Component);
+  assert.equal(host.panels.get("kanban")?.context, "workspace");
+  assert.equal(
+    host.panels.get("kanban").title,
+    host.sidebars.get("kanban").title,
+  );
+  assert.equal(host.panels.get("kanban").icon, "PanelsTopLeft");
+  host.cleanup();
   assert.equal(host.sidebars.size, 0);
   assert.equal(host.panels.size, 0);
   assert.equal(host.surfaces.size, 0);
