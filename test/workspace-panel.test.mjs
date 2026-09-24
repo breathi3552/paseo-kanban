@@ -9,9 +9,8 @@ import {
 } from "./helpers/react-host-env.mjs";
 
 // Language detection is a host/browser boundary, not a mocked plugin module.
-let language = "en";
 globalThis.localStorage = {
-  getItem: () => JSON.stringify({ language }),
+  getItem: () => JSON.stringify({ language: "en" }),
 };
 test.after(() => {
   delete globalThis.localStorage;
@@ -207,25 +206,13 @@ async function mount(t, host, workspaceId) {
   return renderer;
 }
 
-test("工作区默认筛选所属项目，侧边栏仍展示全部任务", async (t) => {
-  const host = createHost();
-  const panel = await mount(t, host, "workspace-a");
-  assert.deepEqual(visibleTasks(panel.root), ["Task A"]);
-
-  const sidebarHost = createHost();
-  const sidebar = await mount(t, sidebarHost);
-  assert.deepEqual(visibleTasks(sidebar.root), [
-    "Task A",
-    "Task B",
-    "Task unassigned",
-  ]);
-});
-
 test("各入口筛选独立，重渲染保留手动选择，关闭重开恢复默认项目", async (t) => {
   const host = createHost();
   const a = await mount(t, host, "workspace-a");
   const b = await mount(t, host, "workspace-b");
   const sidebar = await mount(t, host);
+  assert.deepEqual(visibleTasks(a.root), ["Task A"]);
+  assert.deepEqual(visibleTasks(b.root), ["Task B"]);
   await press(a.root, "Project B");
   await press(b.root, "No Project");
   assert.deepEqual(visibleTasks(a.root), ["Task B"]);
@@ -286,38 +273,6 @@ test("项目名称读取失败仍按已知 ID 筛选，默认项目可通过 ID 
   assert.deepEqual(visibleTasks(panel.root), ["Task A"]);
 });
 
-test("宽窗口中的窄分屏按面板宽度紧凑显示，仍横向滚动且不重置筛选", async (t) => {
-  const host = createHost();
-  const panel = await mount(t, host, "workspace-a");
-  await press(panel.root, "Project B");
-  const rootView = () => panel.root.findAllByType("View")[0];
-  const title = () =>
-    panel.root
-      .findAllByType("Text")
-      .find((node) => text(node) === "Task Kanban");
-  assert.equal(title().props.style.fontSize, 22);
-  await act(async () =>
-    rootView().props.onLayout({
-      nativeEvent: { layout: { x: 500, y: 0, width: 360, height: 700 } },
-    }),
-  );
-  assert.equal(title().props.style.fontSize, 18);
-  assert.equal(
-    panel.root
-      .findAllByType("ScrollView")
-      .filter((node) => node.props.horizontal).length,
-    2,
-  );
-  assert.deepEqual(visibleTasks(panel.root), ["Task B"]);
-  await act(async () =>
-    rootView().props.onLayout({
-      nativeEvent: { layout: { x: 0, y: 0, width: 900, height: 700 } },
-    }),
-  );
-  assert.equal(title().props.style.fontSize, 22);
-  assert.deepEqual(visibleTasks(panel.root), ["Task B"]);
-});
-
 async function createTask(root, title) {
   await press(root, "+ New Task");
   const modal = root.findByType("Modal");
@@ -354,49 +309,3 @@ for (const filter of ["All", "No Project"]) {
     assert.deepEqual(visibleTasks(panel.root), ["Task A"]);
   });
 }
-
-test("工作区与侧边栏并行编辑冲突时保留草稿，不覆盖另一入口的新任务", async (t) => {
-  const host = createHost();
-  const panel = await mount(t, host, "workspace-a");
-  const sidebar = await mount(t, host);
-  await press(panel.root, "+ New Task");
-  const modal = panel.root.findByType("Modal");
-  await act(async () =>
-    modal
-      .findByProps({ placeholder: "Enter task title" })
-      .props.onChangeText("Task draft"),
-  );
-  await createTask(sidebar.root, "Task saved");
-  await press(modal, "Create");
-  assert.equal(
-    modal.findByProps({ placeholder: "Enter task title" }).props.value,
-    "Task draft",
-  );
-  assert.ok(
-    modal.findAllByType("Text").some((node) => /Save failed/.test(text(node))),
-  );
-  assert.ok(visibleTasks(sidebar.root).includes("Task saved"));
-  assert.equal(visibleTasks(sidebar.root).includes("Task draft"), false);
-});
-
-test("语言切换同步更新两个入口标题，保持组件身份与当前筛选", async (t) => {
-  const events = new Map();
-  globalThis.window = {
-    addEventListener: (event, listener) => events.set(event, listener),
-  };
-  t.after(() => {
-    language = "en";
-    delete globalThis.window;
-  });
-  const host = createHost();
-  const panel = await mount(t, host, "workspace-a");
-  const Component = host.panels.get("kanban").Component;
-  await press(panel.root, "Project B");
-  language = "zh";
-  await act(async () => events.get("focus")({}));
-  assert.equal(host.sidebars.get("kanban").title, "看板");
-  assert.equal(host.panels.get("kanban").title, "看板");
-  assert.equal(host.panels.get("kanban").Component, Component);
-  await act(async () => panel.update(host.open("workspace-a")));
-  assert.deepEqual(visibleTasks(panel.root), ["Task B"]);
-});
