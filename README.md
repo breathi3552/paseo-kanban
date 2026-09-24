@@ -56,7 +56,12 @@ Verify that the plugin is running:
 paseo plugin ls
 ```
 
-Once active, open Paseo. The **Kanban** icon (`PanelsTopLeft`) will appear in the sidebar. Click it to launch the board.
+Once active, open the board from either entry:
+
+- **Sidebar → Kanban**: shows all tasks by default.
+- **Workspace → `+` → Kanban**: initially filters to the workspace's project, with other filters available. Use Paseo's native split controls to place it beside an agent or terminal.
+
+Both entries share tasks and lanes with full editing support; their filters are independent. Closing and reopening the board or restarting restores the entry's default filter. If workspace project context is unavailable, the board silently shows all tasks and keeps that filter even if context arrives later. Narrow splits retain horizontal lane scrolling.
 
 ### Local Development
 

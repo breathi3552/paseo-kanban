@@ -21,7 +21,7 @@
  * are strictly preserved.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import ts from "typescript";
@@ -115,41 +115,41 @@ export const mockReactNative = {
 };
 
 export function loadClientModule(file, moduleOverrides = {}) {
-  const filePath = path.resolve(process.cwd(), "client", `${file}.tsx`);
-  let sourceText;
-  try {
-    sourceText = readFileSync(filePath, "utf8");
-  } catch {
-    // Try .ts extension
-    sourceText = readFileSync(
-      path.resolve(process.cwd(), "client", `${file}.ts`),
-      "utf8",
+  // Keep one module graph per test host, including the entry and shared code.
+  const cache = new Map();
+  function load(modulePath) {
+    const filePath = [modulePath, `${modulePath}.tsx`, `${modulePath}.ts`].find(
+      (candidate) => existsSync(candidate),
     );
-  }
+    if (!filePath) throw new Error(`Module not found: ${modulePath}`);
+    if (cache.has(filePath)) return cache.get(filePath);
 
-  const transpiled = ts.transpileModule(sourceText, {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      jsx: ts.JsxEmit.ReactJSX,
-    },
-  }).outputText;
+    const transpiled = ts.transpileModule(readFileSync(filePath, "utf8"), {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+        jsx: ts.JsxEmit.ReactJSX,
+      },
+    }).outputText;
 
-  const exports = {};
-  function resolveModule(id) {
-    if (id in moduleOverrides) return moduleOverrides[id];
-    if (id === "react") return React;
-    if (id === "react/jsx-runtime") return require("react/jsx-runtime");
-    if (id === "react-native") return mockReactNative;
-    if (id === "@getpaseo/plugin/client/react-native") return { Icon: "Icon" };
-    if (id.startsWith("./")) {
-      const subFile = id.slice(2);
-      return loadClientModule(subFile, moduleOverrides);
+    const exports = {};
+    cache.set(filePath, exports);
+    function resolveModule(id) {
+      if (id in moduleOverrides) return moduleOverrides[id];
+      if (id === "react") return React;
+      if (id === "react/jsx-runtime") return require("react/jsx-runtime");
+      if (id === "react-native") return mockReactNative;
+      if (id === "@getpaseo/plugin/client/react-native")
+        return { Icon: "Icon" };
+      if (id.startsWith("."))
+        return load(path.resolve(path.dirname(filePath), id));
+      return require(id);
     }
-    return require(id);
-  }
 
-  new Function("require", "exports", transpiled)(resolveModule, exports);
-  return exports;
+    new Function("require", "exports", transpiled)(resolveModule, exports);
+    return exports;
+  }
+  return load(path.resolve(process.cwd(), "client", file));
 }
 
 /**

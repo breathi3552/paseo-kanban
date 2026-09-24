@@ -6,6 +6,7 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
+  type LayoutChangeEvent,
 } from "react-native";
 import { useSettings } from "@getpaseo/plugin/client";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
@@ -25,8 +26,23 @@ import {
 } from "./kanban-session";
 import { useI18n } from "./i18n";
 
-export function KanbanBoardView(props: PluginSurfaceProps) {
-  const { theme, layout } = props;
+interface KanbanBoardProps extends PluginSurfaceProps {
+  initialProjectId?: string | null;
+}
+
+export function KanbanBoardView(props: KanbanBoardProps) {
+  const { theme } = props;
+  const [panelWidth, setPanelWidth] = useState<number | null>(null);
+  const compact =
+    props.layout.compact || (panelWidth !== null && panelWidth < 600);
+  const layout = useMemo(
+    () => ({ ...props.layout, compact }),
+    [props.layout, compact],
+  );
+  const handleLayout = (event: LayoutChangeEvent) => {
+    const { width } = event.nativeEvent.layout;
+    if (width > 0) setPanelWidth(width);
+  };
   const { t, language } = useI18n(props);
   const settings = useSettings(kanbanSettings);
   const {
@@ -35,12 +51,30 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
     isError: projectsError,
   } = useProjects();
 
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
+  // Resolve once per opening: late workspace context must not switch the filter.
+  const [selectedProjectId, setSelectedProjectId] = useState(
+    () => props.initialProjectId || "all",
+  );
   const [activeTaskSession, setActiveTaskSession] =
     useState<TaskEditSession | null>(null);
   const [activeLaneSession, setActiveLaneSession] =
     useState<LaneEditSession | null>(null);
   const [reorderError, setReorderError] = useState<string | null>(null);
+
+  // Keep the workspace/current project selectable even if its name is unavailable.
+  const selectableProjects = useMemo(() => {
+    const missingIds = new Set([props.initialProjectId, selectedProjectId]);
+    const missingProjects = [...missingIds]
+      .filter(
+        (id): id is string =>
+          !!id &&
+          id !== "all" &&
+          id !== "unassigned" &&
+          !projects.some((project) => project.projectId === id),
+      )
+      .map((id) => ({ projectId: id, projectDisplayName: id }));
+    return [...projects, ...missingProjects];
+  }, [projects, props.initialProjectId, selectedProjectId]);
 
   const isReady = settings.status === "ready";
   const board = isReady ? settings.values : null;
@@ -154,6 +188,8 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
       StyleSheet.create({
         container: {
           flex: 1,
+          minWidth: 0,
+          minHeight: 0,
           backgroundColor: theme.colors.surface0,
           userSelect: "none",
         },
@@ -174,6 +210,9 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
         },
         titleRow: {
           flexDirection: "row",
+          flexWrap: "wrap",
+          flexShrink: 1,
+          maxWidth: "100%",
           alignItems: "center",
           gap: 8,
         },
@@ -184,6 +223,8 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
         },
         headerActions: {
           flexDirection: "row",
+          flexWrap: "wrap",
+          maxWidth: "100%",
           alignItems: "center",
           gap: 8,
         },
@@ -270,6 +311,7 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
         },
         lanesWrapper: {
           flex: 1,
+          minHeight: 0,
           position: "relative",
           userSelect: "none",
         },
@@ -301,7 +343,10 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
 
   if (settings.status === "loading") {
     return (
-      <View style={[styles.container, styles.centerBox]}>
+      <View
+        style={[styles.container, styles.centerBox]}
+        onLayout={handleLayout}
+      >
         <ActivityIndicator size="large" color={theme.colors.accent} />
         <Text style={styles.centerText}>{t("kanban.loading")}</Text>
       </View>
@@ -310,7 +355,10 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
 
   if (settings.status === "error") {
     return (
-      <View style={[styles.container, styles.centerBox]}>
+      <View
+        style={[styles.container, styles.centerBox]}
+        onLayout={handleLayout}
+      >
         <Text style={[styles.centerText, { color: theme.colors.statusDanger }]}>
           {t("kanban.loadError", { error: settings.error })}
         </Text>
@@ -328,7 +376,10 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
 
   if (settings.status === "invalid") {
     return (
-      <View style={[styles.container, styles.centerBox]}>
+      <View
+        style={[styles.container, styles.centerBox]}
+        onLayout={handleLayout}
+      >
         <Text
           style={[
             styles.centerText,
@@ -370,7 +421,7 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
   if (!board) return null;
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} onLayout={handleLayout}>
       {/* Top Header */}
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
@@ -462,7 +513,7 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
               </Text>
             </Pressable>
 
-            {projects.map((proj) => {
+            {selectableProjects.map((proj) => {
               const isSelected = selectedProjectId === proj.projectId;
               return (
                 <Pressable
@@ -567,7 +618,7 @@ export function KanbanBoardView(props: PluginSurfaceProps) {
           open={activeTaskSession !== null}
           onClose={() => setActiveTaskSession(null)}
           session={activeTaskSession}
-          projects={projects}
+          projects={selectableProjects}
           theme={theme}
           layout={layout}
         />

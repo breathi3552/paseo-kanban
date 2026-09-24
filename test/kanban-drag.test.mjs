@@ -770,3 +770,33 @@ test("落位动画与提交流程: 动态预览更新、保存期间保持落位
     "互斥锁必须在平滑缓冲后迅速解锁",
   );
 });
+
+test("分屏移动和缩窄后按新的窗口坐标与横向滚动定位落点", async () => {
+  const requests = [];
+  const controller = setupController((...args) => requests.push(args));
+  const bounds = { x: 520, y: 80, width: 360, height: 600 };
+  controller.bindContainerRef({
+    measureInWindow(callback) {
+      callback(bounds.x, bounds.y, bounds.width, bounds.height);
+    },
+  });
+  controller.handleContainerLayout({ x: 0, y: 0, width: 360, height: 600 });
+  controller.registerLaneLayout("to-plan", {
+    x: 10,
+    y: 10,
+    width: 270,
+    height: 550,
+  });
+  controller.registerLaneLayout("in-progress", {
+    x: 290,
+    y: 10,
+    width: 270,
+    height: 550,
+  });
+  controller.handleScroll(250);
+
+  controller.startGesture("task-1", "to-plan", 535, 130);
+  controller.moveGesture(620, 130);
+  await controller.releaseGesture(620, 130);
+  assert.deepEqual(requests, [["task-1", "in-progress", 0]]);
+});
