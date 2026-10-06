@@ -13,6 +13,7 @@
   - 任务标题与多行描述编辑。
   - 子步骤清单支持独立增删改、完成状态勾选及实时进度展示。
   - 支持关联本地已有的 Paseo 项目。
+- **工作区标签页与分屏**：与 Agent、Terminal 并排打开看板，默认筛选工作区所属项目；保留侧边栏入口。
 - **项目维度筛选**：一键按关联的 Paseo 项目过滤看板卡片，聚焦当前目标。
 - **流畅拖拽交互**：精准的拖拽命中测试（Hit-Testing），支持同泳道排序与跨泳道状态流转。
 - **版本化数据持久化**：通过 Paseo settings API 存储看板，使用乐观并发版本控制（CAS）处理多会话写入冲突。
@@ -71,7 +72,7 @@ paseo plugin ls
 # 1. 克隆代码仓库并安装依赖
 git clone https://github.com/breathi3552/paseo-kanban.git
 cd paseo-kanban
-npm install
+npm ci
 
 # 2. 将当前开发目录软链接至本地 Paseo 守护进程
 paseo plugin link .
@@ -88,7 +89,13 @@ npm ci
 npm run check
 ```
 
-单项命令（`npm test`、`npm run typecheck`、`npm run lint`、`npm run format:check`、`npm run check:package`）见 [`package.json`](./package.json)。发布、失败重试与宿主验收见[开发指南](./docs/development.md#21-一键发布github-actions)。
+单项命令（`npm test`、`npm run typecheck`、`npm run lint`、`npm run format:check`、`npm run check:package`）见 [`package.json`](./package.json)。标签发布、事实来源、失败重试与宿主验收见[开发指南](./docs/development.md#21-标签发布github-actions)。
+
+---
+
+## 版本发布
+
+参见 [0.1.3 版本说明](./docs/releases/0.1.3.md)。每版 npm 包与 GitHub Release 对应同一个版本 tag，GitHub 附带经过验证的 npm tarball。`main` 可能包含最新发布版之后的改动。
 
 ---
 

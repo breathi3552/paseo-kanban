@@ -2,40 +2,26 @@ name: Release to GitHub and npm
 
 on:
   workflow_dispatch:
-    inputs:
-      bump:
-        description: "Version bump (ignored when retry_tag is set)"
-        required: true
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
-      retry_tag:
-        description: "Optional: retry publishing an existing vX.Y.Z tag on main"
-        required: false
-        type: string
 
 permissions:
   contents: write
   id-token: write # npm provenance
 
 concurrency:
-  group: release-main
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   release:
-    # Only the owner's account may publish, including on reruns. Others can
-    # request a run, but the job (and its secrets) will be skipped.
-    if: github.ref == 'refs/heads/main' && github.actor_id == '243264979' && github.triggering_actor == 'breathi3552'
+    # Dispatch on the release tag so the OIDC source commit matches the package.
+    if: startsWith(github.ref, 'refs/tags/v') && github.actor_id == '243264979' && github.triggering_actor == 'breathi3552'
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout main and tags
+      - name: Checkout release tag
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -44,43 +30,20 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: npm
 
-      - name: Select version
+      - name: Validate immutable release source
         id: version
-        env:
-          BUMP: ${{ inputs.bump }}
-          RETRY_TAG: ${{ inputs.retry_tag }}
         run: |
           set -euo pipefail
-          if [[ -n "$RETRY_TAG" ]]; then
-            if [[ ! "$RETRY_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-              echo 'retry_tag must be vX.Y.Z' >&2
-              exit 1
-            fi
-            git checkout --detach "refs/tags/$RETRY_TAG"
-            git merge-base --is-ancestor HEAD origin/main || {
-              echo 'Tag must point to a commit on main' >&2
-              exit 1
-            }
-            tag="$RETRY_TAG"
-          else
-            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" || {
-              echo 'main moved since this run started; dispatch again' >&2
-              exit 1
-            }
-            npm version "$BUMP" --no-git-tag-version --ignore-scripts
-            tag="v$(node -p 'require("./package.json").version')"
-            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-              echo "Tag $tag already exists; use retry_tag instead" >&2
-              exit 1
-            fi
-          fi
+          tag="$GITHUB_REF_NAME"
+          [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse "refs/tags/$tag^{commit}")" = "$GITHUB_SHA"
+          git merge-base --is-ancestor HEAD origin/main
           version="$(node -p 'require("./package.json").version')"
           lock_version="$(node -p 'require("./package-lock.json").version')"
           root_version="$(node -p 'require("./package-lock.json").packages[""].version')"
-          test "$tag" = "v$version" && test "$version" = "$lock_version" && test "$version" = "$root_version" || {
-            echo 'Tag, package.json and lockfile versions disagree' >&2
-            exit 1
-          }
+          test "$tag" = "v$version" && test "$version" = "$lock_version" && test "$version" = "$root_version"
+          test -f "docs/releases/$version.md"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
@@ -88,71 +51,67 @@ jobs:
         run: npm ci
 
       - name: Run quality guardrails
-        run: npm run check
+        run: |
+          npm run check
+          git diff --exit-code
 
-      - name: Check publish prerequisites before pushing
+      - name: Publish to npm (skip an existing version on retry)
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-          RETRY_TAG: ${{ inputs.retry_tag }}
         run: |
           set -euo pipefail
-          package="$(node -p 'require("./package.json").name')"
-          published="$(npm view "$package@$VERSION" version --registry=https://registry.npmjs.org 2>/dev/null || true)"
-          if [[ "$published" == "$VERSION" ]]; then
-            if [[ -z "$RETRY_TAG" ]]; then
-              echo "$package@$VERSION already exists on npm; refusing to tag it" >&2
-              exit 1
-            fi
-          elif [[ -z "$NODE_AUTH_TOKEN" ]]; then
-            echo 'Configure the NPM_TOKEN Actions secret before releasing' >&2
-            exit 1
-          fi
-
-      - name: Push release commit and tag
-        if: inputs.retry_tag == ''
-        env:
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package.json package-lock.json
-          git commit -m "chore(release): ${TAG#v}"
-          git tag -a "$TAG" -m "$TAG"
-          git push --atomic origin HEAD:main "refs/tags/$TAG"
-
-      - name: Publish to npm (skip if already published on retry)
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-          RETRY_TAG: ${{ inputs.retry_tag }}
-        run: |
-          set -euo pipefail
-          package="$(node -p 'require("./package.json").name')"
-          published="$(npm view "$package@$VERSION" version --registry=https://registry.npmjs.org 2>/dev/null || true)"
-          if [[ "$published" == "$VERSION" ]]; then
-            if [[ -z "$RETRY_TAG" ]]; then
-              echo "$package@$VERSION already exists on npm; refusing to create a new Release for it" >&2
-              exit 1
-            fi
-            echo "$package@$VERSION already exists on npm; skipping publish"
+          status="$(node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const { name, version } = JSON.parse(readFileSync("package.json"));
+            const response = await fetch(`https://registry.npmjs.org/${name}/${version}`);
+            if (response.status === 404) console.log("missing");
+            else if (response.ok) console.log("published");
+            else throw new Error(`npm registry returned ${response.status}`);
+          ')"
+          if [[ "$status" == "published" ]]; then
+            echo 'Version already exists; verifying it before creating the GitHub Release'
           else
             if [[ -z "$NODE_AUTH_TOKEN" ]]; then
-              echo 'Configure the NPM_TOKEN Actions secret before releasing' >&2
+              echo 'Configure the NPM_TOKEN Actions secret with publish permission and Bypass 2FA' >&2
               exit 1
             fi
             npm publish --provenance --access public
           fi
 
-      - name: Create GitHub Release
+      - name: Verify npm artifact and provenance against the tag
+        env:
+          RELEASE_ARTIFACT_DIR: ${{ runner.temp }}/release-artifact
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          node scripts/verify-release.mjs > "$RUNNER_TEMP/release-verification.md"
+          cat "$RUNNER_TEMP/release-verification.md"
+          {
+            cat "docs/releases/$VERSION.md"
+            printf '\n## Verified artifact\n\n'
+            cat "$RUNNER_TEMP/release-verification.md"
+          } > "$RUNNER_TEMP/release-notes.md"
+
+      - name: Verify npm registry and provenance signatures
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/release-audit" --ignore-scripts --omit=dev --no-audit --no-fund --registry=https://registry.npmjs.org "paseo-kanban@$VERSION"
+          cd "$RUNNER_TEMP/release-audit"
+          npm audit signatures --registry=https://registry.npmjs.org
+          printf '\n- Registry and provenance signatures: verified with `npm audit signatures`.\n' >> "$RUNNER_TEMP/release-notes.md"
+
+      - name: Create GitHub Release with the verified npm tarball
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "GitHub Release $TAG already exists"
+            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
           else
-            gh release create "$TAG" --verify-tag --generate-notes
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
+          gh release upload "$TAG" "$RUNNER_TEMP/release-artifact/paseo-kanban-$VERSION.tgz" --clobber

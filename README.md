@@ -13,6 +13,7 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
   - Task title and multi-line description.
   - Subtasks checklist with completion toggles and live progress tracking.
   - Native Paseo project association.
+- **Workspace Tabs and Splits**: Open the board beside an agent or terminal, initially filtered to the workspace's project. The sidebar remains available.
 - **Project Filtering**: Instantly filter board cards by linked Paseo project to keep context focused.
 - **Smooth Drag-and-Drop**: Real-time hit-testing for reordering cards within lanes and moving cards across lanes.
 - **Versioned State Persistence**: Persists board data through Paseo's settings API with optimistic concurrency control (CAS) to prevent race conditions and accidental overwrites.
@@ -71,7 +72,7 @@ To contribute or debug locally:
 # 1. Clone repository and install dependencies
 git clone https://github.com/breathi3552/paseo-kanban.git
 cd paseo-kanban
-npm install
+npm ci
 
 # 2. Link this directory into your local Paseo daemon
 paseo plugin link .
@@ -88,7 +89,13 @@ npm ci
 npm run check
 ```
 
-Individual commands (`npm test`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run check:package`) are defined in [`package.json`](./package.json). For publishing, recovery, and host acceptance, see the [development guide](./docs/development.md#21-一键发布github-actions).
+Individual commands (`npm test`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run check:package`) are defined in [`package.json`](./package.json). For tag-based publishing, release sources of truth, recovery, and host acceptance, see the [development guide](./docs/development.md#21-标签发布github-actions).
+
+---
+
+## Releases
+
+See the [0.1.3 release notes](./docs/releases/0.1.3.md). Each release's npm package and GitHub Release share the same version tag; GitHub includes the verified npm tarball. `main` may contain changes beyond the latest release.
 
 ---
 
