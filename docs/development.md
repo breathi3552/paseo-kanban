@@ -64,10 +64,10 @@ gh workflow run release.yml --ref v0.1.3
 **失败与重试**
 
 - npm 发布失败：修复权限或 token 后，重跑同一个 tag 的工作流。未通过 npm 验证前，不创建 GitHub Release。
-- npm 已成功、后续步骤失败：重跑时跳过发包，重新验证已有包，再创建或同步 GitHub Release 说明及 tarball 附件。
+- npm 已成功、后续步骤失败：重跑时跳过发包，重新验证已有包，再创建或同步 GitHub Release 说明及 tarball 附件。npm 可能先返回发布成功，再异步处理包；CDN 也可能缓存早期的 404。当前校验工具会等待并绕过 404 缓存，最长约五分钟。`v0.1.3` tag 中的校验工具会直接报错，需等 npm 元数据、tarball 和 attestations 可读取后再重跑该 tag。
 - 已有 npm 包的内容或 provenance 与 tag 不匹配：停止发布；npm 版本不能覆盖，需修复流程后发布新版本。不要移动或重建旧 tag。
 
-本地复核时，checkout 到对应版本 tag 后运行 `npm run verify:release`。该命令检查 npm 元数据、tarball、来源字段与源码；密码学签名验证由工作流中的独立 `npm audit signatures` 步骤执行。
+本地复核时，在包含当前校验工具的源码目录运行 `npm run verify:release`，并确保该版本 tag 存在。该命令以 `package.json` 对应的版本 tag 为基准，检查 npm 元数据、tarball、来源字段和本地待打包文件；本地发布文件与 tag 不一致时拒绝通过。工具支持 Windows 和 Linux 的 tar 路径与换行；密码学签名验证由工作流中的独立 `npm audit signatures` 步骤执行。
 
 `0.1.2` 曾在同一次工作流运行中升级版本、创建提交并发布，导致 provenance 指向升级前的提交。新流程从已存在的版本 tag 启动，避免这个不一致。
 

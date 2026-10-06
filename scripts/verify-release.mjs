@@ -11,22 +11,16 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { setTimeout } from "node:timers/promises";
 
 const registry = "https://registry.npmjs.org";
 const repository = "https://github.com/breathi3552/paseo-kanban";
 const provenanceType = "https://slsa.dev/provenance/v1";
 const { name, version } = JSON.parse(readFileSync("package.json", "utf8"));
-const commit = execFileSync("git", ["rev-parse", "HEAD"], {
+const tag = `v${version}`;
+const commit = execFileSync("git", ["rev-parse", `${tag}^{commit}`], {
   encoding: "utf8",
 }).trim();
-const tag = `v${version}`;
-assert.equal(
-  execFileSync("git", ["rev-parse", `${tag}^{commit}`], {
-    encoding: "utf8",
-  }).trim(),
-  commit,
-  "Run verification from the release tag's source commit",
-);
 
 async function fetchRegistry(url) {
   assert.equal(
@@ -34,9 +28,24 @@ async function fetchRegistry(url) {
     registry,
     "Expected the public npm registry",
   );
-  const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-  assert.ok(response.ok, `npm registry returned ${response.status} for ${url}`);
-  return response;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const request = new URL(url);
+    if (attempt > 0) request.searchParams.set("verify", String(Date.now()));
+    const response = await fetch(request, {
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (response.status === 404 && attempt < 29) {
+      console.error(`Waiting for npm publication/CDN propagation: ${url}`);
+      await response.body?.cancel();
+      await setTimeout(10_000);
+      continue;
+    }
+    assert.ok(
+      response.ok,
+      `npm registry returned ${response.status} for ${url}`,
+    );
+    return response;
+  }
 }
 
 const metadata = await (
@@ -96,13 +105,14 @@ const expectedFiles = JSON.parse(
   .sort();
 const temporaryDirectory = mkdtempSync(path.join(tmpdir(), "kanban-release-"));
 try {
-  const tarball = path.join(temporaryDirectory, `${name}-${version}.tgz`);
-  writeFileSync(tarball, archive);
-  const publishedFiles = execFileSync("tar", ["-tzf", tarball], {
+  const filename = `${name}-${version}.tgz`;
+  writeFileSync(path.join(temporaryDirectory, filename), archive);
+  const publishedFiles = execFileSync("tar", ["-tzf", filename], {
+    cwd: temporaryDirectory,
     encoding: "utf8",
   })
     .trim()
-    .split("\n")
+    .split(/\r?\n/)
     .filter((file) => !file.endsWith("/"))
     .sort();
   assert.deepEqual(
@@ -111,9 +121,16 @@ try {
     "Published file set must match",
   );
   for (const file of publishedFiles) {
-    const source = execFileSync("git", ["show", `HEAD:${file.slice(8)}`]);
-    const published = execFileSync("tar", ["-xOzf", tarball, file]);
+    const sourcePath = file.slice(8);
+    const source = execFileSync("git", ["show", `${commit}:${sourcePath}`]);
+    const published = execFileSync("tar", ["-xOzf", filename, file], {
+      cwd: temporaryDirectory,
+    });
     assert.ok(source.equals(published), `${file} differs from tagged source`);
+    assert.ok(
+      source.equals(readFileSync(sourcePath)),
+      `${sourcePath} in the working tree differs from tagged source`,
+    );
   }
   if (process.env.RELEASE_ARTIFACT_DIR) {
     mkdirSync(process.env.RELEASE_ARTIFACT_DIR, { recursive: true });
