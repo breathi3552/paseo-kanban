@@ -13,3 +13,7 @@
 ### Domain docs
 
 单上下文（Single-context）结构，根目录下维护 `CONTEXT.md` 与 `docs/adr/`。详见 `docs/agents/domain.md`。
+
+### Development & verification
+
+本地开发环境要求、`npm run check` 统一质量护栏及宿主验收流程详见 `docs/development.md`。
