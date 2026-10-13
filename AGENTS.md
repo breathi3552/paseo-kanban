@@ -12,7 +12,7 @@
 
 ### Domain docs
 
-单上下文（Single-context）结构，根目录下维护 `CONTEXT.md` 与 `docs/adr/`。详见 `docs/agents/domain.md`。
+单上下文（Single-context）结构，根目录下维护 `GLOSSARY.md` 与 `docs/adr/`。详见 `docs/agents/domain.md`。
 
 ### Development & verification
 

@@ -2,7 +2,7 @@
 
 Paseo 任务看板插件的领域模型与通用业务术语表，定义任务流转、泳道组织与拖拽交互的核心概念。
 
-完成状态、普通泳道归属与显示位置的设计取舍记录在 [ADR-0005](./docs/adr/0005-completion-lane-and-task-restoration.md)，完整需求见 [完成泳道规格](./docs/specs/completion-lane.md)。
+完成状态、普通泳道归属与显示位置的设计取舍记录在 [ADR-0005](./docs/adr/0005-completion-lane-and-task-restoration.md)，完整需求见 [完成泳道规格 (#10)](https://github.com/breathi3552/paseo-kanban/issues/10)。
 
 ## 术语
 

@@ -2,22 +2,19 @@
 
 [简体中文](./README.zh-CN.md)
 
-A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) workspaces. Organize tasks across customizable swimlanes, break them down into subtasks, associate cards with native Paseo projects, and manage workflow status with intuitive drag-and-drop.
+A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) workspaces.
 
 ---
 
 ## Features
 
-- **Flexible Swimlanes**: Two initial ordinary lanes and one completion lane. Rename any lane, add ordinary lanes, and keep the completion lane fixed on the right.
-- **Task Completion**: Check the box on the left of a card or drag it into the completion lane. Completed tasks retain their ordinary lane and appear newest first. Uncheck to return to that lane's end; if it was deleted, use the rightmost ordinary lane. Drag out to reopen at the chosen position. Task completion is independent of subtasks.
+- **Flexible Swimlanes**: Add, delete, and rename lanes.
 - **Rich Task Cards**:
-  - Task title and multi-line description.
-  - Subtasks checklist with completion toggles and live progress tracking.
-  - Native Paseo project association.
-- **Workspace Tabs and Splits**: Open the board beside an agent or terminal, initially filtered to the workspace's project. The sidebar remains available.
-- **Project Filtering**: Instantly filter board cards by linked Paseo project to keep context focused.
-- **Smooth Drag-and-Drop**: Real-time hit-testing for reordering cards within lanes and moving cards across lanes.
-- **Versioned State Persistence**: Persists board data through Paseo's settings API with optimistic concurrency control (CAS) to prevent race conditions and accidental overwrites.
+  - Task title and multi-line description editing.
+  - Subtasks checklist.
+  - Support linking tasks to projects created in Paseo.
+- **Workspace Tabs and Splits**: Open the board beside an agent or terminal, initially filtered to the workspace's project, or use the sidebar entry.
+- **Smooth Drag-and-Drop**: Support intra-lane reordering and cross-lane movement.
 
 ---
 
@@ -58,12 +55,10 @@ Verify that the plugin is running:
 paseo plugin ls
 ```
 
-Once active, open the board from either entry:
+Open the board from either entry:
 
 - **Sidebar → Kanban**: shows all tasks by default.
-- **Workspace → `+` → Kanban**: initially filters to the workspace's project, with other filters available. Use Paseo's native split controls to place it beside an agent or terminal.
-
-Both entries share tasks and lanes with full editing support; their filters are independent. Closing and reopening the board or restarting restores the entry's default filter. If workspace project context is unavailable, the board silently shows all tasks and keeps that filter even if context arrives later. Narrow splits retain horizontal lane scrolling.
+- **Workspace → `+` → Kanban**: initially filters to the workspace's project, with other filters available; use Paseo's native split controls to place it beside an agent or terminal.
 
 ### Local Development
 
@@ -102,7 +97,7 @@ See the [0.1.3 release notes](./docs/releases/0.1.3.md). Each release's npm pack
 
 ## Architecture & Design
 
-Core terminology and design decisions are documented in [`CONTEXT.md`](./CONTEXT.md) and [`docs/adr/`](./docs/adr/).
+Core terminology and design decisions are documented in [`GLOSSARY.md`](./GLOSSARY.md) and [`docs/adr/`](./docs/adr/).
 
 ---
 
