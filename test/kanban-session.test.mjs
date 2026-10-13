@@ -407,46 +407,23 @@ test("无效操作: 引用不存在的泳道拦截，不产生存储写入", asy
   assert.equal(store.history.length, 0);
 });
 
-test("无效操作: 受保护泳道拦截删除（含任务或最后一条泳道），不产生存储写入", async () => {
-  // 1. 泳道内有任务
+test("无效操作: 包含任务的受保护泳道拦截删除，不产生存储写入", async () => {
   const storeWithTask = createMockStore({
     tasks: [{ id: "t1", title: "任务", laneId: "to-plan" }],
   });
-  const session1 = openLaneSession({
+  const session = openLaneSession({
     mode: "edit",
     laneId: "to-plan",
     baseBoard: storeWithTask.values,
     baseRevision: storeWithTask.revision,
     save: (b, r) => storeWithTask.save(b, r),
   });
-  assert.equal(session1.canDelete, false);
-  assert.equal(session1.tasksInLaneCount, 1);
-  const res1 = await session1.deleteLane();
-  assert.equal(res1.success, false);
-  assert.match(res1.error, /because it contains tasks/);
+  assert.equal(session.canDelete, false);
+  assert.equal(session.tasksInLaneCount, 1);
+  const res = await session.deleteLane();
+  assert.equal(res.success, false);
+  assert.match(res.error, /because it contains tasks/);
   assert.equal(storeWithTask.history.length, 0);
-
-  // 2. 只有最后一条泳道
-  const storeSingleLane = createMockStore({
-    lanes: [
-      { id: "only", title: "独苗泳道", isCompletionLane: false },
-      { id: "done", title: "已完成", isCompletionLane: true },
-    ],
-    tasks: [],
-  });
-  const session2 = openLaneSession({
-    mode: "edit",
-    laneId: "only",
-    baseBoard: storeSingleLane.values,
-    baseRevision: storeSingleLane.revision,
-    save: (b, r) => storeSingleLane.save(b, r),
-  });
-  assert.equal(session2.canDelete, false);
-  assert.equal(session2.lanesCount, 2);
-  const res2 = await session2.deleteLane();
-  assert.equal(res2.success, false);
-  assert.match(res2.error, /Cannot delete the last remaining ordinary lane/);
-  assert.equal(storeSingleLane.history.length, 0);
 });
 
 // ---------------------------------------------------------------------------

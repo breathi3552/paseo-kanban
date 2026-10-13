@@ -153,20 +153,35 @@ test("无效落点: 在泳道垂直范围外释放不产生移动请求", async 
 
 test("无效落点: 释放到已不在当前看板中的泳道不产生移动请求", async () => {
   const moveRequests = [];
-  // Controller where "done" lane has layout registered, but is NOT in active lanes
+  // Controller where an inactive lane has layout registered, but is NOT in active lanes
   const controller = new KanbanDragController({
-    lanes: [{ id: "to-plan" }, { id: "in-progress" }], // "done" is excluded
+    lanes: [{ id: "to-plan" }, { id: "in-progress" }],
     onReorderTask: (taskId, targetLaneId) => {
       moveRequests.push({ taskId, targetLaneId });
     },
   });
   controller.registerContainerBounds(mockContainer);
-  for (const lane of mockLanes) {
-    controller.registerLaneLayout(lane.id, lane.rect);
-  }
+  controller.registerLaneLayout("to-plan", {
+    x: 10,
+    y: 10,
+    width: 280,
+    height: 550,
+  });
+  controller.registerLaneLayout("in-progress", {
+    x: 304,
+    y: 10,
+    width: 280,
+    height: 550,
+  });
+  controller.registerLaneLayout("archived", {
+    x: 598,
+    y: 10,
+    width: 280,
+    height: 550,
+  });
 
   controller.startGesture("task-1", "to-plan", 70, 130);
-  // Pointer in "done" lane
+  // Pointer in "archived" lane
   controller.moveGesture(630, 130);
   assert.equal(
     controller.getFeedback().hoveredLaneId,
@@ -273,11 +288,11 @@ test("重渲染稳定性: 更新泳道与回调不中断活动拖拽，并使用
     secondRequests.push({ taskId, targetLaneId, targetIndex });
   });
 
-  // Move pointer to "done" lane
-  controller.moveGesture(630, 130);
-  assert.equal(controller.getFeedback().hoveredLaneId, "done");
+  // Move pointer to "in-progress" lane
+  controller.moveGesture(340, 130);
+  assert.equal(controller.getFeedback().hoveredLaneId, "in-progress");
 
-  await controller.releaseGesture(630, 130);
+  await controller.releaseGesture(340, 130);
 
   assert.equal(firstRequests.length, 0, "Old callback must not be called");
   assert.equal(
@@ -287,7 +302,7 @@ test("重渲染稳定性: 更新泳道与回调不中断活动拖拽，并使用
   );
   assert.deepEqual(secondRequests[0], {
     taskId: "task-1",
-    targetLaneId: "done",
+    targetLaneId: "in-progress",
     targetIndex: 0,
   });
 });
