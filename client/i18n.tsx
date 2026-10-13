@@ -1,6 +1,10 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, createContext, useContext } from "react";
 
 export type SupportedLanguage = "zh" | "en";
+
+export const I18nLanguageContext = createContext<SupportedLanguage | null>(
+  null,
+);
 
 export type TranslationParams = Record<
   string,
@@ -31,13 +35,18 @@ export const translations = {
     "lane.add": "+ 添加",
     "lane.manage": "管理",
     "lane.emptyHint": "暂无卡片，可点击右上角添加或拖动卡片至此",
+    "lane.emptyCompletionHint": "暂无已完成任务，可勾选任务或将卡片拖入此泳道",
+    "card.completeTask": "完成任务：{title}",
+    "card.reopenTask": "取消完成：{title}",
     "card.dragHandle": "拖动手柄",
     "card.subtasksCount": "子步骤 {completed}/{total}",
     "laneModal.titleEdit": "管理泳道",
     "laneModal.titleCreate": "新增泳道",
     "laneModal.nameLabel": "泳道名称 *",
     "laneModal.namePlaceholder": "例如：待测试、发布中...",
-    "laneModal.cannotDeleteLast": "看板必须至少保留一条泳道，无法删除此泳道。",
+    "laneModal.cannotDeleteLast":
+      "看板必须至少保留一条普通泳道，无法删除此泳道。",
+    "laneModal.cannotDeleteCompletion": "完成泳道不可删除，可以修改名称。",
     "laneModal.cannotDeleteHasTasks":
       "此泳道当前包含 {count} 个任务，需清空或移走任务后方可删除。",
     "laneModal.deleteLane": "删除此泳道",
@@ -92,6 +101,10 @@ export const translations = {
     "lane.manage": "Manage",
     "lane.emptyHint":
       "No cards yet. Click '+' in the top right or drag cards here.",
+    "lane.emptyCompletionHint":
+      "No completed tasks. Check a task or drag it into this lane.",
+    "card.completeTask": "Mark {title} complete",
+    "card.reopenTask": "Mark {title} incomplete",
     "card.dragHandle": "Drag handle",
     "card.subtasksCount": "Subtasks {completed}/{total}",
     "laneModal.titleEdit": "Manage Lane",
@@ -99,7 +112,9 @@ export const translations = {
     "laneModal.nameLabel": "Lane Name *",
     "laneModal.namePlaceholder": "e.g., Testing, In Review...",
     "laneModal.cannotDeleteLast":
-      "A kanban board must retain at least one lane. Cannot delete this lane.",
+      "A kanban board must retain at least one ordinary lane. Cannot delete this lane.",
+    "laneModal.cannotDeleteCompletion":
+      "The completion lane cannot be deleted. You can rename it.",
     "laneModal.cannotDeleteHasTasks":
       "This lane currently contains {count} tasks. Clear or move tasks before deleting.",
     "laneModal.deleteLane": "Delete Lane",
@@ -323,6 +338,7 @@ export interface I18nContextValue {
 }
 
 export function useI18n(hostProps?: DetectLanguageOptions): I18nContextValue {
+  const inheritedLanguage = useContext(I18nLanguageContext);
   const hostLocale =
     hostProps?.locale ??
     hostProps?.language ??
@@ -341,14 +357,15 @@ export function useI18n(hostProps?: DetectLanguageOptions): I18nContextValue {
     });
   }, [hostLocale, hostProps]);
 
+  const language = hostLocale ? lang : (inheritedLanguage ?? lang);
   const tBound = useMemo(
     () => (key: TranslationKey, params?: TranslationParams) =>
-      t(key, lang, params),
-    [lang],
+      t(key, language, params),
+    [language],
   );
 
   return {
-    language: lang,
+    language,
     t: tBound,
   };
 }

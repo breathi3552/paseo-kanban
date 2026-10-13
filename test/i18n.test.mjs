@@ -165,8 +165,8 @@ test("setLanguageOverride & subscribeLanguage: 动态切换与订阅响应闭环
 test("kanban-session: 国际化错误信息在英文与中文模式下正确产出", async () => {
   const baseBoard = {
     lanes: [
-      { id: "to-plan", title: "待规划" },
-      { id: "done", title: "已完成" },
+      { id: "to-plan", title: "待规划", isCompletionLane: false },
+      { id: "done", title: "已完成", isCompletionLane: true },
     ],
     tasks: [
       {

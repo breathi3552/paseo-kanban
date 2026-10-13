@@ -26,6 +26,8 @@ export interface KanbanLaneViewProps {
   onAddTask: (laneId: string) => void;
   onManageLane: (laneId: string) => void;
   onSelectTask: (task: KanbanTask) => void;
+  onSetCompleted?: (taskId: string, completed: boolean) => void;
+  completionPending?: boolean;
   resolveProjectName?: (projectId: string | null) => string | null;
 }
 
@@ -39,6 +41,8 @@ function KanbanLaneViewInner({
   onAddTask,
   onManageLane,
   onSelectTask,
+  onSetCompleted,
+  completionPending = false,
   resolveProjectName,
 }: KanbanLaneViewProps) {
   const { t } = useI18n();
@@ -176,16 +180,20 @@ function KanbanLaneViewInner({
         </View>
 
         <View style={styles.laneHeaderActions}>
-          <Pressable
-            onPress={() => onAddTask(lane.id)}
-            style={styles.laneHeaderBtn}
-            hitSlop={6}
-          >
-            <Text style={styles.laneHeaderBtnText}>{t("lane.add")}</Text>
-          </Pressable>
+          {!lane.isCompletionLane && (
+            <Pressable
+              onPress={() => onAddTask(lane.id)}
+              disabled={completionPending}
+              style={styles.laneHeaderBtn}
+              hitSlop={6}
+            >
+              <Text style={styles.laneHeaderBtnText}>{t("lane.add")}</Text>
+            </Pressable>
+          )}
 
           <Pressable
             onPress={() => onManageLane(lane.id)}
+            disabled={completionPending}
             style={styles.laneHeaderBtn}
             hitSlop={6}
           >
@@ -226,6 +234,11 @@ function KanbanLaneViewInner({
                   () => onSelectTask(task),
                   PanResponder,
                 )}
+                onSetCompleted={onSetCompleted}
+                completionDisabled={
+                  completionPending || (dragBinding.isDragLocked?.() ?? false)
+                }
+                interactionDisabled={completionPending}
               />
             </Fragment>
           ))}
@@ -240,7 +253,13 @@ function KanbanLaneViewInner({
 
           {tasks.length === 0 && !isHovered && (
             <View style={styles.emptyLanePlaceholder}>
-              <Text style={styles.emptyLaneText}>{t("lane.emptyHint")}</Text>
+              <Text style={styles.emptyLaneText}>
+                {t(
+                  lane.isCompletionLane
+                    ? "lane.emptyCompletionHint"
+                    : "lane.emptyHint",
+                )}
+              </Text>
             </View>
           )}
         </View>

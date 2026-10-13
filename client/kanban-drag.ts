@@ -1,4 +1,9 @@
-import { useRef, useSyncExternalStore, useEffect } from "react";
+import {
+  useRef,
+  useSyncExternalStore,
+  useEffect,
+  useLayoutEffect,
+} from "react";
 import type {
   GestureResponderHandlers,
   PanResponderCallbacks,
@@ -89,7 +94,7 @@ export interface TaskPreviewItem {
 }
 
 export interface KanbanDragOptions {
-  lanes?: ({ id: string } | string)[];
+  lanes?: ({ id: string; isCompletionLane?: boolean } | string)[];
   onReorderTask?: (
     taskId: string,
     targetLaneId: string,
@@ -165,6 +170,7 @@ interface ActiveDragSession {
 export class KanbanDragController {
   private lanesList: string[] = [];
   private validLaneSet: Set<string> = new Set();
+  private completionLaneSet: Set<string> = new Set();
   private laneLayouts: Map<string, Rect> = new Map();
   private laneCardOrders: Map<string, string[]> = new Map();
   private cardLayouts: Map<string, Map<string, Rect>> = new Map();
@@ -234,9 +240,16 @@ export class KanbanDragController {
     }
   }
 
-  setLanes = (lanes: ({ id: string } | string)[]) => {
+  setLanes = (
+    lanes: ({ id: string; isCompletionLane?: boolean } | string)[],
+  ) => {
     this.lanesList = lanes.map((l) => (typeof l === "string" ? l : l.id));
     this.validLaneSet = new Set(this.lanesList);
+    this.completionLaneSet = new Set(
+      lanes.flatMap((lane) =>
+        typeof lane !== "string" && lane.isCompletionLane ? [lane.id] : [],
+      ),
+    );
     if (this.activeSession && this.activeSession.isActivated) {
       this.recomputeHover(
         this.activeSession.lastPointerX,
@@ -526,7 +539,7 @@ export class KanbanDragController {
           isDragging: true,
           draggingTaskId: this.activeSession.taskId,
           draggingSourceLaneId: this.activeSession.sourceLaneId,
-          hoveredLaneId: targetLaneId,
+          hoveredLaneId: initialHit,
           targetIndex,
           draggedCardHeight: this.activeSession.cardLayouts
             .get(this.activeSession.sourceLaneId)
@@ -645,7 +658,7 @@ export class KanbanDragController {
         isDragging: true,
         draggingTaskId: taskId,
         draggingSourceLaneId: sourceLaneId,
-        hoveredLaneId: targetLaneId,
+        hoveredLaneId: initialHit,
         targetIndex,
         draggedCardHeight: this.activeSession.cardLayouts
           .get(sourceLaneId)
@@ -1104,6 +1117,11 @@ export class KanbanDragController {
 
   isLaneHovered = (laneId: string): boolean => {
     if (this.currentDroppingState) {
+      if (
+        this.completionLaneSet.has(laneId) &&
+        !this.currentDroppingState.isDrop
+      )
+        return false;
       return this.currentDroppingState.targetLaneId === laneId;
     }
     return this.feedback.hoveredLaneId === laneId && this.feedback.isDragging;
@@ -1201,6 +1219,7 @@ export class KanbanDragController {
   }
 
   private computeTargetIndex(laneId: string, pointerY: number): number {
+    if (this.completionLaneSet.has(laneId)) return 0;
     const allCardIds = this.laneCardOrders.get(laneId) ?? [];
     const activeTaskId = this.activeSession?.taskId;
     const isSourceLane = this.activeSession
@@ -1296,6 +1315,11 @@ export class KanbanDragController {
     });
 
     if (hitId && this.validLaneSet.has(hitId)) {
+      if (
+        this.completionLaneSet.has(hitId) &&
+        this.activeSession?.sourceLaneId === hitId
+      )
+        return null;
       return hitId;
     }
     return null;
@@ -1390,7 +1414,9 @@ export function useKanbanDrag(
   }
   const controller = controllerRef.current;
 
-  controller.setLanes(lanes);
+  useLayoutEffect(() => {
+    controller.setLanes(lanes);
+  }, [controller, lanes]);
   if (onReorderTask) {
     controller.setOnReorderTask(onReorderTask);
   }
@@ -1499,9 +1525,6 @@ export function useKanbanDrag(
   };
 
   const isLaneHovered = (laneId: string): boolean => {
-    if (droppingState) {
-      return droppingState.targetLaneId === laneId;
-    }
     return controller.isLaneHovered(laneId);
   };
 
@@ -1510,9 +1533,7 @@ export function useKanbanDrag(
   };
 
   const bindLane = (laneId: string): LaneDragBinding => {
-    const isHovered = droppingState
-      ? droppingState.targetLaneId === laneId
-      : slotState.isDragging && slotState.hoveredLaneId === laneId;
+    const isHovered = isLaneHovered(laneId);
     const targetIndex = droppingState
       ? droppingState.targetLaneId === laneId
         ? droppingState.targetIndex

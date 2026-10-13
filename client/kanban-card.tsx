@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useRef } from "react";
-import { View, Text, StyleSheet, Animated } from "react-native";
+import { View, Text, Pressable, StyleSheet, Animated } from "react-native";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanTask } from "../shared/kanban";
@@ -14,6 +14,38 @@ export interface KanbanCardProps {
   theme: PluginTheme;
   layout: { compact: boolean };
   binding: CardDragBinding;
+  onSetCompleted?: (taskId: string, completed: boolean) => void;
+  completionDisabled?: boolean;
+  interactionDisabled?: boolean;
+}
+
+function CompletionIndicator({
+  completed,
+  theme,
+}: {
+  completed: boolean;
+  theme: PluginTheme;
+}) {
+  return (
+    <View
+      style={{
+        width: 18,
+        height: 18,
+        borderWidth: 1,
+        borderRadius: 4,
+        alignItems: "center",
+        justifyContent: "center",
+        borderColor: completed
+          ? theme.colors.accent
+          : theme.colors.foregroundMuted,
+        backgroundColor: completed ? theme.colors.accent : "transparent",
+      }}
+    >
+      {completed && (
+        <Icon name="Check" size={14} color={theme.colors.accentForeground} />
+      )}
+    </View>
+  );
 }
 
 export function KanbanCard({
@@ -22,6 +54,9 @@ export function KanbanCard({
   theme,
   layout,
   binding,
+  onSetCompleted,
+  completionDisabled = false,
+  interactionDisabled = false,
 }: KanbanCardProps) {
   const { t } = useI18n();
   const bindingRef = useRef(binding);
@@ -49,6 +84,16 @@ export function KanbanCard({
           borderRadius: 8,
           padding: layout.compact ? 10 : 12,
           gap: 8,
+          flexDirection: "row",
+          alignItems: "flex-start",
+        },
+        cardBody: {
+          flex: 1,
+          gap: 8,
+        },
+        completionControl: {
+          padding: 2,
+          opacity: completionDisabled ? 0.5 : 1,
         },
         cardHeader: {
           flexDirection: "row",
@@ -103,7 +148,13 @@ export function KanbanCard({
           fontWeight: "500",
         },
       }),
-    [theme, layout.compact, task.subtasks.length, completedSubtasksCount],
+    [
+      theme,
+      layout.compact,
+      task.subtasks.length,
+      completedSubtasksCount,
+      completionDisabled,
+    ],
   );
 
   return (
@@ -115,46 +166,73 @@ export function KanbanCard({
           : undefined
       }
       onLayout={(e) => binding.onLayout?.(e.nativeEvent.layout)}
-      {...binding.cardPanHandlers}
     >
       <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <View
-            style={styles.dragHandle}
-            accessibilityRole="button"
-            accessibilityLabel={t("card.dragHandle")}
-            {...binding.handlePanHandlers}
-          >
-            <Icon
-              name="GripVertical"
-              size={14}
-              color={theme.colors.foregroundMuted}
-            />
+        <Pressable
+          style={styles.completionControl}
+          accessibilityRole="checkbox"
+          accessibilityLabel={t(
+            task.completed ? "card.reopenTask" : "card.completeTask",
+            { title: task.title },
+          )}
+          accessibilityState={{
+            checked: Boolean(task.completed),
+            disabled: completionDisabled || !onSetCompleted,
+          }}
+          disabled={completionDisabled || !onSetCompleted}
+          hitSlop={6}
+          onPress={(event) => {
+            event.stopPropagation();
+            if (!completionDisabled) onSetCompleted?.(task.id, !task.completed);
+          }}
+        >
+          <CompletionIndicator
+            completed={Boolean(task.completed)}
+            theme={theme}
+          />
+        </Pressable>
+        <View
+          style={styles.cardBody}
+          {...(interactionDisabled ? {} : binding.cardPanHandlers)}
+        >
+          <View style={styles.cardHeader}>
+            <View
+              style={styles.dragHandle}
+              accessibilityRole="button"
+              accessibilityLabel={t("card.dragHandle")}
+              {...(interactionDisabled ? {} : binding.handlePanHandlers)}
+            >
+              <Icon
+                name="GripVertical"
+                size={14}
+                color={theme.colors.foregroundMuted}
+              />
+            </View>
+
+            <Text style={styles.title} numberOfLines={2}>
+              {task.title}
+            </Text>
           </View>
 
-          <Text style={styles.title} numberOfLines={2}>
-            {task.title}
-          </Text>
-        </View>
-
-        <View style={styles.badgeRow}>
-          {projectDisplayName && (
-            <View style={styles.projectBadge}>
-              <Text style={styles.projectBadgeText} numberOfLines={1}>
-                {projectDisplayName}
-              </Text>
-            </View>
-          )}
-          {task.subtasks.length > 0 && (
-            <View style={styles.subtaskBadge}>
-              <Text style={styles.subtaskBadgeText}>
-                {t("card.subtasksCount", {
-                  completed: completedSubtasksCount,
-                  total: task.subtasks.length,
-                })}
-              </Text>
-            </View>
-          )}
+          <View style={styles.badgeRow}>
+            {projectDisplayName && (
+              <View style={styles.projectBadge}>
+                <Text style={styles.projectBadgeText} numberOfLines={1}>
+                  {projectDisplayName}
+                </Text>
+              </View>
+            )}
+            {task.subtasks.length > 0 && (
+              <View style={styles.subtaskBadge}>
+                <Text style={styles.subtaskBadgeText}>
+                  {t("card.subtasksCount", {
+                    completed: completedSubtasksCount,
+                    total: task.subtasks.length,
+                  })}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
       </View>
     </View>
@@ -266,6 +344,10 @@ export function KanbanCardPreview({
   return (
     <View style={styles.previewCard} pointerEvents="none">
       <View style={styles.cardHeader}>
+        <CompletionIndicator
+          completed={Boolean(task.completed)}
+          theme={theme}
+        />
         <View style={styles.dragHandle}>
           <Icon name="GripVertical" size={14} color={theme.colors.accent} />
         </View>

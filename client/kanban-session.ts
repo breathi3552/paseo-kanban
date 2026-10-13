@@ -10,6 +10,7 @@ import {
   updateLane,
   deleteLane,
   reorderTask,
+  setTaskCompleted,
 } from "../shared/kanban.ts";
 
 export type SessionResult =
@@ -39,6 +40,8 @@ export const sessionMessages = {
     laneDeleteOnlyInEdit: "仅在编辑模式下可删除泳道",
     laneDeleteFailed: "删除失败：数据可能已被其他会话修改或删除未生效。",
     reorderConflict: "保存失败或版本冲突，未修改数据。请刷新最新数据后重试。",
+    completionConflict:
+      "完成状态保存失败或版本冲突，未修改数据。请核实最新状态后重试。",
   },
   en: {
     subtaskEmpty: "Subtask content cannot be empty",
@@ -65,6 +68,8 @@ export const sessionMessages = {
       "Delete failed: Data may have been modified by another session or delete was not applied.",
     reorderConflict:
       "Save failed or version conflict, data was not modified. Please refresh and try again.",
+    completionConflict:
+      "Completion change failed or version conflict, data was not modified. Please check the latest state and try again.",
   },
 } as const;
 
@@ -135,6 +140,8 @@ export interface LaneSessionSnapshot {
   readonly id?: string;
   readonly title: string;
   readonly lanesCount: number;
+  readonly ordinaryLanesCount: number;
+  readonly isCompletionLane: boolean;
   readonly tasksInLaneCount: number;
   readonly canDelete: boolean;
   readonly isSaving: boolean;
@@ -228,7 +235,7 @@ export function openTaskSession(
         laneId,
         projectId,
         subtasks: [...subtasks],
-        lanes: baseBoard.lanes,
+        lanes: baseBoard.lanes.filter((lane) => !lane.isCompletionLane),
         isSaving,
         error,
       };
@@ -505,10 +512,18 @@ export function openLaneSession(
       ? (baseBoard.lanes.find((l) => l.id === laneId) ?? null)
       : null;
   const lanesCount = baseBoard.lanes.length;
+  const ordinaryLanesCount = baseBoard.lanes.filter(
+    (lane) => !lane.isCompletionLane,
+  ).length;
   const tasksInLaneCount = lane
-    ? baseBoard.tasks.filter((t) => t.laneId === lane.id).length
+    ? baseBoard.tasks.filter((t) => !t.completed && t.laneId === lane.id).length
     : 0;
-  const canDelete = Boolean(lane && lanesCount > 1 && tasksInLaneCount === 0);
+  const canDelete = Boolean(
+    lane &&
+    !lane.isCompletionLane &&
+    ordinaryLanesCount > 1 &&
+    tasksInLaneCount === 0,
+  );
 
   const initialValues: LaneSessionInitialValues = {
     id: lane?.id,
@@ -528,6 +543,8 @@ export function openLaneSession(
         id: initialValues.id,
         title,
         lanesCount,
+        ordinaryLanesCount,
+        isCompletionLane: lane?.isCompletionLane ?? false,
         tasksInLaneCount,
         canDelete,
         isSaving,
@@ -689,12 +706,50 @@ export interface ReorderTaskOperationOptions {
   language?: SessionLanguage;
 }
 
-export type ReorderOperationResult =
+export type TaskOperationResult =
   { success: true; unchanged?: boolean } | { success: false; error: string };
+
+export interface TaskCompletionOperationOptions {
+  baseBoard: KanbanBoard;
+  baseRevision: string;
+  taskId: string;
+  completed: boolean;
+  save: SaveFn;
+  language?: SessionLanguage;
+}
+
+export async function executeTaskCompletion(
+  options: TaskCompletionOperationOptions,
+): Promise<TaskOperationResult> {
+  const {
+    baseBoard,
+    baseRevision,
+    taskId,
+    completed,
+    save,
+    language = "zh",
+  } = options;
+  try {
+    const nextBoard = setTaskCompleted(baseBoard, taskId, completed);
+    if (nextBoard === baseBoard) return { success: true, unchanged: true };
+    if (!(await save(nextBoard, baseRevision))) {
+      return {
+        success: false,
+        error: sessionMessages[language].completionConflict,
+      };
+    }
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
 
 export async function executeTaskReorder(
   options: ReorderTaskOperationOptions,
-): Promise<ReorderOperationResult> {
+): Promise<TaskOperationResult> {
   const {
     baseBoard,
     baseRevision,

@@ -2,9 +2,9 @@ import { defineSettings } from "@getpaseo/plugin";
 import { z } from "zod";
 
 export const DEFAULT_LANES = [
-  { id: "to-plan", title: "待规划" },
-  { id: "in-progress", title: "执行中" },
-  { id: "done", title: "已完成" },
+  { id: "to-plan", title: "待规划", isCompletionLane: false },
+  { id: "in-progress", title: "执行中", isCompletionLane: false },
+  { id: "done", title: "已完成", isCompletionLane: true },
 ] as const;
 
 export const SubtaskSchema = z.object({
@@ -20,69 +20,135 @@ export const TaskSchema = z.object({
   laneId: z.string().trim().min(1, "Task lane ID cannot be empty"),
   projectId: z.string().trim().min(1).nullable().default(null),
   subtasks: z.array(SubtaskSchema).default([]),
+  completed: z.boolean().default(false),
+  completedAt: z.number().int().nonnegative().nullable().default(null),
 });
 
 export const LaneSchema = z.object({
   id: z.string().trim().min(1, "Lane ID cannot be empty"),
   title: z.string().trim().min(1, "Lane title cannot be empty"),
+  isCompletionLane: z.boolean().default(false),
 });
 
-export const KanbanBoardSchema = z
-  .object({
-    lanes: z
-      .array(LaneSchema)
-      .min(1, "Kanban board must have at least one lane")
-      .default([...DEFAULT_LANES]),
-    tasks: z.array(TaskSchema).default([]),
-  })
-  .superRefine((board, ctx) => {
-    const laneIds = new Set<string>();
-    for (let i = 0; i < board.lanes.length; i++) {
-      const lane = board.lanes[i];
-      if (laneIds.has(lane.id)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Duplicate lane ID: "${lane.id}"`,
-          path: ["lanes", i, "id"],
-        });
-      }
-      laneIds.add(lane.id);
+const BoardShapeSchema = z.object({
+  lanes: z
+    .array(LaneSchema)
+    .min(1, "Kanban board must have at least one lane")
+    .default([...DEFAULT_LANES]),
+  tasks: z.array(TaskSchema).default([]),
+});
+
+function validateBoardReferences(
+  board: {
+    lanes: { id: string }[];
+    tasks: {
+      id: string;
+      laneId: string;
+      completed?: boolean;
+      subtasks: { id: string }[];
+    }[];
+  },
+  ctx: z.RefinementCtx,
+) {
+  const laneIds = new Set<string>();
+  for (let i = 0; i < board.lanes.length; i++) {
+    const lane = board.lanes[i];
+    if (laneIds.has(lane.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Duplicate lane ID: "${lane.id}"`,
+        path: ["lanes", i, "id"],
+      });
+    }
+    laneIds.add(lane.id);
+  }
+
+  const taskIds = new Set<string>();
+  for (let i = 0; i < board.tasks.length; i++) {
+    const task = board.tasks[i];
+    if (taskIds.has(task.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Duplicate task ID: "${task.id}"`,
+        path: ["tasks", i, "id"],
+      });
+    }
+    taskIds.add(task.id);
+
+    if (!task.completed && !laneIds.has(task.laneId)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Task "${task.id}" references non-existent lane "${task.laneId}"`,
+        path: ["tasks", i, "laneId"],
+      });
     }
 
-    const taskIds = new Set<string>();
-    for (let i = 0; i < board.tasks.length; i++) {
-      const task = board.tasks[i];
-      if (taskIds.has(task.id)) {
+    const subtaskIds = new Set<string>();
+    for (let j = 0; j < task.subtasks.length; j++) {
+      const subtask = task.subtasks[j];
+      if (subtaskIds.has(subtask.id)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `Duplicate task ID: "${task.id}"`,
-          path: ["tasks", i, "id"],
+          message: `Duplicate subtask ID "${subtask.id}" in task "${task.id}"`,
+          path: ["tasks", i, "subtasks", j, "id"],
         });
       }
-      taskIds.add(task.id);
-
-      if (!laneIds.has(task.laneId)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Task "${task.id}" references non-existent lane "${task.laneId}"`,
-          path: ["tasks", i, "laneId"],
-        });
-      }
-
-      const subtaskIds = new Set<string>();
-      for (let j = 0; j < task.subtasks.length; j++) {
-        const subtask = task.subtasks[j];
-        if (subtaskIds.has(subtask.id)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `Duplicate subtask ID "${subtask.id}" in task "${task.id}"`,
-            path: ["tasks", i, "subtasks", j, "id"],
-          });
-        }
-        subtaskIds.add(subtask.id);
-      }
+      subtaskIds.add(subtask.id);
     }
-  });
+  }
+}
+
+export const KanbanBoardSchema = BoardShapeSchema.superRefine((board, ctx) => {
+  validateBoardReferences(board, ctx);
+  const completionLanes = board.lanes.filter((lane) => lane.isCompletionLane);
+  if (completionLanes.length !== 1) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Kanban board must have exactly one completion lane",
+      path: ["lanes"],
+    });
+  }
+  if (board.lanes.every((lane) => lane.isCompletionLane)) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Kanban board must have at least one ordinary lane",
+      path: ["lanes"],
+    });
+  }
+  if (!board.lanes.at(-1)?.isCompletionLane) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Completion lane must be rightmost",
+      path: ["lanes"],
+    });
+  }
+  for (const [i, task] of board.tasks.entries()) {
+    if (completionLanes.some((lane) => lane.id === task.laneId)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Tasks cannot belong to the completion lane",
+        path: ["tasks", i, "laneId"],
+      });
+    }
+    if (!task.completed && task.completedAt !== null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Incomplete tasks cannot have a completion time",
+        path: ["tasks", i, "completedAt"],
+      });
+    }
+  }
+});
+
+const LegacyBoardSchema = BoardShapeSchema.extend({
+  lanes: z
+    .array(LaneSchema.omit({ isCompletionLane: true }))
+    .min(1)
+    .default(DEFAULT_LANES.map(({ id, title }) => ({ id, title }))),
+  tasks: z
+    .array(TaskSchema.omit({ completed: true, completedAt: true }))
+    .default([]),
+}).superRefine(validateBoardReferences);
 
 export type KanbanSubtask = z.infer<typeof SubtaskSchema>;
 export type KanbanTask = z.infer<typeof TaskSchema>;
@@ -123,11 +189,57 @@ export function filterTasksByProject(
   return tasks.filter((t) => isTaskMatchingFilter(t, filter));
 }
 
+export function getLaneTasks(
+  board: KanbanBoard,
+  laneId: string,
+  filter?: ProjectFilter | string | null,
+): KanbanTask[] {
+  const lane = board.lanes.find((candidate) => candidate.id === laneId);
+  if (!lane) return [];
+  const tasks = filterTasksByProject(
+    board.tasks.filter((task) =>
+      lane.isCompletionLane
+        ? task.completed
+        : !task.completed && task.laneId === laneId,
+    ),
+    filter,
+  );
+  return lane.isCompletionLane
+    ? tasks.sort((a, b) => (b.completedAt ?? -1) - (a.completedAt ?? -1))
+    : tasks;
+}
+
+function migrateKanbanBoard(values: unknown, fromVersion: number): KanbanBoard {
+  if (fromVersion >= 2) return KanbanBoardSchema.parse(values);
+  const legacy = LegacyBoardSchema.parse(values);
+  const ordinaryLanes = legacy.lanes.filter((lane) => lane.id !== "done");
+  if (ordinaryLanes.length === 0)
+    ordinaryLanes.push({ id: "to-plan", title: "待规划" });
+  const completionLane = legacy.lanes.find((lane) => lane.id === "done") ?? {
+    id: "done",
+    title: "已完成",
+  };
+  const fallbackLaneId = ordinaryLanes[ordinaryLanes.length - 1].id;
+  return KanbanBoardSchema.parse({
+    lanes: [
+      ...ordinaryLanes.map((lane) => ({ ...lane, isCompletionLane: false })),
+      { ...completionLane, isCompletionLane: true },
+    ],
+    tasks: legacy.tasks.map((task) => ({
+      ...task,
+      laneId: task.laneId === "done" ? fallbackLaneId : task.laneId,
+      completed: task.laneId === "done",
+      completedAt: null,
+    })),
+  });
+}
+
 export const kanbanSettings = defineSettings({
   id: "kanban",
   scope: "host",
-  version: 1,
+  version: 2,
   schema: KanbanBoardSchema,
+  migrate: migrateKanbanBoard,
 });
 
 // ---------------------------------------------------------------------------
@@ -150,7 +262,11 @@ export function addLane(
     throw new Error(`Lane with ID "${trimmedId}" already exists`);
   }
 
-  const nextLanes = [...board.lanes, { id: trimmedId, title: trimmedTitle }];
+  const nextLanes = [
+    ...board.lanes.slice(0, -1),
+    { id: trimmedId, title: trimmedTitle, isCompletionLane: false },
+    board.lanes[board.lanes.length - 1],
+  ];
   return KanbanBoardSchema.parse({
     lanes: nextLanes,
     tasks: board.tasks,
@@ -192,11 +308,14 @@ export function deleteLane(board: KanbanBoard, laneId: string): KanbanBoard {
     throw new Error(`Lane "${laneId}" not found`);
   }
 
-  if (board.lanes.length <= 1) {
-    throw new Error("Cannot delete the last remaining lane");
+  if (board.lanes[laneIndex].isCompletionLane) {
+    throw new Error("Cannot delete the completion lane");
+  }
+  if (board.lanes.filter((lane) => !lane.isCompletionLane).length <= 1) {
+    throw new Error("Cannot delete the last remaining ordinary lane");
   }
 
-  const hasTasks = board.tasks.some((t) => t.laneId === laneId);
+  const hasTasks = board.tasks.some((t) => !t.completed && t.laneId === laneId);
   if (hasTasks) {
     throw new Error(
       `Cannot delete lane "${laneId}" because it contains tasks. Move or delete tasks first.`,
@@ -235,6 +354,11 @@ export function addTask(
   if (!board.lanes.some((l) => l.id === task.laneId)) {
     throw new Error(`Lane "${task.laneId}" does not exist`);
   }
+  if (
+    board.lanes.some((lane) => lane.id === task.laneId && lane.isCompletionLane)
+  ) {
+    throw new Error("Cannot create tasks in the completion lane");
+  }
 
   const newTask: KanbanTask = {
     id: trimmedId,
@@ -247,6 +371,8 @@ export function addTask(
       title: s.title.trim(),
       completed: s.completed ?? false,
     })),
+    completed: false,
+    completedAt: null,
   };
 
   return KanbanBoardSchema.parse({
@@ -270,11 +396,20 @@ export function updateTask(
   if (patch.title !== undefined && !patch.title.trim()) {
     throw new Error("Task title cannot be empty");
   }
+  const currentTask = board.tasks.find((task) => task.id === taskId);
   if (
     patch.laneId !== undefined &&
-    !board.lanes.some((l) => l.id === patch.laneId)
+    !board.lanes.some((l) => l.id === patch.laneId) &&
+    !(currentTask?.completed && patch.laneId === currentTask.laneId)
   ) {
     throw new Error(`Target lane "${patch.laneId}" does not exist`);
+  }
+  if (
+    board.lanes.some(
+      (lane) => lane.id === patch.laneId && lane.isCompletionLane,
+    )
+  ) {
+    throw new Error("Cannot assign tasks to the completion lane");
   }
 
   const nextTasks = board.tasks.map((task) => {
@@ -318,6 +453,33 @@ export function deleteTask(board: KanbanBoard, taskId: string): KanbanBoard {
   });
 }
 
+export function setTaskCompleted(
+  board: KanbanBoard,
+  taskId: string,
+  completed: boolean,
+  now: number = Date.now(),
+): KanbanBoard {
+  const task = board.tasks.find((candidate) => candidate.id === taskId);
+  if (!task) throw new Error(`Task with ID "${taskId}" not found`);
+  if (task.completed === completed) return board;
+  if (!completed) {
+    const owner =
+      board.lanes.find(
+        (lane) => !lane.isCompletionLane && lane.id === task.laneId,
+      ) ?? board.lanes.filter((lane) => !lane.isCompletionLane).at(-1);
+    if (!owner) throw new Error("No ordinary lane available");
+    return reorderTask(board, taskId, owner.id);
+  }
+  return KanbanBoardSchema.parse({
+    ...board,
+    tasks: board.tasks.map((candidate) =>
+      candidate.id === taskId
+        ? { ...candidate, completed: true, completedAt: now }
+        : candidate,
+    ),
+  });
+}
+
 export function reorderTask(
   board: KanbanBoard,
   taskId: string,
@@ -343,10 +505,19 @@ export function reorderTask(
     }
   }
 
-  const isSameLane = taskToMove.laneId === targetLaneId;
+  if (
+    board.lanes.some(
+      (lane) => lane.id === targetLaneId && lane.isCompletionLane,
+    )
+  ) {
+    return setTaskCompleted(board, taskId, true);
+  }
+
+  const isSameLane =
+    !taskToMove.completed && taskToMove.laneId === targetLaneId;
   const remainingTasks = board.tasks.filter((t) => t.id !== taskId);
   const targetLaneTasks = remainingTasks.filter(
-    (t) => t.laneId === targetLaneId,
+    (t) => !t.completed && t.laneId === targetLaneId,
   );
 
   // Determine visibility predicate
@@ -381,6 +552,8 @@ export function reorderTask(
   const updatedTask: KanbanTask = {
     ...taskToMove,
     laneId: targetLaneId,
+    completed: false,
+    completedAt: null,
   };
 
   let insertionGlobalIndex: number;
@@ -391,7 +564,7 @@ export function reorderTask(
     for (let i = targetLaneIdx - 1; i >= 0; i--) {
       const prevLaneId = board.lanes[i].id;
       const prevLaneTasks = remainingTasks.filter(
-        (t) => t.laneId === prevLaneId,
+        (t) => !t.completed && t.laneId === prevLaneId,
       );
       if (prevLaneTasks.length > 0) {
         insertAfterTask = prevLaneTasks[prevLaneTasks.length - 1];
@@ -405,7 +578,7 @@ export function reorderTask(
       for (let i = targetLaneIdx + 1; i < board.lanes.length; i++) {
         const nextLaneId = board.lanes[i].id;
         const nextLaneTasks = remainingTasks.filter(
-          (t) => t.laneId === nextLaneId,
+          (t) => !t.completed && t.laneId === nextLaneId,
         );
         if (nextLaneTasks.length > 0) {
           insertBeforeTask = nextLaneTasks[0];
@@ -473,7 +646,10 @@ export function reorderTask(
     nextTasks.length === board.tasks.length &&
     nextTasks.every(
       (t, idx) =>
-        t.id === board.tasks[idx].id && t.laneId === board.tasks[idx].laneId,
+        t.id === board.tasks[idx].id &&
+        t.laneId === board.tasks[idx].laneId &&
+        t.completed === board.tasks[idx].completed &&
+        t.completedAt === board.tasks[idx].completedAt,
     )
   ) {
     return board;

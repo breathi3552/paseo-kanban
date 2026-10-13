@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useSettings } from "@getpaseo/plugin/client";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { kanbanSettings, filterTasksByProject } from "../shared/kanban";
+import { kanbanSettings, getLaneTasks } from "../shared/kanban";
 import { useProjects } from "./use-projects";
 import { TaskModal } from "./task-modal";
 import { LaneModal } from "./lane-modal";
@@ -21,16 +21,26 @@ import {
   openTaskSession,
   openLaneSession,
   executeTaskReorder,
+  executeTaskCompletion,
   type TaskEditSession,
   type LaneEditSession,
 } from "./kanban-session";
-import { useI18n } from "./i18n";
+import { useI18n, I18nLanguageContext } from "./i18n";
 
 interface KanbanBoardProps extends PluginSurfaceProps {
   initialProjectId?: string | null;
 }
 
 export function KanbanBoardView(props: KanbanBoardProps) {
+  const { language } = useI18n(props);
+  return (
+    <I18nLanguageContext.Provider value={language}>
+      <KanbanBoardContent {...props} />
+    </I18nLanguageContext.Provider>
+  );
+}
+
+function KanbanBoardContent(props: KanbanBoardProps) {
   const { theme } = props;
   const [panelWidth, setPanelWidth] = useState<number | null>(null);
   const compact =
@@ -43,7 +53,7 @@ export function KanbanBoardView(props: KanbanBoardProps) {
     const { width } = event.nativeEvent.layout;
     if (width > 0) setPanelWidth(width);
   };
-  const { t, language } = useI18n(props);
+  const { t, language } = useI18n();
   const settings = useSettings(kanbanSettings);
   const {
     projects,
@@ -58,7 +68,11 @@ export function KanbanBoardView(props: KanbanBoardProps) {
     useState<TaskEditSession | null>(null);
   const [activeLaneSession, setActiveLaneSession] =
     useState<LaneEditSession | null>(null);
-  const [reorderError, setReorderError] = useState<string | null>(null);
+  const [taskOperationError, setTaskOperationError] = useState<string | null>(
+    null,
+  );
+  const [completionPending, setCompletionPending] = useState(false);
+  const completionPendingRef = useRef(false);
 
   const selectableProjects = useMemo(() => {
     const missingIds = new Set([props.initialProjectId, selectedProjectId]);
@@ -78,18 +92,12 @@ export function KanbanBoardView(props: KanbanBoardProps) {
   const board = isReady ? settings.values : null;
   const revision = isReady ? settings.revision : "";
 
-  // Filter tasks based on selected project
-  const filteredTasks = useMemo(() => {
-    if (!board) return [];
-    return filterTasksByProject(board.tasks, selectedProjectId);
-  }, [board, selectedProjectId]);
-
   const handleReorderTask = async (
     taskId: string,
     targetLaneId: string,
     targetIndex: number,
   ) => {
-    if (!board) return;
+    if (!board || completionPendingRef.current) return;
     const result = await executeTaskReorder({
       baseBoard: board,
       baseRevision: revision,
@@ -101,9 +109,9 @@ export function KanbanBoardView(props: KanbanBoardProps) {
       language,
     });
     if (!result.success) {
-      setReorderError(result.error);
+      setTaskOperationError(result.error);
     } else {
-      setReorderError(null);
+      setTaskOperationError(null);
     }
   };
 
@@ -122,8 +130,28 @@ export function KanbanBoardView(props: KanbanBoardProps) {
     getTaskPreview,
   });
 
+  const handleSetCompleted = async (taskId: string, completed: boolean) => {
+    if (!board || completionPendingRef.current || drag.isDragLocked()) return;
+    completionPendingRef.current = true;
+    setCompletionPending(true);
+    try {
+      const result = await executeTaskCompletion({
+        baseBoard: board,
+        baseRevision: revision,
+        taskId,
+        completed,
+        save: (next, expectedRevision) => settings.save(next, expectedRevision),
+        language,
+      });
+      setTaskOperationError(result.success ? null : result.error);
+    } finally {
+      completionPendingRef.current = false;
+      setCompletionPending(false);
+    }
+  };
+
   const openNewTask = (defaultLaneId?: string) => {
-    if (drag.isDragLocked() || !board) return;
+    if (completionPendingRef.current || drag.isDragLocked() || !board) return;
     setActiveTaskSession(
       openTaskSession({
         mode: "create",
@@ -141,7 +169,7 @@ export function KanbanBoardView(props: KanbanBoardProps) {
   };
 
   const openEditTask = (taskId: string) => {
-    if (drag.isDragLocked() || !board) return;
+    if (completionPendingRef.current || drag.isDragLocked() || !board) return;
     setActiveTaskSession(
       openTaskSession({
         mode: "edit",
@@ -155,7 +183,7 @@ export function KanbanBoardView(props: KanbanBoardProps) {
   };
 
   const openNewLane = () => {
-    if (drag.isDragLocked() || !board) return;
+    if (completionPendingRef.current || drag.isDragLocked() || !board) return;
     setActiveLaneSession(
       openLaneSession({
         mode: "create",
@@ -168,7 +196,7 @@ export function KanbanBoardView(props: KanbanBoardProps) {
   };
 
   const openEditLane = (laneId: string) => {
-    if (drag.isDragLocked() || !board) return;
+    if (completionPendingRef.current || drag.isDragLocked() || !board) return;
     setActiveLaneSession(
       openLaneSession({
         mode: "edit",
@@ -544,16 +572,16 @@ export function KanbanBoardView(props: KanbanBoardProps) {
       </View>
 
       {/* Conflict / Save Error Notification */}
-      {(settings.saveError || reorderError) && (
+      {(settings.saveError || taskOperationError) && (
         <View style={styles.conflictBanner}>
           <Text style={styles.conflictText}>
-            {reorderError
-              ? t("kanban.saveFailed", { error: reorderError })
+            {taskOperationError
+              ? t("kanban.saveFailed", { error: taskOperationError })
               : t("kanban.conflictError", { error: settings.saveError })}
           </Text>
           <Pressable
             onPress={() => {
-              setReorderError(null);
+              setTaskOperationError(null);
               settings.reload();
             }}
             style={styles.conflictAction}
@@ -579,7 +607,7 @@ export function KanbanBoardView(props: KanbanBoardProps) {
           scrollEventThrottle={16}
         >
           {board.lanes.map((lane) => {
-            const laneTasks = filteredTasks.filter((t) => t.laneId === lane.id);
+            const laneTasks = getLaneTasks(board, lane.id, selectedProjectId);
             return (
               <KanbanLaneView
                 key={lane.id}
@@ -593,6 +621,8 @@ export function KanbanBoardView(props: KanbanBoardProps) {
                 onAddTask={(laneId) => openNewTask(laneId)}
                 onManageLane={(laneId) => openEditLane(laneId)}
                 onSelectTask={(task) => openEditTask(task.id)}
+                onSetCompleted={handleSetCompleted}
+                completionPending={completionPending}
               />
             );
           })}
