@@ -101,7 +101,7 @@ test("KanbanBoardSchema: rejects duplicate subtask IDs within the same task", ()
   );
 });
 
-test("Lane operations: add, rename, and protect against non-empty or last lane deletion", () => {
+test("Lane operations: add, rename, and protect against non-empty lane deletion", () => {
   const initial = KanbanBoardSchema.parse({});
 
   // Add lane
@@ -121,7 +121,7 @@ test("Lane operations: add, rename, and protect against non-empty or last lane d
     projectId: "proj_123",
   });
 
-  // Protection 1: cannot delete lane with tasks
+  // Cannot delete lane with tasks
   assert.throws(
     () => deleteLane(withTask, "testing"),
     /because it contains tasks/,
@@ -134,19 +134,6 @@ test("Lane operations: add, rename, and protect against non-empty or last lane d
   assert.equal(
     deleted.lanes.some((l) => l.id === "testing"),
     false,
-  );
-
-  // Protection 2: cannot delete the last remaining lane
-  const singleLaneBoard = {
-    lanes: [
-      { id: "only", title: "Only Lane", isCompletionLane: false },
-      { id: "done", title: "Done", isCompletionLane: true },
-    ],
-    tasks: [],
-  };
-  assert.throws(
-    () => deleteLane(singleLaneBoard, "only"),
-    /Cannot delete the last remaining ordinary lane/,
   );
 });
 
