@@ -2,7 +2,7 @@
 
 ## 状态
 
-已接受。需求提出者已确认完整共识，实现遵循 [完成泳道规格](../specs/completion-lane.md)。
+已接受。需求提出者已确认完整共识，实现遵循 [完成泳道规格 (#10)](https://github.com/breathi3552/paseo-kanban/issues/10)。
 
 ## 背景
 
