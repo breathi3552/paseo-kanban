@@ -106,3 +106,15 @@ gh workflow run release.yml --ref v0.1.3
 5. **拖拽手势交互**：鼠标位移 ≥5px 触发拖拽，<5px 判定为轻点；触屏长按 220ms 抓起，快速滑动让渡原生滚动；支持跨泳道动态避让与平滑落位。
 6. **多语言与热重载**：切换系统语言（中/英）界面即时响应；执行 `paseo plugin reload paseo-kanban` 热重载生效，无需重启守护进程。
 7. **任务完成与恢复**：卡片左侧勾选或拖入完成泳道即完成，按时间倒序展示；取消勾选恢复至原归属泳道末尾，拖出普通泳道按实际落点恢复。
+
+## 4. 官方市场素材与验收
+
+首次收录使用已发布的 `paseo-kanban@0.1.3`，显示名称为 `Kanban`。展示名称、图标和截图通过官方 registry record 的 `listing` 提供，不修改旧 tag、npm 包或 manifest 的 Paseo `>=0.8.0` 要求。
+
+`assets/marketplace/` 中的 `icon.png` 为 512×512 无文字看板图标；`board-0.1.3.png`、`task-editor-0.1.3.png`、`workspace-split-0.1.3.png` 按该顺序展示全景、任务编辑与 Terminal 分屏。三张截图来自 Windows 上的 Paseo Desktop/daemon 0.11.2，运行 npm `0.1.3`，仅使用独立测试宿主中的虚构项目与任务。素材 URL 必须使用完整 commit SHA 固定，不使用浮动分支链接；素材不纳入 npm 发布包。
+
+按官方 submission 模板申请收录，引用历史审核 [#73](https://github.com/getpaseo/plugins/issues/73) 与 [v0.1.3 验证证据](https://github.com/breathi3552/paseo-kanban/releases/tag/v0.1.3)，在旧记录补新申请链接。市场介绍以该版本 npm artifact 的 `OVERVIEW.md` 为准，当前分支文档继续描述当前功能。
+
+[Issue #13](https://github.com/breathi3552/paseo-kanban/issues/13) 仅在官方市场、公开 index/detail 可见，且独立宿主移除预装 npm 版本、通过获批 registry ID 安装后完成桌面验收时关闭。测试宿主与数据目录独立，不重启开发宿主、不替换开发插件、不读取或迁移真实看板数据；独立目录不提供插件安全沙箱。
+
+验收按第 3 节核对 `0.1.3` 的真实能力，排除后来新增的完成泳道保护、任务完成与恢复；本次仅覆盖桌面环境，不能据此宣称已验证所有 `>=0.8.0` 宿主。
