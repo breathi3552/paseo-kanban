@@ -8,7 +8,8 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 
 ## Features
 
-- **Flexible Swimlanes**: Three initial lanes that you can rename, with support for adding and deleting custom lanes.
+- **Flexible Swimlanes**: Two initial ordinary lanes and one completion lane. Rename any lane, add ordinary lanes, and keep the completion lane fixed on the right.
+- **Task Completion**: Check the box on the left of a card or drag it into the completion lane. Completed tasks retain their ordinary lane and appear newest first. Uncheck to return to that lane's end; if it was deleted, use the rightmost ordinary lane. Drag out to reopen at the chosen position. Task completion is independent of subtasks.
 - **Rich Task Cards**:
   - Task title and multi-line description.
   - Subtasks checklist with completion toggles and live progress tracking.

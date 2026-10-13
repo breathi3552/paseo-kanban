@@ -107,11 +107,11 @@ test("Lane operations: add, rename, and protect against non-empty or last lane d
   // Add lane
   const withTesting = addLane(initial, { id: "testing", title: "测试中" });
   assert.equal(withTesting.lanes.length, 4);
-  assert.equal(withTesting.lanes[3].id, "testing");
+  assert.equal(withTesting.lanes[2].id, "testing");
 
   // Rename lane
   const renamed = updateLane(withTesting, "testing", { title: "QA验证" });
-  assert.equal(renamed.lanes[3].title, "QA验证");
+  assert.equal(renamed.lanes[2].title, "QA验证");
 
   // Add task to testing lane
   const withTask = addTask(renamed, {
@@ -128,7 +128,7 @@ test("Lane operations: add, rename, and protect against non-empty or last lane d
   );
 
   // Move task away, then delete succeeds
-  const moved = updateTask(withTask, "task-1", { laneId: "done" });
+  const moved = updateTask(withTask, "task-1", { laneId: "in-progress" });
   const deleted = deleteLane(moved, "testing");
   assert.equal(deleted.lanes.length, 3);
   assert.equal(
@@ -138,12 +138,15 @@ test("Lane operations: add, rename, and protect against non-empty or last lane d
 
   // Protection 2: cannot delete the last remaining lane
   const singleLaneBoard = {
-    lanes: [{ id: "only", title: "Only Lane" }],
+    lanes: [
+      { id: "only", title: "Only Lane", isCompletionLane: false },
+      { id: "done", title: "Done", isCompletionLane: true },
+    ],
     tasks: [],
   };
   assert.throws(
     () => deleteLane(singleLaneBoard, "only"),
-    /Cannot delete the last remaining lane/,
+    /Cannot delete the last remaining ordinary lane/,
   );
 });
 
@@ -249,10 +252,15 @@ test("Task reorder operations: intra-lane, cross-lane, clamping, and visible-rel
   );
 
   // 目标泳道为空时按泳道顺序插入全量数组
-  const movedToEmptyLane = reorderTask(b4, "t1", "done", 0);
+  const movedToEmptyLane = reorderTask(
+    addLane(b4, { id: "empty", title: "Empty" }),
+    "t1",
+    "empty",
+    0,
+  );
   assert.deepEqual(
     movedToEmptyLane.tasks.map((t) => `${t.id}:${t.laneId}`),
-    ["t2:to-plan", "t3:to-plan", "t4:in-progress", "t1:done"],
+    ["t2:to-plan", "t3:to-plan", "t4:in-progress", "t1:empty"],
   );
 
   // 4. Clamping: negative index clamps to 0, huge index clamps to end

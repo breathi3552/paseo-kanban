@@ -198,11 +198,13 @@ export function LaneModal({
         {session.mode === "edit" && !canDelete && (
           <View style={styles.warningBanner}>
             <Text style={styles.warningText}>
-              {snapshot.lanesCount <= 1
-                ? t("laneModal.cannotDeleteLast")
-                : t("laneModal.cannotDeleteHasTasks", {
-                    count: snapshot.tasksInLaneCount,
-                  })}
+              {snapshot.isCompletionLane
+                ? t("laneModal.cannotDeleteCompletion")
+                : snapshot.ordinaryLanesCount <= 1
+                  ? t("laneModal.cannotDeleteLast")
+                  : t("laneModal.cannotDeleteHasTasks", {
+                      count: snapshot.tasksInLaneCount,
+                    })}
             </Text>
           </View>
         )}

@@ -72,7 +72,10 @@ function createHost({
   const settingsListeners = new Set();
   let revision = 1;
   let values = {
-    lanes: [{ id: "todo", title: "Todo" }],
+    lanes: [
+      { id: "todo", title: "Todo", isCompletionLane: false },
+      { id: "done", title: "Finished", isCompletionLane: true },
+    ],
     tasks: ["a", "b", null].map((project) => ({
       id: `task-${project ?? "unassigned"}`,
       title: `Task ${project?.toUpperCase() ?? "unassigned"}`,

@@ -21,6 +21,16 @@ const KanbanDragOverlay = loadClientComponent(
   "KanbanDragOverlay",
 );
 
+function cardBodyProps(node) {
+  if (node?.props?.onPanResponderGrant) return node.props;
+  for (const child of node?.children ?? []) {
+    if (typeof child !== "object" || child === null) continue;
+    const found = cardBodyProps(child);
+    if (found) return found;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // 1. 卡片重渲染保留几何，真实卸载恰好注销几何
 // ---------------------------------------------------------------------------
@@ -408,6 +418,7 @@ test("board renders the slot against the remaining cards, not the dragged card",
     },
     isLaneHovered: () => true,
     isTaskDragging: (id) => id === "1",
+    isDragLocked: () => false,
     bindLane: (_laneId) => ({
       isHovered: true,
       targetIndex: drag.feedback.targetIndex,
@@ -437,6 +448,7 @@ test("board renders the slot against the remaining cards, not the dragged card",
       },
       "../shared/kanban": {
         filterTasksByProject: (tasks) => tasks,
+        getLaneTasks: (board) => board.tasks,
         kanbanSettings: {},
       },
       "./use-projects": {
@@ -578,7 +590,10 @@ test("long press grabs the card immediately, seamlessly continues dragging on mo
   const tree = root.toJSON();
 
   // 1. 按下卡片手势
-  tree.props.onPanResponderGrant({ nativeEvent: {} }, { x0: 120, y0: 240 });
+  cardBodyProps(tree).onPanResponderGrant(
+    { nativeEvent: {} },
+    { x0: 120, y0: 240 },
+  );
 
   // 鼠标长按阈值为 260ms；触屏长按在控制器测试中单独覆盖 220ms。
   act(() => {
@@ -593,7 +608,7 @@ test("long press grabs the card immediately, seamlessly continues dragging on mo
   assert.equal(controller.getFeedback().draggingTaskId, "c1");
 
   // 3. 抓起后移动指针: 无缝延续拖拽
-  tree.props.onPanResponderMove(
+  cardBodyProps(tree).onPanResponderMove(
     { nativeEvent: {} },
     { dx: 10, dy: 20, moveX: 130, moveY: 260 },
   );
@@ -602,7 +617,7 @@ test("long press grabs the card immediately, seamlessly continues dragging on mo
 
   // 4. 释放手势
   await act(async () => {
-    await tree.props.onPanResponderRelease(
+    await cardBodyProps(tree).onPanResponderRelease(
       { nativeEvent: {} },
       { moveX: 130, moveY: 260 },
     );
@@ -681,22 +696,22 @@ test("stationary left click opens task details without requiring a mouse move", 
   const event = { nativeEvent: { pageX: 120, pageY: 240, button: 0 } };
   const gesture = { x0: 120, y0: 240, moveX: 0, moveY: 0, dx: 0, dy: 0 };
 
-  tree.props.onPanResponderGrant(event, gesture);
+  cardBodyProps(tree).onPanResponderGrant(event, gesture);
   await act(async () => {
-    await tree.props.onPanResponderRelease(event, gesture);
+    await cardBodyProps(tree).onPanResponderRelease(event, gesture);
   });
   assert.equal(clicks, 1, "a stationary left click must open task details");
   assert.equal(controller.isDragLocked(), false);
 
-  tree.props.onPanResponderGrant(event, gesture);
-  tree.props.onPanResponderMove(event, {
+  cardBodyProps(tree).onPanResponderGrant(event, gesture);
+  cardBodyProps(tree).onPanResponderMove(event, {
     ...gesture,
     moveX: 123,
     moveY: 240,
     dx: 3,
   });
   await act(async () => {
-    await tree.props.onPanResponderRelease(event, {
+    await cardBodyProps(tree).onPanResponderRelease(event, {
       ...gesture,
       moveX: 123,
       moveY: 240,
@@ -950,7 +965,10 @@ test("卡片长按等待时卸载不激活拖拽；注销其他卡片不打断�
 
   // 1a. 卡片 1 触发 pointerDown，进入长按 pending 状态 (鼠标长按阈值 260ms)
   const card1Tree = root1.toJSON();
-  card1Tree.props.onPanResponderGrant({ nativeEvent: {} }, { x0: 50, y0: 50 });
+  cardBodyProps(card1Tree).onPanResponderGrant(
+    { nativeEvent: {} },
+    { x0: 50, y0: 50 },
+  );
 
   // 在 260ms 长按判定完成前（推进 100ms），卡片 1 从组件树卸载
   act(() => {
@@ -999,7 +1017,10 @@ test("卡片长按等待时卸载不激活拖拽；注销其他卡片不打断�
 
   // card-1 正常激活拖拽
   const newTree1 = root1.toJSON();
-  newTree1.props.onPanResponderGrant({ nativeEvent: {} }, { x0: 50, y0: 50 });
+  cardBodyProps(newTree1).onPanResponderGrant(
+    { nativeEvent: {} },
+    { x0: 50, y0: 50 },
+  );
   act(() => {
     t.mock.timers.tick(260);
   });
@@ -1024,12 +1045,12 @@ test("卡片长按等待时卸载不激活拖拽；注销其他卡片不打断�
   assert.equal(controller.getFeedback().draggingTaskId, "card-1");
 
   // card-1 正常移动并释放
-  newTree1.props.onPanResponderMove(
+  cardBodyProps(newTree1).onPanResponderMove(
     { nativeEvent: {} },
     { moveX: 50, moveY: 150 },
   );
   await act(async () => {
-    await newTree1.props.onPanResponderRelease(
+    await cardBodyProps(newTree1).onPanResponderRelease(
       { nativeEvent: {} },
       { moveX: 50, moveY: 150 },
     );
@@ -1116,7 +1137,10 @@ test("看板卸载取消待执行回调与落位，清理幂等", async (t) => {
   // 2a. 在 pending 状态下直接卸载整个组件（包含 useKanbanDrag）
   const cardTree = root.toJSON().children[0];
   act(() => {
-    cardTree.props.onPanResponderGrant({ nativeEvent: {} }, { x0: 60, y0: 60 });
+    cardBodyProps(cardTree).onPanResponderGrant(
+      { nativeEvent: {} },
+      { x0: 60, y0: 60 },
+    );
   });
 
   // 标记卸载并执行真实卸载
@@ -1342,7 +1366,7 @@ test("React StrictMode 双重生命周期与重新挂载后仍可拖拽落位", 
   // 2. 验证在 StrictMode (setup-cleanup-setup) 后，控制器未被死锁，拖拽依然完全可用
   const card1Node = root.toJSON().children[0];
   act(() => {
-    card1Node.props.onPanResponderGrant(
+    cardBodyProps(card1Node).onPanResponderGrant(
       { nativeEvent: {} },
       { x0: 50, y0: 50 },
     );
@@ -1362,7 +1386,7 @@ test("React StrictMode 双重生命周期与重新挂载后仍可拖拽落位", 
 
   // 移动并落位
   act(() => {
-    card1Node.props.onPanResponderMove(
+    cardBodyProps(card1Node).onPanResponderMove(
       { nativeEvent: {} },
       { moveX: 50, moveY: 150 },
     );
@@ -1418,7 +1442,7 @@ test("React StrictMode 双重生命周期与重新挂载后仍可拖拽落位", 
 
   const card2Node = root2.toJSON().children[1];
   act(() => {
-    card2Node.props.onPanResponderGrant(
+    cardBodyProps(card2Node).onPanResponderGrant(
       { nativeEvent: {} },
       { x0: 50, y0: 100 },
     );

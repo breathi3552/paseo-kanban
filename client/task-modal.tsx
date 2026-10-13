@@ -50,7 +50,9 @@ export function TaskModal({
     }
   }, [open, session]);
 
-  const lanes = propLanes ?? snapshot.lanes;
+  const lanes = (propLanes ?? snapshot.lanes).filter(
+    (lane) => !lane.isCompletionLane,
+  );
   const isSaving = snapshot.isSaving;
   const errorMessage = snapshot.error;
 

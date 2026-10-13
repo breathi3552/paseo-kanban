@@ -176,7 +176,7 @@ test("正常路径: 泳道创建、重命名与删除", async () => {
   });
   assert.equal(createResult.success, true);
   assert.equal(store.values.lanes.length, 4);
-  assert.equal(store.values.lanes[3].id, "lane-qa");
+  assert.equal(store.values.lanes[2].id, "lane-qa");
 
   // 2. 编辑重命名泳道
   const editSession = openLaneSession({
@@ -428,7 +428,10 @@ test("无效操作: 受保护泳道拦截删除（含任务或最后一条泳道
 
   // 2. 只有最后一条泳道
   const storeSingleLane = createMockStore({
-    lanes: [{ id: "only", title: "独苗泳道" }],
+    lanes: [
+      { id: "only", title: "独苗泳道", isCompletionLane: false },
+      { id: "done", title: "已完成", isCompletionLane: true },
+    ],
     tasks: [],
   });
   const session2 = openLaneSession({
@@ -439,10 +442,10 @@ test("无效操作: 受保护泳道拦截删除（含任务或最后一条泳道
     save: (b, r) => storeSingleLane.save(b, r),
   });
   assert.equal(session2.canDelete, false);
-  assert.equal(session2.lanesCount, 1);
+  assert.equal(session2.lanesCount, 2);
   const res2 = await session2.deleteLane();
   assert.equal(res2.success, false);
-  assert.match(res2.error, /Cannot delete the last remaining lane/);
+  assert.match(res2.error, /Cannot delete the last remaining ordinary lane/);
   assert.equal(storeSingleLane.history.length, 0);
 });
 
