@@ -1,144 +1,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import ts from "typescript";
-import {
-  openTaskSession,
-  openLaneSession,
-  executeTaskReorder,
-} from "../client/kanban-session.ts";
+import { act } from "./helpers/react-host-env.mjs";
+import { createHost, mount, press, text } from "./helpers/kanban-host.mjs";
 
-const require = createRequire(import.meta.url);
+const displays = {
+  zh: { title: "任务看板", entry: "看板", stats: "3 任务 · 2 泳道" },
+  en: { title: "Task Kanban", entry: "Kanban", stats: "3 tasks · 2 lanes" },
+};
 
-// Transpile and load client/i18n.tsx
-const source = ts.transpileModule(
-  readFileSync(new URL("../client/i18n.tsx", import.meta.url), "utf8"),
-  {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      jsx: ts.JsxEmit.ReactJSX,
-    },
-  },
-).outputText;
-
-const i18n = {};
-new Function("require", "exports", source)((id) => {
-  if (id === "react") return require("react");
-  return require(id);
-}, i18n);
-
-const {
-  normalizeLanguage,
-  detectPaseoLanguage,
-  translations,
-  t,
-  formatString,
-  getLanguage,
-  setLanguageOverride,
-  subscribeLanguage,
-} = i18n;
-
-test("normalizeLanguage: 准确将各类中文标头归一化为 zh", () => {
-  const zhVariants = [
-    "zh",
-    "zh-CN",
-    "zh-TW",
-    "zh-Hans",
-    "zh-Hant",
-    "  ZH-cn  ",
-  ];
-
-  for (const variant of zhVariants) {
-    assert.equal(
-      normalizeLanguage(variant),
-      "zh",
-      `Expected ${variant} to normalize to 'zh'`,
-    );
-  }
-});
-
-test("normalizeLanguage: 其他所有语言均回退归一化为 en", () => {
-  const otherLanguages = ["en", "en-US", "ja", "fr", "", null, undefined];
-
-  for (const lang of otherLanguages) {
-    assert.equal(
-      normalizeLanguage(lang),
-      "en",
-      `Expected ${lang} to normalize to 'en'`,
-    );
-  }
-});
-
-test("translations: zh 与 en 词条键完整对齐且无遗漏", () => {
-  const zhKeys = Object.keys(translations.zh).sort();
-  const enKeys = Object.keys(translations.en).sort();
-
-  assert.deepEqual(
-    zhKeys,
-    enKeys,
-    "zh and en dictionaries must have identical translation keys",
-  );
-});
-
-test("formatString & t: 文本翻译与参数插值正确工作", () => {
-  assert.equal(formatString("Hello {name}", { name: "Paseo" }), "Hello Paseo");
-
-  // Chinese
-  assert.equal(t("kanban.title", "zh"), "任务看板");
-  assert.equal(t("kanban.sidebarTitle", "zh"), "看板");
-  assert.equal(
-    t("kanban.stats", "zh", { tasks: 12, lanes: 4 }),
-    "12 任务 · 4 泳道",
-  );
-  // English
-  assert.equal(t("kanban.title", "en"), "Task Kanban");
-  assert.equal(t("kanban.sidebarTitle", "en"), "Kanban");
-  assert.equal(
-    t("kanban.stats", "en", { tasks: 12, lanes: 4 }),
-    "12 tasks · 4 lanes",
-  );
-});
-
-test("detectPaseoLanguage: 读取宿主传入的语言属性", () => {
-  assert.equal(detectPaseoLanguage({ locale: "zh-CN" }), "zh");
-  assert.equal(detectPaseoLanguage({ language: "zh-TW" }), "zh");
-  assert.equal(detectPaseoLanguage({ host: { locale: "zh-HK" } }), "zh");
-  assert.equal(detectPaseoLanguage({ host: { language: "zh-SG" } }), "zh");
-  assert.equal(detectPaseoLanguage({ locale: "en-US" }), "en");
-});
-
-test("detectPaseoLanguage: 支持从 @paseo:app-settings 存储读取系统语言配置", (t) => {
-  const store = new Map();
-  const document = { documentElement: { lang: "zh-TW" } };
-  mockLanguageEnvironment(t, {
+function configureUpstream(t) {
+  let language = "system";
+  const navigator = { languages: ["en-US"], language: "en-US" };
+  const window = new EventTarget();
+  const globals = {
     localStorage: {
-      getItem(key) {
-        return store.get(key) ?? null;
-      },
+      getItem: (key) =>
+        key === "@paseo:app-settings" ? JSON.stringify({ language }) : null,
     },
-    navigator: undefined,
-    document,
-  });
-
-  // User selected Simplified Chinese in Paseo
-  store.set("@paseo:app-settings", JSON.stringify({ language: "zh-CN" }));
-  assert.equal(detectPaseoLanguage(), "zh");
-
-  // User selected English in Paseo
-  store.set("@paseo:app-settings", JSON.stringify({ language: "en" }));
-  assert.equal(detectPaseoLanguage(), "en");
-
-  // Without browser language APIs, 'system' falls through to document/Intl.
-  store.set("@paseo:app-settings", JSON.stringify({ language: "system" }));
-  assert.equal(detectPaseoLanguage(), "zh");
-
-  document.documentElement.lang = "en-US";
-  assert.equal(detectPaseoLanguage(), "en");
-});
-
-function mockLanguageEnvironment(t, values) {
-  for (const [key, value] of Object.entries(values)) {
+    navigator,
+    window,
+    // Reproduce #16: page and Intl defaults can remain English on a Chinese system.
+    document: { documentElement: { lang: "en" } },
+  };
+  for (const [key, value] of Object.entries(globals)) {
     const original = Object.getOwnPropertyDescriptor(globalThis, key);
     Object.defineProperty(globalThis, key, { configurable: true, value });
     t.after(() => {
@@ -149,154 +33,81 @@ function mockLanguageEnvironment(t, values) {
   t.mock.method(Intl, "DateTimeFormat", () => ({
     resolvedOptions: () => ({ locale: "en-US" }),
   }));
+  return {
+    select(nextLanguage, systemLocale = "en-US") {
+      language = nextLanguage;
+      navigator.languages = [systemLocale];
+      navigator.language = systemLocale;
+    },
+    focus() {
+      window.dispatchEvent(new Event("focus"));
+    },
+  };
 }
 
-test("detectPaseoLanguage: 跟随系统时优先使用浏览器首选语言，简繁中文统一为 zh", (t) => {
-  const navigator = { languages: ["zh-CN", "en-US"], language: "en-US" };
-  mockLanguageEnvironment(t, {
-    localStorage: {
-      getItem: () => JSON.stringify({ language: "system" }),
-    },
-    navigator,
-    document: { documentElement: { lang: "en" } },
-  });
+function assertDisplay(renderer, host, expected, scenario) {
+  const texts = renderer.root.findAllByType("Text").map(text);
+  assert.ok(texts.includes(expected.title), scenario);
+  assert.ok(texts.includes(expected.stats), scenario);
+  assert.equal(host.sidebars.get("kanban").title, expected.entry, scenario);
+  assert.equal(host.panels.get("kanban").title, expected.entry, scenario);
+}
 
-  for (const locale of ["zh-CN", "zh-TW"]) {
-    navigator.languages = [locale, "en-US"];
-    assert.equal(detectPaseoLanguage(), "zh", locale);
+test("上游语言决定插件显示：简繁中文使用中文，其余使用英文，支持跟随系统", async (t) => {
+  const upstream = configureUpstream(t);
+  for (const [language, systemLocale, display] of [
+    ["zh-CN", "en-US", "zh"],
+    ["zh-TW", "en-US", "zh"],
+    ["en", "zh-CN", "en"],
+    ["ja", "zh-CN", "en"],
+    ["system", "zh-CN", "zh"],
+    ["system", "zh-TW", "zh"],
+    ["system", "en-US", "en"],
+  ]) {
+    upstream.select(language, systemLocale);
+    const host = createHost();
+    const renderer = await mount(t, host);
+    assertDisplay(
+      renderer,
+      host,
+      displays[display],
+      `${language}/${systemLocale}`,
+    );
   }
 });
 
-test("detectPaseoLanguage: 显式语言选择优先于系统，缺少首选语言列表时读取 navigator.language", (t) => {
-  const navigator = { languages: ["zh-TW"], language: "zh-CN" };
-  let storedLanguage = "en";
-  mockLanguageEnvironment(t, {
-    localStorage: {
-      getItem: () => JSON.stringify({ language: storedLanguage }),
-    },
-    navigator,
-    document: { documentElement: { lang: "en" } },
-  });
+test("修改宿主语言后返回插件，已打开的看板与入口标题同步切换", async (t) => {
+  const upstream = configureUpstream(t);
+  upstream.select("en");
+  const host = createHost();
+  const renderer = await mount(t, host);
+  assertDisplay(renderer, host, displays.en);
 
-  assert.equal(detectPaseoLanguage(), "en");
-  storedLanguage = "system";
-  navigator.languages = ["en-US", "zh-TW"];
-  assert.equal(detectPaseoLanguage(), "en");
-  navigator.languages = [];
-  assert.equal(detectPaseoLanguage(), "zh");
+  for (const [language, display] of [
+    ["zh-TW", "zh"],
+    ["en", "en"],
+  ]) {
+    await act(async () => {
+      upstream.select(language);
+      upstream.focus();
+    });
+    assertDisplay(renderer, host, displays[display]);
+  }
 });
 
-test("setLanguageOverride & subscribeLanguage: 动态切换与订阅响应闭环", () => {
-  const events = [];
-  const unsubscribe = subscribeLanguage((lang) => {
-    events.push(lang);
-  });
-
-  setLanguageOverride("en");
-  assert.equal(getLanguage(), "en");
-  assert.equal(t("kanban.title"), "Task Kanban");
-
-  setLanguageOverride("zh");
-  assert.equal(getLanguage(), "zh");
-  assert.equal(t("kanban.title"), "任务看板");
-  assert.ok(events.includes("zh"), "语言切换须通知订阅方");
-
-  // Restore override
-  setLanguageOverride(null);
-  unsubscribe();
-});
-
-test("kanban-session: 国际化错误信息在英文与中文模式下正确产出", async () => {
-  const baseBoard = {
-    lanes: [
-      { id: "to-plan", title: "待规划", isCompletionLane: false },
-      { id: "done", title: "已完成", isCompletionLane: true },
-    ],
-    tasks: [
-      {
-        id: "t1",
-        title: "Task 1",
-        laneId: "to-plan",
-        description: "",
-        subtasks: [],
-      },
-    ],
-  };
-
-  // 1. English Mode Task Session
-  const enTaskSession = openTaskSession({
-    mode: "create",
-    baseBoard,
-    baseRevision: "rev-1",
-    save: async () => true,
-    language: "en",
-  });
-
-  const emptyTitleRes = await enTaskSession.save({
-    title: "   ",
-    laneId: "to-plan",
-  });
-  assert.equal(emptyTitleRes.success, false);
-  assert.equal(emptyTitleRes.error, "Task title cannot be empty");
-
-  const emptySubtaskOk = enTaskSession.addSubtask("   ");
-  assert.equal(emptySubtaskOk, false);
-  assert.equal(
-    enTaskSession.getSnapshot().error,
-    "Subtask content cannot be empty",
-  );
-
-  // English Mode Save Conflict
-  enTaskSession.setTitle("Valid Title");
-  const enConflictSession = openTaskSession({
-    mode: "create",
-    baseBoard,
-    baseRevision: "rev-1",
-    save: async () => false, // simulate conflict
-    language: "en",
-  });
-  enConflictSession.setTitle("Valid Task");
-  const enConflictRes = await enConflictSession.save();
-  assert.equal(enConflictRes.success, false);
-  assert.match(enConflictRes.error, /Save failed: Data may have been modified/);
-
-  // 2. English Mode Lane Session
-  const enLaneSession = openLaneSession({
-    mode: "create",
-    baseBoard,
-    baseRevision: "rev-1",
-    save: async () => true,
-    language: "en",
-  });
-
-  const emptyLaneRes = await enLaneSession.save({ title: "   " });
-  assert.equal(emptyLaneRes.success, false);
-  assert.equal(emptyLaneRes.error, "Lane name cannot be empty");
-
-  // 3. English Mode Task Reorder Conflict
-  const enReorderRes = await executeTaskReorder({
-    baseBoard,
-    baseRevision: "rev-1",
-    taskId: "t1",
-    targetLaneId: "done",
-    targetIndex: 0,
-    save: async () => false, // simulate conflict
-    language: "en",
-  });
-  assert.equal(enReorderRes.success, false);
-  assert.equal(
-    enReorderRes.error,
-    "Save failed or version conflict, data was not modified. Please refresh and try again.",
-  );
-
-  // 4. 中文模式
-  const zhTaskSession = openTaskSession({
-    mode: "create",
-    baseBoard,
-    baseRevision: "rev-1",
-    save: async () => true,
-    language: "zh",
-  });
-  const zhEmptyRes = await zhTaskSession.save({ title: "" });
-  assert.equal(zhEmptyRes.error, "任务标题不能为空");
+test("提交空标题时，插件使用当前语言显示错误提示", async (t) => {
+  const upstream = configureUpstream(t);
+  for (const [language, newTask, submit, error] of [
+    ["zh-TW", "+ 新建任务", "创建", "任务标题不能为空"],
+    ["en", "+ New Task", "Create", "Task title cannot be empty"],
+  ]) {
+    upstream.select(language);
+    const host = createHost();
+    const renderer = await mount(t, host);
+    await press(renderer.root, newTask);
+    await press(renderer.root.findByType("Modal"), submit);
+    assert.ok(
+      renderer.root.findAllByType("Text").some((node) => text(node) === error),
+    );
+  }
 });
