@@ -187,6 +187,7 @@ interface EnvironmentGlobals {
   };
   navigator?: {
     language?: string;
+    languages?: readonly string[];
   };
   window?: {
     addEventListener(
@@ -229,6 +230,12 @@ export function detectPaseoLanguage(
     } catch {}
   }
 
+  // Match Paseo's web system-language source before page/Intl defaults.
+  const navLocale = env.navigator?.languages?.[0] || env.navigator?.language;
+  if (navLocale) {
+    return normalizeLanguage(navLocale);
+  }
+
   const docLang = env.document?.documentElement?.lang;
   if (docLang) {
     return normalizeLanguage(docLang);
@@ -245,11 +252,6 @@ export function detectPaseoLanguage(
       : undefined;
   if (intlLocale) {
     return normalizeLanguage(intlLocale);
-  }
-
-  const navLocale = env.navigator?.language;
-  if (navLocale) {
-    return normalizeLanguage(navLocale);
   }
 
   return "en";

@@ -108,38 +108,82 @@ test("detectPaseoLanguage: 读取宿主传入的语言属性", () => {
   assert.equal(detectPaseoLanguage({ locale: "en-US" }), "en");
 });
 
-test("detectPaseoLanguage: 支持从 @paseo:app-settings 存储读取系统语言配置", () => {
-  try {
-    // Mock localStorage
-    const store = new Map();
-    globalThis.localStorage = {
+test("detectPaseoLanguage: 支持从 @paseo:app-settings 存储读取系统语言配置", (t) => {
+  const store = new Map();
+  const document = { documentElement: { lang: "zh-TW" } };
+  mockLanguageEnvironment(t, {
+    localStorage: {
       getItem(key) {
         return store.get(key) ?? null;
       },
-      setItem(key, val) {
-        store.set(key, val);
-      },
-    };
+    },
+    navigator: undefined,
+    document,
+  });
 
-    // User selected Simplified Chinese in Paseo
-    store.set("@paseo:app-settings", JSON.stringify({ language: "zh-CN" }));
-    assert.equal(detectPaseoLanguage(), "zh");
+  // User selected Simplified Chinese in Paseo
+  store.set("@paseo:app-settings", JSON.stringify({ language: "zh-CN" }));
+  assert.equal(detectPaseoLanguage(), "zh");
 
-    // User selected English in Paseo
-    store.set("@paseo:app-settings", JSON.stringify({ language: "en" }));
-    assert.equal(detectPaseoLanguage(), "en");
+  // User selected English in Paseo
+  store.set("@paseo:app-settings", JSON.stringify({ language: "en" }));
+  assert.equal(detectPaseoLanguage(), "en");
 
-    // User selected 'system' -> falls through to document/Intl
-    store.set("@paseo:app-settings", JSON.stringify({ language: "system" }));
-    globalThis.document = { documentElement: { lang: "zh-TW" } };
-    assert.equal(detectPaseoLanguage(), "zh");
+  // Without browser language APIs, 'system' falls through to document/Intl.
+  store.set("@paseo:app-settings", JSON.stringify({ language: "system" }));
+  assert.equal(detectPaseoLanguage(), "zh");
 
-    globalThis.document = { documentElement: { lang: "en-US" } };
-    assert.equal(detectPaseoLanguage(), "en");
-  } finally {
-    delete globalThis.localStorage;
-    delete globalThis.document;
+  document.documentElement.lang = "en-US";
+  assert.equal(detectPaseoLanguage(), "en");
+});
+
+function mockLanguageEnvironment(t, values) {
+  for (const [key, value] of Object.entries(values)) {
+    const original = Object.getOwnPropertyDescriptor(globalThis, key);
+    Object.defineProperty(globalThis, key, { configurable: true, value });
+    t.after(() => {
+      if (original) Object.defineProperty(globalThis, key, original);
+      else delete globalThis[key];
+    });
   }
+  t.mock.method(Intl, "DateTimeFormat", () => ({
+    resolvedOptions: () => ({ locale: "en-US" }),
+  }));
+}
+
+test("detectPaseoLanguage: 跟随系统时优先使用浏览器首选语言，简繁中文统一为 zh", (t) => {
+  const navigator = { languages: ["zh-CN", "en-US"], language: "en-US" };
+  mockLanguageEnvironment(t, {
+    localStorage: {
+      getItem: () => JSON.stringify({ language: "system" }),
+    },
+    navigator,
+    document: { documentElement: { lang: "en" } },
+  });
+
+  for (const locale of ["zh-CN", "zh-TW"]) {
+    navigator.languages = [locale, "en-US"];
+    assert.equal(detectPaseoLanguage(), "zh", locale);
+  }
+});
+
+test("detectPaseoLanguage: 显式语言选择优先于系统，缺少首选语言列表时读取 navigator.language", (t) => {
+  const navigator = { languages: ["zh-TW"], language: "zh-CN" };
+  let storedLanguage = "en";
+  mockLanguageEnvironment(t, {
+    localStorage: {
+      getItem: () => JSON.stringify({ language: storedLanguage }),
+    },
+    navigator,
+    document: { documentElement: { lang: "en" } },
+  });
+
+  assert.equal(detectPaseoLanguage(), "en");
+  storedLanguage = "system";
+  navigator.languages = ["en-US", "zh-TW"];
+  assert.equal(detectPaseoLanguage(), "en");
+  navigator.languages = [];
+  assert.equal(detectPaseoLanguage(), "zh");
 });
 
 test("setLanguageOverride & subscribeLanguage: 动态切换与订阅响应闭环", () => {
