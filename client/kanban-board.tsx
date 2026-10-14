@@ -9,6 +9,7 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 import { useSettings } from "@getpaseo/plugin/client";
+import { useToast } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { kanbanSettings, getLaneTasks } from "../shared/kanban";
 import { useProjects } from "./use-projects";
@@ -55,6 +56,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   };
   const { t, language } = useI18n();
   const settings = useSettings(kanbanSettings);
+  const toast = useToast();
   const {
     projects,
     resolveProjectName,
@@ -110,6 +112,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
     });
     if (!result.success) {
       setTaskOperationError(result.error);
+      toast.error(t("notification.taskReorderFailed"));
     } else {
       setTaskOperationError(null);
     }
@@ -144,6 +147,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
         language,
       });
       setTaskOperationError(result.success ? null : result.error);
+      if (!result.success) toast.error(t("notification.taskCompletionFailed"));
     } finally {
       completionPendingRef.current = false;
       setCompletionPending(false);

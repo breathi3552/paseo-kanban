@@ -14,7 +14,12 @@ import {
 } from "../shared/kanban.ts";
 
 export type SessionResult =
-  { success: true } | { success: false; error: string };
+  | { success: true; unchanged?: boolean }
+  | {
+      success: false;
+      error: string;
+      kind: "validation" | "operation" | "busy";
+    };
 
 export type SaveFn = (board: KanbanBoard, revision: string) => Promise<boolean>;
 
@@ -337,7 +342,7 @@ export function openTaskSession(
 
   async function save(draft?: TaskDraft): Promise<SessionResult> {
     if (isSaving) {
-      return { success: false, error: msgs.savingInProgress };
+      return { success: false, kind: "busy", error: msgs.savingInProgress };
     }
 
     if (draft) {
@@ -354,14 +359,14 @@ export function openTaskSession(
     if (!trimmedTitle) {
       error = msgs.taskTitleEmpty;
       notify();
-      return { success: false, error };
+      return { success: false, kind: "validation", error };
     }
 
     for (let i = 0; i < subtasks.length; i++) {
       if (!subtasks[i].title.trim()) {
         error = msgs.subtaskTitleEmpty(i + 1);
         notify();
-        return { success: false, error };
+        return { success: false, kind: "validation", error };
       }
     }
 
@@ -394,7 +399,7 @@ export function openTaskSession(
           isSaving = false;
           error = msgs.taskNotFound(taskId ?? "");
           notify();
-          return { success: false, error };
+          return { success: false, kind: "operation", error };
         }
         nextBoard = updateTask(baseBoard, taskId, {
           title: trimmedTitle,
@@ -410,28 +415,52 @@ export function openTaskSession(
       if (!saved) {
         error = msgs.taskSaveConflict;
         notify();
-        return { success: false, error };
+        return { success: false, kind: "operation", error };
       }
+      const unchanged =
+        mode === "edit" &&
+        trimmedTitle === initialValues.title &&
+        description.trim() === initialValues.description &&
+        laneId === initialValues.laneId &&
+        projectId === initialValues.projectId &&
+        normalizedSubtasks.length === initialValues.subtasks.length &&
+        normalizedSubtasks.every((step, index) => {
+          const initial = initialValues.subtasks[index];
+          return (
+            step.id === initial.id &&
+            step.title === initial.title &&
+            step.completed === initial.completed
+          );
+        });
       notify();
-      return { success: true };
+      return unchanged ? { success: true, unchanged: true } : { success: true };
     } catch (err) {
       isSaving = false;
       error = err instanceof Error ? err.message : String(err);
       notify();
-      return { success: false, error };
+      return { success: false, kind: "operation", error };
     }
   }
 
   async function deleteTaskAction(): Promise<SessionResult> {
     if (isSaving) {
-      return { success: false, error: msgs.savingActionInProgress };
+      return {
+        success: false,
+        kind: "busy",
+        error: msgs.savingActionInProgress,
+      };
     }
     if (mode !== "edit" || !taskId) {
-      return { success: false, error: msgs.taskDeleteOnlyInEdit };
+      return {
+        success: false,
+        kind: "operation",
+        error: msgs.taskDeleteOnlyInEdit,
+      };
     }
     if (!baseBoard.tasks.some((t) => t.id === taskId)) {
       return {
         success: false,
+        kind: "operation",
         error: msgs.taskNotFound(taskId),
       };
     }
@@ -447,7 +476,7 @@ export function openTaskSession(
       if (!saved) {
         error = msgs.taskDeleteFailed;
         notify();
-        return { success: false, error };
+        return { success: false, kind: "operation", error };
       }
       notify();
       return { success: true };
@@ -455,7 +484,7 @@ export function openTaskSession(
       isSaving = false;
       error = err instanceof Error ? err.message : String(err);
       notify();
-      return { success: false, error };
+      return { success: false, kind: "operation", error };
     }
   }
 
@@ -578,7 +607,7 @@ export function openLaneSession(
 
   async function save(draft?: LaneDraft): Promise<SessionResult> {
     if (isSaving) {
-      return { success: false, error: msgs.savingInProgress };
+      return { success: false, kind: "busy", error: msgs.savingInProgress };
     }
 
     if (draft && draft.title !== undefined) {
@@ -589,7 +618,7 @@ export function openLaneSession(
     if (!trimmedTitle) {
       error = msgs.laneTitleEmpty;
       notify();
-      return { success: false, error };
+      return { success: false, kind: "validation", error };
     }
 
     isSaving = true;
@@ -611,7 +640,7 @@ export function openLaneSession(
           isSaving = false;
           error = msgs.laneNotFound(laneId ?? "");
           notify();
-          return { success: false, error };
+          return { success: false, kind: "operation", error };
         }
         nextBoard = updateLane(baseBoard, laneId, {
           title: trimmedTitle,
@@ -623,28 +652,38 @@ export function openLaneSession(
       if (!saved) {
         error = msgs.laneSaveConflict;
         notify();
-        return { success: false, error };
+        return { success: false, kind: "operation", error };
       }
+      const unchanged = mode === "edit" && trimmedTitle === initialValues.title;
       notify();
-      return { success: true };
+      return unchanged ? { success: true, unchanged: true } : { success: true };
     } catch (err) {
       isSaving = false;
       error = err instanceof Error ? err.message : String(err);
       notify();
-      return { success: false, error };
+      return { success: false, kind: "operation", error };
     }
   }
 
   async function deleteLaneAction(): Promise<SessionResult> {
     if (isSaving) {
-      return { success: false, error: msgs.savingActionInProgress };
+      return {
+        success: false,
+        kind: "busy",
+        error: msgs.savingActionInProgress,
+      };
     }
     if (mode !== "edit" || !laneId) {
-      return { success: false, error: msgs.laneDeleteOnlyInEdit };
+      return {
+        success: false,
+        kind: "operation",
+        error: msgs.laneDeleteOnlyInEdit,
+      };
     }
     if (!baseBoard.lanes.some((l) => l.id === laneId)) {
       return {
         success: false,
+        kind: "operation",
         error: msgs.laneNotFound(laneId),
       };
     }
@@ -660,7 +699,7 @@ export function openLaneSession(
       if (!saved) {
         error = msgs.laneDeleteFailed;
         notify();
-        return { success: false, error };
+        return { success: false, kind: "operation", error };
       }
       notify();
       return { success: true };
@@ -668,7 +707,7 @@ export function openLaneSession(
       isSaving = false;
       error = err instanceof Error ? err.message : String(err);
       notify();
-      return { success: false, error };
+      return { success: false, kind: "operation", error };
     }
   }
 

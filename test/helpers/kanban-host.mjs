@@ -138,6 +138,7 @@ export function createHost({
       TextInput: "TextInput",
       Icon: "Icon",
       ScrollView: mockReactNative.ScrollView,
+      useToast: () => ({ show() {}, error() {} }),
     },
   });
   const cleanup = contribute(client);
