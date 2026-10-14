@@ -7,717 +7,390 @@ import {
   executeTaskReorder,
 } from "../client/kanban-session.ts";
 
+// 模拟外部 CAS 存储；会话、草稿和看板转换保留真实实现。
 function createMockStore(initialData = {}) {
-  let currentBoard = KanbanBoardSchema.parse(initialData);
-  let currentRevision = "rev-1";
-  const callHistory = [];
-
+  let board = KanbanBoardSchema.parse(initialData);
+  let version = 1;
+  let writes = 0;
   return {
     get values() {
-      return currentBoard;
+      return board;
     },
-    get revision() {
-      return currentRevision;
+    get writes() {
+      return writes;
     },
-    get history() {
-      return callHistory;
+    options() {
+      return {
+        baseBoard: board,
+        baseRevision: `rev-${version}`,
+        save: this.save,
+      };
     },
-    async save(newBoard, expectedRevision) {
-      callHistory.push({ board: newBoard, revision: expectedRevision });
-      if (expectedRevision !== currentRevision) {
-        return false;
-      }
-      currentBoard = KanbanBoardSchema.parse(newBoard);
-      currentRevision = `rev-${callHistory.length + 1}`;
+    async save(next, revision) {
+      writes++;
+      if (revision !== `rev-${version}`) return false;
+      board = KanbanBoardSchema.parse(next);
+      version++;
       return true;
     },
   };
 }
 
-// ---------------------------------------------------------------------------
-// 1. 正常路径 (Happy path)
-// ---------------------------------------------------------------------------
+const task = { id: "t1", title: "原有任务", laneId: "to-plan" };
 
-test("正常路径: 创建任务并完整保留标题、描述、泳道、项目与子步骤", async () => {
-  const store = createMockStore({});
-  const session = openTaskSession({
-    mode: "create",
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    save: (b, r) => store.save(b, r),
-    defaultLaneId: "to-plan",
-  });
-
-  assert.equal(session.mode, "create");
-  assert.equal(session.initialValues.laneId, "to-plan");
-
-  const result = await session.saveDraft({
-    id: "task-new-1",
+test("任务草稿从创建、编辑到删除，完整持久化内容与子步骤", async () => {
+  const store = createMockStore();
+  const draft = {
+    id: "t1",
     title: "用户认证模块",
     description: "支持 OAuth 与密码登录",
     laneId: "to-plan",
     projectId: "proj-auth",
     subtasks: [
-      { id: "sub-1", title: "设计数据表", completed: false },
-      { id: "sub-2", title: "实现 JWT 签发", completed: true },
+      { id: "sub-a", title: "设计数据表", completed: false },
+      { id: "sub-b", title: "实现 JWT 签发", completed: true },
     ],
-  });
-
-  assert.equal(result.success, true);
-  assert.equal(store.values.tasks.length, 1);
-  const saved = store.values.tasks[0];
-  assert.equal(saved.id, "task-new-1");
-  assert.equal(saved.title, "用户认证模块");
-  assert.equal(saved.description, "支持 OAuth 与密码登录");
-  assert.equal(saved.laneId, "to-plan");
-  assert.equal(saved.projectId, "proj-auth");
-  assert.deepEqual(saved.subtasks, [
-    { id: "sub-1", title: "设计数据表", completed: false },
-    { id: "sub-2", title: "实现 JWT 签发", completed: true },
+  };
+  const create = openTaskSession({ ...store.options(), mode: "create" });
+  assert.deepEqual(await create.saveDraft(draft), { success: true });
+  assert.deepEqual(store.values.tasks, [
+    { ...draft, completed: false, completedAt: null },
   ]);
-});
 
-test("正常路径: 编辑任务并更新属性，严格保留子步骤标识与完成状态", async () => {
-  const store = createMockStore({
-    tasks: [
-      {
-        id: "task-edit-1",
-        title: "原有任务",
-        description: "原有描述",
-        laneId: "to-plan",
-        projectId: null,
-        subtasks: [
-          { id: "sub-a", title: "步骤A", completed: false },
-          { id: "sub-b", title: "步骤B", completed: true },
-        ],
-      },
-    ],
-  });
-
-  const session = openTaskSession({
+  const edit = openTaskSession({
+    ...store.options(),
     mode: "edit",
-    taskId: "task-edit-1",
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    save: (b, r) => store.save(b, r),
+    taskId: "t1",
+    idGenerator: () => "sub-c",
   });
-
-  assert.equal(session.mode, "edit");
-  assert.equal(session.initialValues.title, "原有任务");
-  assert.equal(session.initialValues.subtasks.length, 2);
-
-  const result = await session.saveDraft({
-    title: "更新后的任务",
-    description: "更新后的描述",
-    laneId: "in-progress",
-    projectId: "proj-1",
-    subtasks: [
-      { id: "sub-a", title: "步骤A 改名", completed: true },
-      { id: "sub-b", title: "步骤B", completed: true },
-      { id: "sub-c", title: "步骤C 新增", completed: false },
-    ],
-  });
-
-  assert.equal(result.success, true);
-  const updated = store.values.tasks.find((t) => t.id === "task-edit-1");
-  assert.ok(updated);
-  assert.equal(updated.title, "更新后的任务");
-  assert.equal(updated.laneId, "in-progress");
-  assert.equal(updated.projectId, "proj-1");
-  assert.equal(updated.subtasks.length, 3);
-  assert.deepEqual(updated.subtasks[0], {
-    id: "sub-a",
-    title: "步骤A 改名",
+  edit.setTitle("更新后的任务");
+  edit.setDescription("更新后的描述");
+  edit.setLaneId("in-progress");
+  edit.setProjectId("proj-1");
+  edit.updateSubtask("sub-a", {
+    title: "设计数据表（已通过）",
     completed: true,
   });
-  assert.deepEqual(updated.subtasks[1], {
-    id: "sub-b",
-    title: "步骤B",
-    completed: true,
+  edit.addSubtask("部署服务");
+  assert.deepEqual(await edit.save(), { success: true });
+  assert.deepEqual(store.values.tasks, [
+    {
+      id: "t1",
+      title: "更新后的任务",
+      description: "更新后的描述",
+      laneId: "in-progress",
+      projectId: "proj-1",
+      subtasks: [
+        { id: "sub-a", title: "设计数据表（已通过）", completed: true },
+        { id: "sub-b", title: "实现 JWT 签发", completed: true },
+        { id: "sub-c", title: "部署服务", completed: false },
+      ],
+      completed: false,
+      completedAt: null,
+    },
+  ]);
+  const remove = openTaskSession({
+    ...store.options(),
+    mode: "edit",
+    taskId: "t1",
   });
-  assert.deepEqual(updated.subtasks[2], {
-    id: "sub-c",
-    title: "步骤C 新增",
-    completed: false,
-  });
+  assert.deepEqual(await remove.deleteTask(), { success: true });
+  assert.deepEqual(store.values.tasks, []);
 });
 
-test("正常路径: 删除任务操作", async () => {
-  const store = createMockStore({
-    tasks: [{ id: "task-del", title: "待删任务", laneId: "to-plan" }],
+test("泳道草稿创建、重命名与删除保留其他泳道", async () => {
+  const store = createMockStore();
+  const initial = store.values.lanes;
+  const create = openLaneSession({ ...store.options(), mode: "create" });
+  assert.deepEqual(await create.saveDraft({ id: "qa", title: "测试验证" }), {
+    success: true,
   });
-
-  const session = openTaskSession({
+  assert.deepEqual(store.values.lanes, [
+    ...initial.slice(0, -1),
+    { id: "qa", title: "测试验证", isCompletionLane: false },
+    initial.at(-1),
+  ]);
+  const edit = openLaneSession({
+    ...store.options(),
     mode: "edit",
-    taskId: "task-del",
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    save: (b, r) => store.save(b, r),
+    laneId: "qa",
   });
-
-  const result = await session.deleteTask();
-  assert.equal(result.success, true);
-  assert.equal(store.values.tasks.length, 0);
-});
-
-test("正常路径: 泳道创建、重命名与删除", async () => {
-  const store = createMockStore({});
-
-  // 1. 创建泳道
-  const createSession = openLaneSession({
-    mode: "create",
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    save: (b, r) => store.save(b, r),
-  });
-  const createResult = await createSession.saveDraft({
-    id: "lane-qa",
-    title: "测试验证",
-  });
-  assert.equal(createResult.success, true);
-  assert.equal(store.values.lanes.length, 4);
-  assert.equal(store.values.lanes[2].id, "lane-qa");
-
-  // 2. 编辑重命名泳道
-  const editSession = openLaneSession({
-    mode: "edit",
-    laneId: "lane-qa",
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    save: (b, r) => store.save(b, r),
-  });
-  assert.equal(editSession.initialValues.title, "测试验证");
-  const editResult = await editSession.saveDraft({ title: "QA验收" });
-  assert.equal(editResult.success, true);
+  assert.equal(edit.getSnapshot().title, "测试验证");
+  edit.setTitle("QA 验收");
+  assert.deepEqual(await edit.save(), { success: true });
   assert.equal(
-    store.values.lanes.find((l) => l.id === "lane-qa")?.title,
-    "QA验收",
+    store.values.lanes.find((lane) => lane.id === "qa").title,
+    "QA 验收",
   );
-
-  // 3. 删除空泳道
-  const delSession = openLaneSession({
+  const remove = openLaneSession({
+    ...store.options(),
     mode: "edit",
-    laneId: "lane-qa",
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    save: (b, r) => store.save(b, r),
+    laneId: "qa",
   });
-  assert.equal(delSession.canDelete, true);
-  const delResult = await delSession.deleteLane();
-  assert.equal(delResult.success, true);
-  assert.equal(store.values.lanes.length, 3);
-  assert.equal(
-    store.values.lanes.some((l) => l.id === "lane-qa"),
-    false,
-  );
+  assert.equal(remove.getSnapshot().canDelete, true);
+  assert.deepEqual(await remove.deleteLane(), { success: true });
+  assert.deepEqual(store.values.lanes, initial);
 });
 
-// ---------------------------------------------------------------------------
-// 2. 并发路径 (Concurrency / Stale Baseline)
-// ---------------------------------------------------------------------------
-
-test("并发路径: 外部修改或删除任务后，旧会话保存被拒绝且保留外部结果", async () => {
-  for (const [scenario, externalTasks] of [
-    ["修改", [{ id: "t1", title: "外部标题", laneId: "in-progress" }]],
-    ["删除", []],
+test("打开时锁定的版本过期后拒绝任务/泳道草稿，不覆盖外部修改或删除", async () => {
+  for (const [name, open, update] of [
+    [
+      "任务修改",
+      openTaskSession,
+      (board) => ({ ...board, tasks: [{ ...task, title: "外部标题" }] }),
+    ],
+    ["任务删除", openTaskSession, (board) => ({ ...board, tasks: [] })],
+    [
+      "泳道修改",
+      openLaneSession,
+      (board) => ({
+        ...board,
+        lanes: board.lanes.map((lane) =>
+          lane.id === "to-plan" ? { ...lane, title: "外部泳道" } : lane,
+        ),
+      }),
+    ],
+    ["任务创建", openTaskSession, (board) => board],
   ]) {
-    const store = createMockStore({
-      tasks: [{ id: "t1", title: "初始标题", laneId: "to-plan" }],
-    });
-    const session = openTaskSession({
-      mode: "edit",
+    const store = createMockStore({ tasks: [task] });
+    const session = open({
+      ...store.options(),
+      mode: name === "任务创建" ? "create" : "edit",
       taskId: "t1",
-      baseBoard: store.values,
-      baseRevision: store.revision,
-      save: (b, r) => store.save(b, r),
-    });
-
-    assert.equal(
-      await store.save(
-        { ...store.values, tasks: externalTasks },
-        store.revision,
-      ),
-      true,
-      scenario,
-    );
-    const externalBoard = structuredClone(store.values);
-    const externalRevision = store.revision;
-    const result = await session.saveDraft({
-      title: "旧会话的标题",
       laneId: "to-plan",
     });
-
-    assert.equal(result.success, false, scenario);
-    assert.match(result.error, /保存失败/, scenario);
-    assert.deepEqual(store.values, externalBoard, scenario);
-    assert.equal(store.revision, externalRevision, scenario);
+    await store.save(update(store.values), store.options().baseRevision);
+    await store.save(store.values, store.options().baseRevision);
+    const external = structuredClone(store.values);
+    session.setTitle("未同步的草稿");
+    const result = await session.save();
+    assert.equal(result.success, false, name);
+    assert.match(result.error, /保存失败/, name);
+    assert.deepEqual(store.values, external, name);
+    assert.equal(session.getSnapshot().title, "未同步的草稿", name);
+    assert.equal(session.getSnapshot().isSaving, false, name);
   }
 });
 
-test("并发路径: 泳道编辑在外部修改后保存被拒绝", async () => {
-  const store = createMockStore({});
-
-  const session = openLaneSession({
-    mode: "edit",
-    laneId: "to-plan",
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    save: (b, r) => store.save(b, r),
-  });
-
-  // 外部修改看板，revision 递增
-  await store.save(store.values, store.revision);
-
-  const result = await session.saveDraft({ title: "尝试更新已过期的泳道" });
-  assert.equal(result.success, false);
-  assert.match(result.error, /保存失败/);
-  assert.equal(store.values.lanes[0].title, "待规划");
+test("缺失的任务/泳道不能编辑或删除，也不能误创建", async () => {
+  for (const [open, options, deleteAction] of [
+    [openTaskSession, { taskId: "ghost" }, "deleteTask"],
+    [openLaneSession, { laneId: "ghost" }, "deleteLane"],
+  ]) {
+    const store = createMockStore();
+    const initial = structuredClone(store.values);
+    const session = open({ ...store.options(), ...options, mode: "edit" });
+    session.setTitle("幽灵记录");
+    for (const result of [
+      await session.save(),
+      await session[deleteAction](),
+    ]) {
+      assert.equal(result.success, false);
+      assert.match(result.error, /不存在或已被删除/);
+    }
+    assert.equal(store.writes, 0);
+    assert.deepEqual(store.values, initial);
+  }
 });
 
-// ---------------------------------------------------------------------------
-// 3. 基准锁定校验 (Strict Baseline Locking check)
-// ---------------------------------------------------------------------------
-
-test("基准路径: 外部更新后原会话仍提交与打开时相配的基准版本号，不改用最新版本号", async () => {
-  const store = createMockStore({});
-  const initialRevision = store.revision; // rev-1
-
-  const session = openTaskSession({
-    mode: "create",
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    save: (b, r) => store.save(b, r),
-    defaultLaneId: "to-plan",
-  });
-
-  // 外部多次写入推进版本号到 rev-3
-  await store.save(store.values, store.revision);
-  await store.save(store.values, store.revision);
-  assert.equal(store.revision, "rev-3");
-
-  // 原会话发起保存
-  await session.saveDraft({
-    id: "late-task",
-    title: "迟到的任务",
-    laneId: "to-plan",
-  });
-
-  // 检查会话提交给 save 的实参
-  const lastCall = store.history[store.history.length - 1];
-  assert.equal(
-    lastCall.revision,
-    initialRevision,
-    "提交的版本号必须严格是会话打开时的 baseRevision (rev-1)，绝不能改用最新版本号 (rev-3)",
-  );
-});
-
-// ---------------------------------------------------------------------------
-// 4. 无效操作路径 (Invalid operations & constraints)
-// ---------------------------------------------------------------------------
-
-test("无效操作: 编辑或删除不存在的任务直接失败，不产生存储写入，不执行创建", async () => {
-  const store = createMockStore({});
-  const session = openTaskSession({
-    mode: "edit",
-    taskId: "ghost-task",
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    save: (b, r) => store.save(b, r),
-  });
-
-  // 1. 保存不存在的任务 -> 失败，且不写入
-  const saveResult = await session.saveDraft({
-    title: "幽灵任务",
-    laneId: "to-plan",
-  });
-  assert.equal(saveResult.success, false);
-  assert.match(saveResult.error, /不存在或已被删除/);
-  assert.equal(store.history.length, 0, "不得调用 save 进行写入");
-  assert.equal(store.values.tasks.length, 0);
-
-  // 2. 删除不存在的任务 -> 失败，且不写入
-  const delResult = await session.deleteTask();
-  assert.equal(delResult.success, false);
-  assert.match(delResult.error, /不存在或已被删除/);
-  assert.equal(store.history.length, 0);
-});
-
-test("无效操作: 编辑或删除不存在的泳道直接失败，不产生存储写入", async () => {
-  const store = createMockStore({});
-  const session = openLaneSession({
-    mode: "edit",
-    laneId: "ghost-lane",
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    save: (b, r) => store.save(b, r),
-  });
-
-  const saveResult = await session.saveDraft({ title: "幽灵泳道" });
-  assert.equal(saveResult.success, false);
-  assert.match(saveResult.error, /不存在或已被删除/);
-  assert.equal(store.history.length, 0);
-
-  const delResult = await session.deleteLane();
-  assert.equal(delResult.success, false);
-  assert.match(delResult.error, /不存在或已被删除/);
-  assert.equal(store.history.length, 0);
-});
-
-test("无效操作: 空白任务标题或空白子步骤标题拦截，不产生存储写入", async () => {
-  const store = createMockStore({});
-  const session = openTaskSession({
-    mode: "create",
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    save: (b, r) => store.save(b, r),
-  });
-
-  // 空白标题
-  const res1 = await session.saveDraft({ title: "   ", laneId: "to-plan" });
-  assert.equal(res1.success, false);
-  assert.match(res1.error, /标题不能为空/);
-  assert.equal(store.history.length, 0);
-
-  // 空白子步骤标题
-  const res2 = await session.saveDraft({
-    title: "正常标题",
-    laneId: "to-plan",
-    subtasks: [{ id: "s1", title: "  ", completed: false }],
-  });
-  assert.equal(res2.success, false);
-  assert.match(res2.error, /第 1 个子步骤标题不能为空/);
-  assert.equal(store.history.length, 0);
-});
-
-test("无效操作: 引用不存在的泳道拦截，不产生存储写入", async () => {
-  const store = createMockStore({});
-  const session = openTaskSession({
-    mode: "create",
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    save: (b, r) => store.save(b, r),
-  });
-
-  const res = await session.saveDraft({
-    title: "任务",
-    laneId: "non-existent-lane",
-  });
-  assert.equal(res.success, false);
-  assert.match(res.error, /does not exist/);
-  assert.equal(store.history.length, 0);
-});
-
-test("无效操作: 包含任务的受保护泳道拦截删除，不产生存储写入", async () => {
-  const storeWithTask = createMockStore({
-    tasks: [{ id: "t1", title: "任务", laneId: "to-plan" }],
-  });
-  const session = openLaneSession({
-    mode: "edit",
-    laneId: "to-plan",
-    baseBoard: storeWithTask.values,
-    baseRevision: storeWithTask.revision,
-    save: (b, r) => storeWithTask.save(b, r),
-  });
-  assert.equal(session.canDelete, false);
-  assert.equal(session.tasksInLaneCount, 1);
-  const res = await session.deleteLane();
-  assert.equal(res.success, false);
-  assert.match(res.error, /because it contains tasks/);
-  assert.equal(storeWithTask.history.length, 0);
-});
-
-// ---------------------------------------------------------------------------
-// 5. 统一任务排序操作 (executeTaskReorder)
-// ---------------------------------------------------------------------------
-
-test("排序操作: 成功移动任务，版本号匹配并推进，完整任务列表更新", async () => {
-  const store = createMockStore({
-    tasks: [
-      { id: "t1", title: "Task 1", laneId: "to-plan", projectId: null },
-      { id: "t2", title: "Task 2", laneId: "to-plan", projectId: null },
+test("非法任务草稿显示错误并保留输入，不产生存储写入", async () => {
+  for (const [draft, error] of [
+    [{ title: "   ", laneId: "to-plan" }, /标题不能为空/],
+    [
+      {
+        title: "任务",
+        laneId: "to-plan",
+        subtasks: [{ id: "s1", title: "  ", completed: false }],
+      },
+      /第 1 个子步骤标题不能为空/,
     ],
-  });
-
-  const baseRevision = store.revision;
-  const result = await executeTaskReorder({
-    baseBoard: store.values,
-    baseRevision,
-    taskId: "t1",
-    targetLaneId: "to-plan",
-    targetIndex: 1,
-    save: (b, r) => store.save(b, r),
-  });
-
-  assert.equal(result.success, true);
-  assert.equal(result.unchanged, undefined);
-  assert.equal(store.history.length, 1);
-  assert.equal(store.history[0].revision, baseRevision);
-  assert.deepEqual(
-    store.values.tasks.map((t) => t.id),
-    ["t2", "t1"],
-  );
+    [{ title: "任务", laneId: "ghost" }, /does not exist/],
+  ]) {
+    const store = createMockStore();
+    const session = openTaskSession({ ...store.options(), mode: "create" });
+    const result = await session.saveDraft(draft);
+    assert.equal(result.success, false);
+    assert.match(session.getSnapshot().error, error);
+    assert.equal(session.getSnapshot().title, draft.title);
+    assert.equal(store.writes, 0);
+    assert.deepEqual(store.values.tasks, []);
+  }
 });
 
-test("排序操作: 同泳道原位操作返回 unchanged，不产生存储写入", async () => {
-  const store = createMockStore({
-    tasks: [
-      { id: "t1", title: "Task 1", laneId: "to-plan", projectId: "projA" },
-      { id: "t2", title: "Task 2", laneId: "to-plan", projectId: "projB" },
-    ],
+test("有任务的泳道不可删除，空白名称保存失败并保留错误", async () => {
+  const store = createMockStore({ tasks: [task] });
+  const initial = structuredClone(store.values);
+  const session = openLaneSession({
+    ...store.options(),
+    mode: "edit",
+    laneId: "to-plan",
   });
-
-  const result = await executeTaskReorder({
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    taskId: "t1",
-    targetLaneId: "to-plan",
-    targetIndex: 0,
-    filter: "projA", // 看板选中项目时传入的实际筛选值
-    save: (b, r) => store.save(b, r),
-  });
-
-  assert.equal(result.success, true);
-  assert.equal(result.unchanged, true);
-  assert.equal(store.history.length, 0, "原位操作不触发 save");
+  const snapshot = session.getSnapshot();
+  assert.equal(snapshot.canDelete, false);
+  assert.equal(snapshot.tasksInLaneCount, 1);
+  const deletion = await session.deleteLane();
+  assert.equal(deletion.success, false);
+  assert.match(deletion.error, /because it contains tasks/);
+  session.setTitle("   ");
+  assert.equal((await session.save()).success, false);
+  assert.match(session.getSnapshot().error, /泳道名称不能为空/);
+  assert.equal(store.writes, 0);
+  assert.deepEqual(store.values, initial);
 });
 
-test("排序操作: 使用过期版本号提交返回保存失败，未覆盖新数据", async () => {
-  const store = createMockStore({
-    tasks: [{ id: "t1", title: "Task 1", laneId: "to-plan", projectId: null }],
-  });
-
-  // 外部并发修改导致 store 版本推进
-  await store.save(
-    {
-      ...store.values,
+test("排序提交持久化新次序；筛选下原位排序不写入", async () => {
+  for (const [name, targetIndex, filter, ids, writes] of [
+    ["移动", 1, undefined, ["t2", "t1"], 1],
+    ["筛选原位", 0, "proj-a", ["t1", "t2"], 0],
+  ]) {
+    const store = createMockStore({
       tasks: [
+        { ...task, projectId: "proj-a" },
         {
-          id: "t1",
-          title: "外部并发修改的标题",
+          id: "t2",
+          title: "其他项目任务",
           laneId: "to-plan",
-          projectId: null,
+          projectId: "proj-b",
         },
       ],
-    },
-    store.revision,
-  );
-
-  // 旧事务使用旧版本号提交
-  const result = await executeTaskReorder({
-    baseBoard: {
-      lanes: store.values.lanes,
-      tasks: [
-        { id: "t1", title: "旧快照任务", laneId: "to-plan", projectId: null },
-      ],
-    },
-    baseRevision: "rev-1", // 已过期的版本
-    taskId: "t1",
-    targetLaneId: "in-progress",
-    targetIndex: 0,
-    save: (b, r) => store.save(b, r),
-  });
-
-  assert.equal(result.success, false);
-  assert.match(result.error, /保存失败|冲突/);
-  // 外部新数据未被覆盖
-  assert.equal(store.values.tasks[0].title, "外部并发修改的标题");
-  assert.equal(store.values.tasks[0].laneId, "to-plan");
+    });
+    const result = await executeTaskReorder({
+      ...store.options(),
+      taskId: "t1",
+      targetLaneId: "to-plan",
+      targetIndex,
+      filter,
+    });
+    assert.deepEqual(
+      result,
+      writes ? { success: true } : { success: true, unchanged: true },
+      name,
+    );
+    assert.deepEqual(
+      store.values.tasks.map((item) => item.id),
+      ids,
+      name,
+    );
+    assert.equal(store.writes, writes, name);
+  }
 });
 
-test("排序操作: 保存适配器抛错被捕获并返回错误信息，不抛未捕获异常", async () => {
-  const store = createMockStore({
-    tasks: [{ id: "t1", title: "Task 1", laneId: "to-plan", projectId: null }],
-  });
-
-  const result = await executeTaskReorder({
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    taskId: "t1",
-    targetLaneId: "in-progress",
-    targetIndex: 0,
-    save: async () => {
-      throw new Error("Disk full");
-    },
-  });
-
-  assert.equal(result.success, false);
-  assert.match(result.error, /Disk full/);
+test("排序遇到版本冲突或存储异常返回失败并保留当前看板", async () => {
+  for (const failure of ["conflict", "exception"]) {
+    const store = createMockStore({ tasks: [task] });
+    const options = store.options();
+    await store.save(
+      { ...store.values, tasks: [{ ...task, title: "外部标题" }] },
+      options.baseRevision,
+    );
+    const external = structuredClone(store.values);
+    const result = await executeTaskReorder({
+      ...options,
+      taskId: "t1",
+      targetLaneId: "in-progress",
+      targetIndex: 0,
+      ...(failure === "exception"
+        ? {
+            save: async () => {
+              throw new Error("Disk full");
+            },
+          }
+        : {}),
+    });
+    assert.equal(result.success, false, failure);
+    assert.match(
+      result.error,
+      failure === "exception" ? /Disk full/ : /保存失败|冲突/,
+      failure,
+    );
+    assert.deepEqual(store.values, external, failure);
+  }
 });
 
-// ---------------------------------------------------------------------------
-// 6. 编辑草稿会话 (TaskEditSession / LaneEditSession)
-// ---------------------------------------------------------------------------
-
-test("会话草稿: 字段修改驱动不可变快照更新与订阅通知", () => {
-  const store = createMockStore({});
+// 快照引用和通知是 useSyncExternalStore 消费者的独立 API 承诺。
+test("草稿修改通知订阅者；无变化时快照引用稳定且不重复通知", () => {
+  const store = createMockStore();
   const session = openTaskSession({
+    ...store.options(),
     mode: "create",
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    save: (b, r) => store.save(b, r),
     defaultLaneId: "to-plan",
   });
-
   let notifications = 0;
-  session.subscribe(() => {
-    notifications++;
-  });
-
-  const snap0 = session.getSnapshot();
-  assert.equal(snap0.title, "");
-  assert.equal(snap0.laneId, "to-plan");
-
-  // 更新标题
+  session.subscribe(() => notifications++);
+  const initial = session.getSnapshot();
+  assert.equal(initial.laneId, "to-plan");
+  session.setTitle("新功能设计");
+  const changed = session.getSnapshot();
+  assert.equal(changed.title, "新功能设计");
+  assert.notEqual(changed, initial);
+  assert.equal(initial.title, "");
   session.setTitle("新功能设计");
   assert.equal(notifications, 1);
-  const snap1 = session.getSnapshot();
-  assert.equal(snap1.title, "新功能设计");
-  assert.notEqual(snap0, snap1);
-
-  // 无变化时快照引用稳定
-  session.setTitle("新功能设计");
-  assert.equal(notifications, 1, "无变化时不触发多余通知");
-  assert.equal(session.getSnapshot(), snap1, "无变化时快照引用保持稳定");
-
-  // 更新描述与项目
-  session.setDescription("详细说明");
-  session.setProjectId("proj-x");
-  const snap2 = session.getSnapshot();
-  assert.equal(snap2.description, "详细说明");
-  assert.equal(snap2.projectId, "proj-x");
+  assert.equal(session.getSnapshot(), changed);
 });
 
-test("会话子步骤: 增删改与完成状态、稳定 ID 生成与碰撞防护", () => {
-  const store = createMockStore({});
-  const mockGenerator = () => "sub_1"; // 第二次生成时故意碰撞
-
+test("子步骤拒绝空白输入，修改和删除保留身份，生成碰撞后仍可保存", async () => {
+  const store = createMockStore();
   const session = openTaskSession({
+    ...store.options(),
     mode: "create",
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    save: (b, r) => store.save(b, r),
-    idGenerator: mockGenerator,
+    idGenerator: () => "sub-1",
   });
-
-  // 1. 新增子步骤
-  const ok1 = session.addSubtask("检查网络配置");
-  assert.equal(ok1, true);
-  assert.equal(session.getSnapshot().subtasks.length, 1);
-  assert.equal(session.getSnapshot().subtasks[0].id, "sub_1");
-  assert.equal(session.getSnapshot().subtasks[0].title, "检查网络配置");
-  assert.equal(session.getSnapshot().subtasks[0].completed, false);
-
-  // 2. 空白子步骤拒绝新增并暴露错误
-  const okEmpty = session.addSubtask("   ");
-  assert.equal(okEmpty, false);
-  assert.equal(session.getSnapshot().subtasks.length, 1);
-  assert.match(session.getSnapshot().error ?? "", /子步骤内容不能为空/);
-
-  // 3. 修改子步骤内容与勾选完成
-  session.updateSubtask("sub_1", {
-    completed: true,
-    title: "检查网络配置 (已通过)",
-  });
-  const sub1 = session.getSnapshot().subtasks[0];
-  assert.equal(sub1.id, "sub_1", "ID 必须稳定保留");
-  assert.equal(sub1.completed, true);
-  assert.equal(sub1.title, "检查网络配置 (已通过)");
-
-  // 4. 第二次生成相同 ID 时须避让；删除旧步骤不改变新步骤的 ID
+  session.setTitle("配置网络");
+  session.addSubtask("检查网络");
+  assert.equal(session.addSubtask("   "), false);
+  assert.match(session.getSnapshot().error, /子步骤内容不能为空/);
+  session.updateSubtask("sub-1", { title: "检查通过", completed: true });
+  assert.deepEqual(session.getSnapshot().subtasks, [
+    { id: "sub-1", title: "检查通过", completed: true },
+  ]);
   session.addSubtask("验证证书");
-  const secondId = session.getSnapshot().subtasks[1].id;
-  assert.match(secondId, /^sub_1_/);
-  assert.notEqual(secondId, "sub_1");
-  session.removeSubtask("sub_1");
-  assert.equal(session.getSnapshot().subtasks.length, 1);
-  assert.equal(session.getSnapshot().subtasks[0].id, secondId);
+  const second = session.getSnapshot().subtasks[1];
+  assert.notEqual(second.id, "sub-1");
+  session.removeSubtask("sub-1");
+  assert.deepEqual(await session.save(), { success: true });
+  assert.deepEqual(store.values.tasks[0].subtasks, [
+    { id: second.id, title: "验证证书", completed: false },
+  ]);
 });
 
-test("会话并发与防护: 保存中拒绝草稿修改与重复提交，保存失败恢复可操作并保留草稿", async () => {
-  let saveResolvers = [];
-  const store = createMockStore({});
-  const slowSave = (b, r) =>
-    new Promise((resolve) => {
-      saveResolvers.push(() => resolve(store.save(b, r)));
-    });
-
+test("保存期间保护草稿并拒绝重复提交，失败后恢复操作且保留完整草稿", async () => {
+  const store = createMockStore();
+  let finishSave;
   const session = openTaskSession({
+    ...store.options(),
     mode: "create",
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    save: slowSave,
+    idGenerator: () => "s1",
+    save: (board, revision) =>
+      new Promise((resolve) => {
+        finishSave = () => resolve(store.save(board, revision));
+      }),
   });
-
-  session.setTitle("初始任务草稿");
+  session.setTitle("初始草稿");
   session.addSubtask("步骤1");
-
-  // 发起保存
-  const savePromise1 = session.save();
-  assert.equal(session.getSnapshot().isSaving, true, "保存中 isSaving 为 true");
-
-  // 保存期间拒绝草稿修改
-  session.setTitle("尝试在保存中修改");
-  assert.equal(session.getSnapshot().title, "初始任务草稿", "保存中草稿被保护");
-
-  // 保存期间拒绝重复提交
-  const savePromise2 = session.save();
-  const dupResult = await savePromise2;
-  assert.equal(dupResult.success, false);
-  assert.match(dupResult.error, /正在保存中/);
-
-  // 完成第一次保存
-  saveResolvers[0]();
-  const result1 = await savePromise1;
-  assert.equal(result1.success, true);
+  const pending = session.save();
+  assert.equal(session.getSnapshot().isSaving, true);
+  session.setTitle("保存中修改");
+  const duplicate = await session.save();
+  assert.equal(duplicate.success, false);
+  assert.match(duplicate.error, /正在保存中/);
+  finishSave();
+  assert.deepEqual(await pending, { success: true });
+  assert.equal(store.values.tasks[0].title, "初始草稿");
   assert.equal(session.getSnapshot().isSaving, false);
 
-  // 验证保存失败恢复草稿:
-  // 使用过期的 revision 再次保存（模拟冲突）
-  const staleSession = openTaskSession({
-    mode: "create",
-    baseBoard: store.values,
-    baseRevision: "rev-expired",
-    save: (b, r) => store.save(b, r),
-  });
-  staleSession.setTitle("未同步的内容");
-  const failResult = await staleSession.save();
-  assert.equal(failResult.success, false);
-  assert.match(failResult.error, /保存失败|冲突/);
-  assert.equal(staleSession.getSnapshot().isSaving, false);
-  assert.equal(
-    staleSession.getSnapshot().title,
-    "未同步的内容",
-    "失败必须完整保留草稿",
-  );
+  session.setTitle("未同步的内容");
+  const saved = structuredClone(store.values);
+  const retry = session.save();
+  finishSave();
+  assert.equal((await retry).success, false);
+  const snapshot = session.getSnapshot();
+  assert.equal(snapshot.isSaving, false);
+  assert.equal(snapshot.title, "未同步的内容");
+  assert.deepEqual(snapshot.subtasks, [
+    { id: "s1", title: "步骤1", completed: false },
+  ]);
+  assert.deepEqual(store.values, saved);
+  session.setTitle("核对后的内容");
+  assert.equal(session.getSnapshot().title, "核对后的内容");
 });
-
-test("泳道会话: 快照展示删除限制，空白标题保存失败并保留错误", async () => {
-  const store = createMockStore({
-    tasks: [{ id: "t1", title: "Task", laneId: "to-plan", projectId: null }],
-  });
-
-  const session = openLaneSession({
-    mode: "edit",
-    laneId: "to-plan",
-    baseBoard: store.values,
-    baseRevision: store.revision,
-    save: (b, r) => store.save(b, r),
-  });
-
-  const snap = session.getSnapshot();
-  assert.equal(snap.title, "待规划");
-  assert.equal(snap.canDelete, false, "有任务的泳道不能删除");
-  assert.equal(snap.tasksInLaneCount, 1);
-
-  session.setTitle("计划中");
-  assert.equal(session.getSnapshot().title, "计划中");
-
-  // 空白名称拦截
-  session.setTitle("   ");
-  const emptyRes = await session.save();
-  assert.equal(emptyRes.success, false);
-  assert.match(emptyRes.error, /泳道名称不能为空/);
-  assert.match(session.getSnapshot().error ?? "", /泳道名称不能为空/);
-});
-
-// ---------------------------------------------------------------------------

@@ -2,793 +2,312 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { KanbanDragController } from "../client/kanban-drag.ts";
 
-const mockContainer = {
-  x: 20,
-  y: 80,
-  width: 800,
-  height: 600,
-};
-
+// Public controller input → feedback/reorder tests keep geometry and timers
+// deterministic. Real card/Hook/Overlay paths live in kanban-card-drag.test.mjs;
+// native layout/touch still requires host acceptance.
+const mockContainer = { x: 20, y: 80, width: 800, height: 600 };
 const mockLanes = [
   { id: "to-plan", rect: { x: 10, y: 10, width: 280, height: 550 } },
   { id: "in-progress", rect: { x: 304, y: 10, width: 280, height: 550 } },
   { id: "done", rect: { x: 598, y: 10, width: 280, height: 550 } },
 ];
+const context = { taskId: "task-1", laneId: "to-plan" };
 
-function setupController(onReorderTask) {
+function setupController() {
+  const requests = [];
   const controller = new KanbanDragController({
-    lanes: mockLanes.map((l) => ({ id: l.id })),
-    onReorderTask,
+    lanes: mockLanes.map(({ id }) => id),
+    onReorderTask: (...args) => requests.push(args),
   });
   controller.registerContainerBounds(mockContainer);
-  for (const lane of mockLanes) {
-    controller.registerLaneLayout(lane.id, lane.rect);
-  }
-  return controller;
+  for (const { id, rect } of mockLanes) controller.registerLaneLayout(id, rect);
+  return { controller, requests };
 }
 
-// ---------------------------------------------------------------------------
-// 1. 有效移动: 开始、移动到另一泳道并释放
-// ---------------------------------------------------------------------------
-test("跨泳道落位: 提交目标泳道与槽位一次并清空反馈", async () => {
-  const moveRequests = [];
-  const controller = setupController((taskId, targetLaneId, targetIndex) => {
-    moveRequests.push({ taskId, targetLaneId, targetIndex });
-  });
-
-  // Start gesture in "to-plan" lane: pointerX = 70, pointerY = 130
-  controller.startGesture("task-1", "to-plan", 70, 130);
-
-  const startFeedback = controller.getFeedback();
-  assert.equal(startFeedback.isDragging, true);
-  assert.equal(startFeedback.draggingTaskId, "task-1");
-  assert.equal(startFeedback.draggingSourceLaneId, "to-plan");
-  assert.equal(startFeedback.hoveredLaneId, "to-plan");
-  assert.equal(startFeedback.pointerX, 70);
-  assert.equal(startFeedback.pointerY, 130);
-
-  // Move pointer into "in-progress" lane: pointerX = 340, pointerY = 130
-  controller.moveGesture(340, 130);
-
-  const moveFeedback = controller.getFeedback();
-  assert.equal(moveFeedback.isDragging, true);
-  assert.equal(moveFeedback.hoveredLaneId, "in-progress");
-  assert.equal(moveFeedback.pointerX, 340);
-  assert.equal(moveFeedback.pointerY, 130);
-
-  // Release gesture in "in-progress" lane
-  await controller.releaseGesture(340, 130);
-
-  // Assert reorder request
-  assert.equal(moveRequests.length, 1);
-  assert.deepEqual(moveRequests[0], {
-    taskId: "task-1",
-    targetLaneId: "in-progress",
-    targetIndex: 0,
-  });
-
-  // Assert feedback is cleared
-  const endFeedback = controller.getFeedback();
-  assert.equal(endFeedback.isDragging, false);
-  assert.equal(endFeedback.draggingTaskId, null);
-  assert.equal(endFeedback.draggingSourceLaneId, null);
-  assert.equal(endFeedback.hoveredLaneId, null);
-  assert.equal(endFeedback.pointerX, undefined);
-  assert.equal(endFeedback.pointerY, undefined);
-
-  // Duplicate termination events must not trigger another move request
-  await controller.releaseGesture(340, 130);
-  controller.cancelGesture();
-  assert.equal(
-    moveRequests.length,
-    1,
-    "Duplicate termination events must be no-ops",
+function registerCards(controller, laneId, cards) {
+  controller.setLaneCardOrder(
+    laneId,
+    cards.map(([id]) => id),
   );
-});
+  for (const [id, y, height] of cards) {
+    controller.registerCardLayout(laneId, id, { x: 10, y, width: 260, height });
+  }
+}
 
-// ---------------------------------------------------------------------------
-// 2. 释放重算: 悬停后移动到无效区释放
-// ---------------------------------------------------------------------------
-test("释放重算: 悬停有效目标后在视口外释放，清空反馈且不提交", async () => {
-  const requests = [];
-  const controller = setupController((...args) => requests.push(args));
+const threeCards = [
+  ["task-1", 0, 64],
+  ["2", 80, 64],
+  ["3", 160, 64],
+];
 
-  for (const [x, y] of [
-    [340, 30], // 工具栏上方
-    [340, 700], // 视口下方
-    [10, 130], // 视口左侧
+test("释放时重算落点：视口外、泳道间隙、内容外与已移除泳道均不提交", async () => {
+  for (const [label, point, removedLane] of [
+    ["视口上方", { x: 340, y: 30 }],
+    ["视口下方", { x: 340, y: 700 }],
+    ["视口左侧", { x: 10, y: 130 }],
+    ["泳道间隙", { x: 318, y: 130 }],
+    ["泳道内容下方", { x: 340, y: 660 }],
+    ["已移除泳道", { x: 340, y: 130 }, "in-progress"],
   ]) {
-    controller.startGesture("task-1", "to-plan", 70, 130);
-    controller.moveGesture(340, 130);
-    assert.equal(controller.getFeedback().hoveredLaneId, "in-progress");
-
-    await controller.releaseGesture(x, y);
-    assert.equal(requests.length, 0, `${x}, ${y}`);
-    assert.equal(controller.getFeedback().isDragging, false);
-    assert.equal(controller.getFeedback().hoveredLaneId, null);
+    const { controller, requests } = setupController();
+    controller.handlePointerDown(context, { x: 70, y: 130 }, "handle");
+    controller.handlePointerMove({ x: 340, y: 130 });
+    assert.equal(controller.getFeedback().hoveredLaneId, "in-progress", label);
+    if (removedLane) controller.setLanes(["to-plan", "done"]);
+    await controller.handlePointerUp(point);
+    assert.deepEqual(requests, [], label);
+    assert.equal(controller.getFeedback().isDragging, false, label);
+    assert.equal(controller.getFeedback().hoveredLaneId, null, label);
   }
 });
 
-// ---------------------------------------------------------------------------
-// 3. 无效目标：泳道间隙、垂直范围外、已移除泳道
-// ---------------------------------------------------------------------------
-
-test("无效落点: 在泳道水平间隙中释放不产生移动请求", async () => {
-  const moveRequests = [];
-  const controller = setupController((taskId, targetLaneId) => {
-    moveRequests.push({ taskId, targetLaneId });
-  });
-
-  controller.startGesture("task-1", "to-plan", 70, 130);
-  // Pointer in gap between to-plan and in-progress: contentX = 298 -> pointerX = 318
-  controller.moveGesture(318, 130);
-  assert.equal(
-    controller.getFeedback().hoveredLaneId,
-    null,
-    "Hover should clear in gap",
-  );
-
-  await controller.releaseGesture(318, 130);
-  assert.equal(moveRequests.length, 0, "Release in gap must not trigger move");
-});
-
-test("无效落点: 在泳道垂直范围外释放不产生移动请求", async () => {
-  const moveRequests = [];
-  const controller = setupController((taskId, targetLaneId) => {
-    moveRequests.push({ taskId, targetLaneId });
-  });
-
-  controller.startGesture("task-1", "to-plan", 70, 130);
-  // Below lane contentY = 580 -> pointerY = 660
-  controller.moveGesture(340, 660);
+test("取消后清空反馈、忽略迟到事件，下一次手势仍能落位", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+  const { controller, requests } = setupController();
+  controller.handlePointerDown(context, { x: 70, y: 130 }, "handle");
+  controller.handlePointerMove({ x: 340, y: 130 });
+  controller.handlePointerCancel();
+  assert.equal(controller.getFeedback().isDragging, false);
+  assert.equal(controller.getFeedback().draggingTaskId, null);
   assert.equal(controller.getFeedback().hoveredLaneId, null);
-
-  await controller.releaseGesture(340, 660);
-  assert.equal(
-    moveRequests.length,
-    0,
-    "Release vertically outside lane must not trigger move",
+  controller.handlePointerMove({ x: 340, y: 130 });
+  await controller.handlePointerUp({ x: 340, y: 130 });
+  controller.handlePointerCancel();
+  assert.deepEqual(requests, []);
+  t.mock.timers.tick(60);
+  controller.handlePointerDown(
+    { taskId: "task-2", laneId: "to-plan" },
+    { x: 70, y: 130 },
+    "handle",
   );
+  await controller.handlePointerUp({ x: 340, y: 130 });
+  assert.deepEqual(requests, [["task-2", "in-progress", 0]]);
 });
 
-test("无效落点: 释放到已不在当前看板中的泳道不产生移动请求", async () => {
-  const moveRequests = [];
-  // Controller where an inactive lane has layout registered, but is NOT in active lanes
-  const controller = new KanbanDragController({
-    lanes: [{ id: "to-plan" }, { id: "in-progress" }],
-    onReorderTask: (taskId, targetLaneId) => {
-      moveRequests.push({ taskId, targetLaneId });
-    },
-  });
-  controller.registerContainerBounds(mockContainer);
-  controller.registerLaneLayout("to-plan", {
-    x: 10,
-    y: 10,
-    width: 280,
-    height: 550,
-  });
-  controller.registerLaneLayout("in-progress", {
-    x: 304,
-    y: 10,
-    width: 280,
-    height: 550,
-  });
-  controller.registerLaneLayout("archived", {
-    x: 598,
-    y: 10,
-    width: 280,
-    height: 550,
-  });
-
-  controller.startGesture("task-1", "to-plan", 70, 130);
-  // Pointer in "archived" lane
-  controller.moveGesture(630, 130);
-  assert.equal(
-    controller.getFeedback().hoveredLaneId,
-    null,
-    "Inactive lane must not be hovered",
-  );
-
-  await controller.releaseGesture(630, 130);
-  assert.equal(
-    moveRequests.length,
-    0,
-    "Release into inactive lane must not trigger move",
-  );
+test("拖拽期间更新泳道与回调，释放仍交给最新回调", async () => {
+  const { controller, requests: oldRequests } = setupController();
+  const latestRequests = [];
+  controller.handlePointerDown(context, { x: 70, y: 130 }, "handle");
+  controller.setLanes(mockLanes.map(({ id }) => id));
+  controller.setOnReorderTask((...args) => latestRequests.push(args));
+  await controller.handlePointerUp({ x: 340, y: 130 });
+  assert.deepEqual(oldRequests, []);
+  assert.deepEqual(latestRequests, [["task-1", "in-progress", 0]]);
 });
 
-// ---------------------------------------------------------------------------
-// 4. 取消与无会话事件
-// ---------------------------------------------------------------------------
-test("取消与无会话事件: 手势取消时立即清空反馈且不移动，无会话后续事件安全忽略", async () => {
-  const moveRequests = [];
-  const controller = setupController((taskId, targetLaneId) => {
-    moveRequests.push({ taskId, targetLaneId });
-  });
-
-  // Start gesture and hover over "in-progress"
-  controller.startGesture("task-1", "to-plan", 70, 130);
-  controller.moveGesture(340, 130);
-  assert.equal(controller.getFeedback().hoveredLaneId, "in-progress");
-
-  // Gesture cancelled
-  controller.cancelGesture();
-
-  const feedback = controller.getFeedback();
-  assert.equal(feedback.isDragging, false);
-  assert.equal(feedback.hoveredLaneId, null);
-  assert.equal(feedback.draggingTaskId, null);
-  assert.equal(
-    moveRequests.length,
-    0,
-    "Cancelled gesture must not trigger move",
-  );
-
-  // Extra orphan events after cancellation
-  controller.moveGesture(340, 130);
-  await controller.releaseGesture(340, 130);
-  controller.cancelGesture();
-  assert.equal(
-    moveRequests.length,
-    0,
-    "Events without active session must be no-ops",
-  );
-
-  // Next gesture functions completely normally
-  controller.startGesture("task-2", "to-plan", 70, 130);
-  controller.moveGesture(340, 130);
-  await controller.releaseGesture(340, 130);
-
-  assert.equal(moveRequests.length, 1);
-  assert.deepEqual(moveRequests[0], {
-    taskId: "task-2",
-    targetLaneId: "in-progress",
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 5. 释放坐标回退: 平台未提供有效释放位置时回退末次指针位置
-// ---------------------------------------------------------------------------
-test("释放坐标回退: 平台未提供有效坐标时回退使用末次已知位置", async () => {
-  const moveRequests = [];
-  const controller = setupController((taskId, targetLaneId) => {
-    moveRequests.push({ taskId, targetLaneId });
-  });
-
-  controller.startGesture("task-1", "to-plan", 70, 130);
-  // Pointer moved to in-progress
-  controller.moveGesture(340, 130);
-
-  // Platform sends 0, 0 or undefined on release
-  await controller.releaseGesture(0, 0);
-
-  assert.equal(moveRequests.length, 1);
-  assert.deepEqual(moveRequests[0], {
-    taskId: "task-1",
-    targetLaneId: "in-progress",
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 6. 重渲染稳定性: 更新泳道列表与回调不中断当前活动拖拽
-// ---------------------------------------------------------------------------
-test("重渲染稳定性: 更新泳道与回调不中断活动拖拽，并使用最新回调", async () => {
-  const firstRequests = [];
-  const secondRequests = [];
-
-  const controller = setupController((taskId, targetLaneId) => {
-    firstRequests.push({ taskId, targetLaneId });
-  });
-
-  controller.startGesture("task-1", "to-plan", 70, 130);
-
-  // Simulate component re-render with new callback reference and lanes
-  controller.setLanes(mockLanes.map((l) => ({ id: l.id })));
-  controller.setOnReorderTask((taskId, targetLaneId, targetIndex) => {
-    secondRequests.push({ taskId, targetLaneId, targetIndex });
-  });
-
-  // Move pointer to "in-progress" lane
-  controller.moveGesture(340, 130);
-  assert.equal(controller.getFeedback().hoveredLaneId, "in-progress");
-
-  await controller.releaseGesture(340, 130);
-
-  assert.equal(firstRequests.length, 0, "Old callback must not be called");
-  assert.equal(
-    secondRequests.length,
-    1,
-    "Latest callback must receive move request",
-  );
-  assert.deepEqual(secondRequests[0], {
-    taskId: "task-1",
-    targetLaneId: "in-progress",
-    targetIndex: 0,
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 7. 目标槽位计算与卡片间迟滞死区 (Hysteresis Buffer)
-// ---------------------------------------------------------------------------
-test("槽位与防抖: 重合卡片位置直接落位并使原卡片顺移，卡片分界迟滞死区防止临界微颤", async () => {
-  const requests = [];
-  const controller = setupController((...args) => requests.push(args));
-  // 注册 in-progress 泳道内 2 张现有卡片
-  // container.y = 80, lane.y = 10, 因此卡片相对 containerOriginY:
-  // 卡片 1 (card-a): y = 20, height = 60. windowY = 110 ~ 170.
-  // 卡片 2 (card-b): y = 90, height = 60. windowY = 180 ~ 240.
-  // 两卡片间分界线: windowY = (170 + 180) / 2 = 175 (死区 167 ~ 183)
-  // card-b 底部边界: windowY = 240 + 4 = 244 (死区 236 ~ 252)
-  controller.setLaneCardOrder("in-progress", ["card-a", "card-b"]);
-  controller.registerCardLayout("in-progress", "card-a", {
-    x: 10,
-    y: 20,
-    width: 260,
-    height: 60,
-  });
-  controller.registerCardLayout("in-progress", "card-b", {
-    x: 10,
-    y: 90,
-    width: 260,
-    height: 60,
-  });
-
-  controller.startGesture("task-1", "to-plan", 70, 130, true);
-
-  // 移动到 in-progress，光标在 card-a 重合位置 (windowY = 110 < 167) -> index 0 (card-a 顺移)
-  controller.moveGesture(340, 110);
-  assert.equal(controller.getFeedback().hoveredLaneId, "in-progress");
-  assert.equal(controller.getFeedback().targetIndex, 0);
-
-  // 移动到 card-b 重合位置 (windowY = 200, 处于 183 ~ 236 之间) -> index 1 (card-b 顺移)
-  controller.moveGesture(340, 200);
-  assert.equal(controller.getFeedback().targetIndex, 1);
-
-  // 向下移动，进入 card-b 底部迟滞缓冲死区 (windowY = 240, 死区 236 ~ 252)
-  controller.moveGesture(340, 240);
-  assert.equal(
-    controller.getFeedback().targetIndex,
-    1,
-    "死区内微颤保持原有槽位 index 1",
-  );
-
-  // 向下突破底部迟滞死区 (windowY = 260 > 252) -> index 2 (落位末尾)
-  controller.moveGesture(340, 260);
-  assert.equal(controller.getFeedback().targetIndex, 2);
-
-  // 向上轻微回退至 windowY = 240 (处于 236 ~ 252 死区)
-  // 保持当前 index 2，不产生抖动！
-  controller.moveGesture(340, 240);
-  assert.equal(
-    controller.getFeedback().targetIndex,
-    2,
-    "回退在死区内保持已有 index 2",
-  );
-
-  // 向上突破死区上界回到 card-b 重合区 (windowY = 210 < 236) -> index 切回 1
-  controller.moveGesture(340, 210);
-  assert.equal(controller.getFeedback().targetIndex, 1);
-
-  await controller.releaseGesture();
+test("卡片边界微颤保持占位槽，突破迟滞区后切换并提交最后槽位", async () => {
+  const { controller, requests } = setupController();
+  registerCards(controller, "in-progress", [
+    ["card-a", 20, 60],
+    ["card-b", 90, 60],
+  ]);
+  controller.handlePointerDown(context, { x: 70, y: 130 }, "handle");
+  // card-b 底部边界在窗口 y=244，迟滞区 236..252。
+  for (const [y, index] of [
+    [110, 0],
+    [200, 1],
+    [240, 1],
+    [260, 2],
+    [240, 2],
+    [210, 1],
+  ]) {
+    controller.handlePointerMove({ x: 340, y });
+    assert.equal(controller.getFeedback().targetIndex, index, `y=${y}`);
+  }
+  await controller.handlePointerUp();
   assert.deepEqual(requests, [["task-1", "in-progress", 1]]);
 });
 
-test("同泳道从下方向上覆盖卡片时提交目标槽位", async () => {
-  const requests = [];
-  const controller = setupController((...args) => requests.push(args));
-  controller.setLaneCardOrder("in-progress", ["A", "B", "C"]);
-  for (const [index, id] of ["A", "B", "C"].entries()) {
-    controller.registerCardLayout("in-progress", id, {
-      x: 10,
-      y: index * 70,
-      width: 260,
-      height: 60,
-    });
-  }
-
-  controller.startGesture("C", "in-progress", 340, 260, true);
-  controller.moveGesture(340, 190); // 与卡片 B 重合
+test("同泳道从底部向上覆盖卡片，按目标槽位提交", async () => {
+  const { controller, requests } = setupController();
+  registerCards(controller, "in-progress", [
+    ["A", 0, 60],
+    ["B", 70, 60],
+    ["C", 140, 60],
+  ]);
+  controller.handlePointerDown(
+    { taskId: "C", laneId: "in-progress" },
+    { x: 340, y: 260 },
+    "handle",
+  );
+  controller.handlePointerMove({ x: 340, y: 190 });
   assert.equal(controller.getFeedback().targetIndex, 1);
-  await controller.releaseGesture(340, 190);
+  await controller.handlePointerUp({ x: 340, y: 190 });
   assert.deepEqual(requests, [["C", "in-progress", 1]]);
 });
 
-test("卡片坐标: 包含列表顶部偏移与纵向滚动，滚动后原地释放匹配新槽位", async () => {
-  const requests = [];
-  const controller = setupController();
-  controller.setOnReorderTask((...args) => requests.push(args));
+test("列表顶部偏移与纵向滚动参与命中，静止指针滚动后按新槽位落位", async () => {
+  const { controller, requests } = setupController();
   controller.registerCardsViewportLayout("to-plan", {
     x: 12,
     y: 60,
     width: 260,
     height: 480,
   });
-  controller.setLaneCardOrder("to-plan", ["1", "2", "3"]);
-  for (const [id, y, height] of [
-    ["1", 0, 96],
+  registerCards(controller, "to-plan", [
+    ["task-1", 0, 96],
     ["2", 104, 60],
     ["3", 172, 100],
-  ]) {
-    controller.registerCardLayout("to-plan", id, {
-      x: 0,
-      y,
-      width: 260,
-      height,
-    });
-  }
-  controller.startGesture("1", "to-plan", 100, 180);
+  ]);
+  controller.handlePointerDown(context, { x: 100, y: 180 }, "handle");
   assert.equal(controller.getFeedback().draggedCardHeight, 96);
-  controller.moveGesture(100, 200);
-  assert.equal(controller.getFeedback().targetIndex, 0);
-  controller.moveGesture(100, 280);
+  controller.handlePointerMove({ x: 100, y: 280 });
   assert.equal(controller.getFeedback().targetIndex, 1);
   controller.handleLaneScroll("to-plan", 100);
-  assert.equal(
-    controller.getFeedback().targetIndex,
-    2,
-    "scrolling must recompute the slot without a pointer move",
-  );
-  await controller.releaseGesture(100, 280);
-  assert.deepEqual(requests, [["1", "to-plan", 2]]);
+  assert.equal(controller.getFeedback().targetIndex, 2);
+  await controller.handlePointerUp({ x: 100, y: 280 });
+  assert.deepEqual(requests, [["task-1", "to-plan", 2]]);
 });
 
-test("横向滚动切换泳道时同时更新槽位，空泳道索引为零", async () => {
-  const requests = [];
-  const controller = setupController();
-  controller.setOnReorderTask((...args) => requests.push(args));
-  controller.setLaneCardOrder("to-plan", ["1", "2", "3"]);
-  for (const [i, id] of ["1", "2", "3"].entries()) {
-    controller.registerCardLayout("to-plan", id, {
-      x: 10,
-      y: i * 80,
-      width: 260,
-      height: 64,
-    });
-  }
-  controller.startGesture("1", "to-plan", 100, 110);
-  controller.moveGesture(100, 400);
+test("横向滚动使静止指针切换到空泳道，同时清除旧槽位", async () => {
+  const { controller, requests } = setupController();
+  registerCards(controller, "to-plan", threeCards);
+  controller.handlePointerDown(context, { x: 100, y: 110 }, "handle");
+  controller.handlePointerMove({ x: 100, y: 400 });
   assert.equal(controller.getFeedback().targetIndex, 2);
   controller.handleScroll(294);
   assert.equal(controller.getFeedback().hoveredLaneId, "in-progress");
   assert.equal(controller.getFeedback().targetIndex, 0);
-  await controller.releaseGesture(100, 400);
-  assert.deepEqual(requests, [["1", "in-progress", 0]]);
+  await controller.handlePointerUp({ x: 100, y: 400 });
+  assert.deepEqual(requests, [["task-1", "in-progress", 0]]);
 });
 
-test("占位动画不能反过来改变命中阈值", () => {
-  const controller = setupController();
-  controller.setLaneCardOrder("to-plan", ["1", "2", "3"]);
-  for (const [i, id] of ["1", "2", "3"].entries()) {
-    controller.registerCardLayout("to-plan", id, {
-      x: 10,
-      y: i * 80,
-      width: 260,
-      height: 64,
-    });
-  }
-  controller.startGesture("1", "to-plan", 100, 110);
-  controller.moveGesture(100, 230);
+test("占位动画改变卡片布局时，同一指针保持槽位并按该槽位提交", async () => {
+  const { controller, requests } = setupController();
+  registerCards(controller, "to-plan", threeCards);
+  controller.handlePointerDown(context, { x: 100, y: 110 }, "handle");
+  controller.handlePointerMove({ x: 100, y: 190 });
   assert.equal(controller.getFeedback().targetIndex, 1);
-  // Source leaves flow; the slot expands. The same pointer must not oscillate.
   controller.registerCardLayout("to-plan", "2", {
     x: 10,
     y: 160,
     width: 260,
     height: 64,
   });
-  controller.moveGesture(100, 230);
+  controller.handlePointerMove({ x: 100, y: 190 });
   assert.equal(controller.getFeedback().targetIndex, 1);
-  controller.cancelGesture();
+  await controller.handlePointerUp();
+  assert.deepEqual(requests, [["task-1", "to-plan", 1]]);
 });
 
-test("同泳道释放: 顶部、中间、底部落位均与占位索引一致", async () => {
-  for (const [y, expected] of [
-    [110, 0],
-    [230, 1],
-    [400, 2],
+// 自动滚动速度是平台滚动驱动消费的公开输出，普通落位不能验证方向。
+test("左右边缘输出相应滚动方向，视口中部停止滚动", () => {
+  const { controller } = setupController();
+  controller.handlePointerDown(context, { x: 70, y: 130 }, "handle");
+  for (const [x, direction] of [
+    [30, -1],
+    [400, 0],
+    [800, 1],
   ]) {
-    const requests = [];
-    const controller = setupController();
-    controller.setOnReorderTask((...args) => requests.push(args));
-    controller.setLaneCardOrder("to-plan", ["1", "2", "3"]);
-    for (const [i, id] of ["1", "2", "3"].entries()) {
-      controller.registerCardLayout("to-plan", id, {
-        x: 10,
-        y: i * 80,
-        width: 260,
-        height: 64,
-      });
-    }
-    controller.startGesture("1", "to-plan", 100, 110);
-    controller.moveGesture(100, y);
-    assert.equal(controller.getFeedback().targetIndex, expected);
-    await controller.releaseGesture(100, y);
-    assert.deepEqual(requests, [["1", "to-plan", expected]]);
+    controller.handlePointerMove({ x, y: 130 });
+    assert.equal(
+      Math.sign(controller.getFeedback().autoScrollVelocity),
+      direction,
+    );
   }
+  controller.handlePointerCancel();
 });
 
-// ---------------------------------------------------------------------------
-// 8. 视口边缘感应平滑自动滚动 (Edge Auto-scroll)
-// ---------------------------------------------------------------------------
-test("边缘滚动: 接近看板视口左右 48px 边缘时输出定向速度矢量", async () => {
-  const controller = setupController();
-  controller.startGesture("task-1", "to-plan", 70, 130, true);
-
-  // mockContainer: x = 20, width = 800. 视口范围 20 ~ 820
-  // 左侧边缘区: 20 ~ 68. 指针在 x = 30 时进入左侧边缘
-  controller.moveGesture(30, 130);
-  assert.ok(
-    (controller.getFeedback().autoScrollVelocity ?? 0) < 0,
-    "左侧边缘速度应为负",
-  );
-
-  // 中间安全区: x = 400
-  controller.moveGesture(400, 130);
-  assert.equal(
-    controller.getFeedback().autoScrollVelocity ?? 0,
-    0,
-    "中间安全区速度为 0",
-  );
-
-  // 右侧边缘区: 820 - 48 = 772 ~ 820. 指针在 x = 800 时进入右侧边缘
-  controller.moveGesture(800, 130);
-  assert.ok(
-    (controller.getFeedback().autoScrollVelocity ?? 0) > 0,
-    "右侧边缘速度应为正",
-  );
-
-  await controller.releaseGesture();
-});
-
-// ---------------------------------------------------------------------------
-// 9. 失败清理与互斥锁释放
-// ---------------------------------------------------------------------------
-test("失败清理: 提交回调抛异常后释放互斥锁，后续可继续操作", async (t) => {
+test("保存异常后清理并解锁，下一次拖拽可以成功提交", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
-
-  let attempts = 0;
-  const controller = setupController();
-  controller.setOnReorderTask(async () => {
-    attempts++;
-    throw new Error("Network failure");
+  const { controller, requests } = setupController();
+  controller.setOnReorderTask(async (...args) => {
+    requests.push(args);
+    if (requests.length === 1) throw new Error("Network failure");
   });
-
-  controller.startGesture("task-1", "to-plan", 70, 130, true);
-  controller.moveGesture(340, 130);
-
-  await assert.rejects(controller.releaseGesture(340, 130), /Network failure/);
-
-  // 推进 60ms 释放互斥锁
+  controller.handlePointerDown(context, { x: 70, y: 130 }, "handle");
+  await assert.rejects(
+    controller.handlePointerUp({ x: 340, y: 130 }),
+    /Network failure/,
+  );
+  assert.equal(controller.getDroppingState(), null);
+  assert.equal(controller.getFeedback().isDragging, false);
   t.mock.timers.tick(60);
-
-  assert.equal(attempts, 1, "重排回调应且仅应被调用一次");
-  assert.equal(controller.isDragLocked(), false, "互斥锁必须在失败后恢复释放");
-  assert.equal(controller.getFeedback().isDragging, false);
-
-  // 下一次操作必须可以正常进行
-  controller.startGesture("task-2", "to-plan", 70, 130, true);
-  assert.equal(controller.getFeedback().isDragging, true);
-  assert.equal(controller.getFeedback().draggingTaskId, "task-2");
-  controller.cancelGesture();
-});
-
-// ---------------------------------------------------------------------------
-// 10. 统一手势输入入口 (handlePointerDown/Move/Up/Cancel)
-// ---------------------------------------------------------------------------
-test("共同输入入口: 轻点分流、手柄立即激活与主体位移升级拖拽", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
-
-  const reorders = [];
-  let clicks = 0;
-  const controller = setupController();
-  controller.setOnReorderTask((...args) => reorders.push(args));
-  const ctx = {
-    taskId: "t1",
-    laneId: "to-plan",
-    onPress: () => {
-      clicks++;
-    },
-  };
-
-  // 1. 轻点: 小幅位移 (< 5px) 后抬起，触发 onPress，不触发排序
-  controller.handlePointerDown(ctx, { x: 100, y: 100 }, "body");
-  controller.handlePointerMove({ x: 103, y: 100 });
-  assert.equal(controller.getFeedback().isDragging, false);
-  await controller.handlePointerUp({ x: 103, y: 100 });
-  assert.equal(clicks, 1, "原地松手识别为轻点打开详情");
-  assert.equal(reorders.length, 0, "轻点不产生排序");
   assert.equal(controller.isDragLocked(), false);
-
-  // 2. 主体移动 >= 5px 激活拖拽
-  controller.handlePointerDown(ctx, { x: 100, y: 100 }, "body");
-  controller.handlePointerMove({ x: 106, y: 100 });
-  assert.equal(
-    controller.getFeedback().isDragging,
-    true,
-    "位移 >= 5px 激活拖拽",
+  controller.handlePointerDown(
+    { taskId: "task-2", laneId: "to-plan" },
+    { x: 70, y: 130 },
+    "handle",
   );
-  await controller.handlePointerUp({ x: 340, y: 100 });
-  assert.equal(clicks, 1, "拖拽不触发点击");
-  assert.equal(reorders.length, 1, "释放触发排序");
-  assert.equal(controller.isDragLocked(), true, "松手后短暂保持锁定");
-
-  // 推进 60ms 释放互斥锁
-  t.mock.timers.tick(60);
-
-  // 3. 手柄立即激活
-  controller.handlePointerDown(ctx, { x: 50, y: 50 }, "handle");
-  assert.equal(controller.getFeedback().isDragging, true, "手柄按下立即激活");
-  await controller.handlePointerUp({ x: 340, y: 100 });
-  assert.equal(clicks, 1, "手柄拖拽不触发点击");
-  assert.equal(reorders.length, 2, "手柄释放触发排序");
+  await controller.handlePointerUp({ x: 340, y: 130 });
+  assert.deepEqual(requests, [
+    ["task-1", "in-progress", 0],
+    ["task-2", "in-progress", 0],
+  ]);
 });
 
-// ---------------------------------------------------------------------------
-// 11. 触屏 220ms 长按抓起与快速滑动让渡滚动
-// ---------------------------------------------------------------------------
-test("触屏输入: 220ms 长按抓起，长按前快速滑动让渡滚动且不触发拖拽与轻点", async (t) => {
+test("触屏快速滑动让渡滚动；长按抓起后可落位，两者都不误触详情", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
-
-  let clicks = 0;
-  const reorders = [];
-  const controller = setupController();
-  controller.setOnReorderTask((...args) => reorders.push(args));
-  const ctx = {
-    taskId: "t1",
-    laneId: "to-plan",
-    onPress: () => {
-      clicks++;
-    },
-  };
-
-  // 1. 触屏在 220ms 前快速滑动 (移动 >= 5px): 应取消手势，不升级拖拽，不触发轻点
-  controller.handlePointerDown(ctx, { x: 100, y: 100 }, "body", "touch");
-  controller.handlePointerMove({ x: 100, y: 120 }); // 滑动 20px
-  assert.equal(
-    controller.getFeedback().isDragging,
-    false,
-    "快速滑动不得升级为拖拽",
-  );
-  await controller.handlePointerUp({ x: 100, y: 120 });
-  assert.equal(clicks, 0, "快速滑动不得误触详情弹窗");
-  assert.equal(reorders.length, 0);
-
-  // 推进 60ms 释放互斥锁
-  t.mock.timers.tick(60);
-
-  // 2. 触屏长按 220ms: 成功抓起卡片
-  controller.handlePointerDown(ctx, { x: 100, y: 100 }, "body", "touch");
-  assert.equal(
-    controller.getFeedback().isDragging,
-    false,
-    "按下未满 220ms 前未激活",
-  );
-
-  // 推进 220ms 触屏长按到时
-  t.mock.timers.tick(220);
-  assert.equal(
-    controller.getFeedback().isDragging,
-    true,
-    "触屏长按 220ms 后激活拖拽",
-  );
-
-  // 后续滑动正常跟随
-  controller.handlePointerMove({ x: 340, y: 100 });
-  await controller.handlePointerUp({ x: 340, y: 100 });
-  assert.equal(clicks, 0);
-  assert.equal(reorders.length, 1);
-});
-
-// ---------------------------------------------------------------------------
-// 12. 操作身份与动画生命周期闭环
-// ---------------------------------------------------------------------------
-test("动画与事务闭环: 操作身份保护，仅完成落位提交一次，重复上报与中断零提交", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
-
-  const reorders = [];
-  const controller = setupController();
-  controller.setOnReorderTask((...args) => reorders.push(args));
-  const ctx = { taskId: "t1", laneId: "to-plan", onPress: () => {} };
-
-  // 1. 正常落位与可控动画完成上报
-  controller.handlePointerDown(ctx, { x: 50, y: 50 }, "handle");
-  controller.handlePointerMove({ x: 340, y: 100 });
-  const droppingState = await controller.beginDropAnimation({ x: 340, y: 100 });
-  assert.ok(droppingState, "必须生成落位动画状态");
-  assert.ok(droppingState.operationId, "必须包含操作唯一标识");
-  assert.equal(droppingState.targetLaneId, "in-progress");
-  assert.equal(reorders.length, 0, "未完成动画前不得提交");
-
-  // 上报完成: 触发唯一一次提交
-  await controller.reportDropComplete(droppingState.operationId);
-  assert.equal(reorders.length, 1, "动画完成后提交一次");
-
-  // 重复上报过期/旧 operationId: 不得产生二次写入
-  await controller.reportDropComplete(droppingState.operationId);
-  assert.equal(reorders.length, 1, "重复完成通知不得重复写入");
-
-  t.mock.timers.tick(60);
-
-  // 2. 动画中断: 调用 abortDrop，零提交
-  controller.handlePointerDown(ctx, { x: 50, y: 50 }, "handle");
-  controller.handlePointerMove({ x: 340, y: 100 });
-  const droppingState2 = await controller.beginDropAnimation({
-    x: 340,
-    y: 100,
-  });
-  controller.abortDrop(droppingState2.operationId);
-  assert.equal(reorders.length, 1, "中断动画不得提交");
-});
-
-// ---------------------------------------------------------------------------
-// 13. 落位动画状态保持与任务快照动态解析
-// ---------------------------------------------------------------------------
-test("落位动画与提交流程: 动态预览更新、保存期间保持落位状态防止原位闪烁、快速释放互斥锁", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
-
-  let saveStarted = false;
-  let saveCompleted = false;
-  let droppingStateDuringSave = null;
-
-  const controller = setupController();
-  // 初始为 null 的获取器（模拟初始化时 board 尚未加载）
-  controller.setGetTaskPreview?.(() => null);
-
-  // 随后数据就绪，动态注入真实获取器
-  if (controller.setGetTaskPreview) {
-    controller.setGetTaskPreview((taskId) => ({
-      task: { id: taskId, title: "Dynamic Task", subtasks: [] },
-      projectDisplayName: "Project Alpha",
-    }));
+  for (const longPress of [false, true]) {
+    const { controller, requests } = setupController();
+    let clicks = 0;
+    controller.handlePointerDown(
+      { ...context, onPress: () => clicks++ },
+      { x: 100, y: 100 },
+      "body",
+      "touch",
+    );
+    assert.equal(controller.getFeedback().isDragging, false);
+    if (longPress) t.mock.timers.tick(220);
+    controller.handlePointerMove(
+      longPress ? { x: 340, y: 100 } : { x: 100, y: 120 },
+    );
+    assert.equal(controller.getFeedback().isDragging, longPress);
+    await controller.handlePointerUp();
+    assert.equal(clicks, 0);
+    assert.deepEqual(requests, longPress ? [["task-1", "in-progress", 0]] : []);
   }
+});
 
-  controller.setOnReorderTask(async () => {
-    saveStarted = true;
-    droppingStateDuringSave = controller.getDroppingState();
-    await new Promise((r) => setTimeout(r, 40));
-    saveCompleted = true;
-  });
-
-  const ctx = { taskId: "dyn-1", laneId: "to-plan", onPress: () => {} };
-  controller.handlePointerDown(ctx, { x: 50, y: 50 }, "handle");
-  controller.handlePointerMove({ x: 340, y: 100 });
-
-  const drop = await controller.beginDropAnimation({ x: 340, y: 100 });
-  assert.ok(drop, "必须生成落位动画状态");
-  assert.equal(drop.task?.title, "Dynamic Task", "必须使用动态注入的任务快照");
-  assert.equal(drop.projectName, "Project Alpha", "必须使用动态注入的项目名称");
-
-  // 发起提交
-  const reportPromise = controller.reportDropComplete(drop.operationId);
-  // 在保存过程中断言
-  assert.equal(saveStarted, true, "应当已经触发保存");
-  assert.ok(
-    droppingStateDuringSave,
-    "保存期间必须保留 droppingState，防止卡片闪回原位",
-  );
-  assert.equal(droppingStateDuringSave.taskId, "dyn-1");
-
-  t.mock.timers.tick(40);
-  await reportPromise;
-  assert.equal(saveCompleted, true, "保存已完成");
-  assert.equal(
-    controller.getDroppingState(),
-    null,
-    "保存完成后清除 droppingState",
-  );
-
-  // 验证快速解锁（60ms 缓冲后即解锁，不超过 100ms）
+test("落位动画完成才提交一次，重复完成与动画中断不再提交", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+  const { controller, requests } = setupController();
+  controller.handlePointerDown(context, { x: 70, y: 130 }, "handle");
+  const drop = await controller.beginDropAnimation({ x: 340, y: 130 });
+  assert.deepEqual(requests, []);
+  await controller.reportDropComplete(drop.operationId);
+  await controller.reportDropComplete(drop.operationId);
+  assert.deepEqual(requests, [["task-1", "in-progress", 0]]);
   t.mock.timers.tick(60);
-  assert.equal(
-    controller.isDragLocked(),
-    false,
-    "互斥锁必须在平滑缓冲后迅速解锁",
-  );
+  controller.handlePointerDown(context, { x: 70, y: 130 }, "handle");
+  const aborted = await controller.beginDropAnimation({ x: 340, y: 130 });
+  controller.abortDrop(aborted.operationId);
+  await controller.reportDropComplete(aborted.operationId);
+  assert.deepEqual(requests, [["task-1", "in-progress", 0]]);
+});
+
+test("动态预览参与落位，保存期间保持浮层状态，保存后清除并解锁", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+  const { controller, requests } = setupController();
+  controller.setGetTaskPreview(() => null);
+  controller.setGetTaskPreview((taskId) => ({
+    task: { id: taskId, title: "Dynamic Task", subtasks: [] },
+    projectDisplayName: "Project Alpha",
+  }));
+  let finishSave;
+  const save = new Promise((resolve) => {
+    finishSave = resolve;
+  });
+  controller.setOnReorderTask(async (...args) => {
+    requests.push(args);
+    await save;
+  });
+  controller.handlePointerDown(context, { x: 70, y: 130 }, "handle");
+  const drop = await controller.beginDropAnimation({ x: 340, y: 130 });
+  assert.equal(drop.task.title, "Dynamic Task");
+  assert.equal(drop.projectName, "Project Alpha");
+  const committing = controller.reportDropComplete(drop.operationId);
+  assert.deepEqual(requests, [["task-1", "in-progress", 0]]);
+  assert.equal(controller.getDroppingState(), drop);
+  finishSave();
+  await committing;
+  assert.equal(controller.getDroppingState(), null);
+  t.mock.timers.tick(60);
+  assert.equal(controller.isDragLocked(), false);
 });
 
 test("分屏移动和缩窄后按新的窗口坐标与横向滚动定位落点", async () => {
-  const requests = [];
-  const controller = setupController((...args) => requests.push(args));
+  const { controller, requests } = setupController();
   const bounds = { x: 520, y: 80, width: 360, height: 600 };
   controller.bindContainerRef({
     measureInWindow(callback) {
@@ -809,9 +328,7 @@ test("分屏移动和缩窄后按新的窗口坐标与横向滚动定位落点",
     height: 550,
   });
   controller.handleScroll(250);
-
-  controller.startGesture("task-1", "to-plan", 535, 130);
-  controller.moveGesture(620, 130);
-  await controller.releaseGesture(620, 130);
+  controller.handlePointerDown(context, { x: 535, y: 130 }, "handle");
+  await controller.handlePointerUp({ x: 620, y: 130 });
   assert.deepEqual(requests, [["task-1", "in-progress", 0]]);
 });

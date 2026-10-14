@@ -100,39 +100,37 @@ test("项目名称读取失败仍按已知 ID 筛选，默认项目可通过 ID 
   assert.deepEqual(visibleTasks(panel.root), ["Task A"]);
 });
 
-async function createTask(root, title) {
-  await press(root, "+ New Task");
-  const modal = root.findByType("Modal");
-  await act(async () =>
-    modal
-      .findByProps({ placeholder: "Enter task title" })
-      .props.onChangeText(title),
-  );
-  await press(modal, "Create");
-}
-
-test("工作区内新建任务跟随手动项目筛选，共享更新同步到其他入口", async (t) => {
+test("新任务关联跟随项目筛选，All 和 No Project 默认不关联，并同步其他入口", async (t) => {
   const host = createHost();
   const panel = await mount(t, host, "workspace-a");
   const peer = await mount(t, host, "workspace-b");
   const sidebar = await mount(t, host);
-  await press(panel.root, "Project B");
-  await createTask(panel.root, "Task new-B");
-  assert.ok(visibleTasks(peer.root).includes("Task new-B"));
-  assert.ok(visibleTasks(sidebar.root).includes("Task new-B"));
+  for (const [filter, title, association, visibleInPeer] of [
+    ["Project B", "Task new-B", "Project B", true],
+    ["All", "Task new-all", "No Project", false],
+    ["No Project", "Task new-unassigned", "No Project", false],
+  ]) {
+    await press(panel.root, filter);
+    await press(panel.root, "+ New Task");
+    const modal = panel.root.findByType("Modal");
+    await act(async () =>
+      modal
+        .findByProps({ placeholder: "Enter task title" })
+        .props.onChangeText(title),
+    );
+    await press(modal, "Create");
+    assert.ok(
+      visibleTasks(sidebar.root).includes(title),
+      `${filter}: 同步侧边栏`,
+    );
+    assert.equal(
+      visibleTasks(peer.root).includes(title),
+      visibleInPeer,
+      `${filter}: 同步且遵循另一工作区的筛选`,
+    );
+    await press(panel.root, association);
+    assert.ok(visibleTasks(panel.root).includes(title), `${filter}: 项目关联`);
+  }
   await press(panel.root, "Project A");
   assert.deepEqual(visibleTasks(panel.root), ["Task A"]);
 });
-
-for (const filter of ["All", "No Project"]) {
-  test(`筛选 ${filter} 时新任务默认不关联工作区所属项目`, async (t) => {
-    const host = createHost();
-    const panel = await mount(t, host, "workspace-a");
-    await press(panel.root, filter);
-    await createTask(panel.root, "Task new-unassigned");
-    await press(panel.root, "No Project");
-    assert.ok(visibleTasks(panel.root).includes("Task new-unassigned"));
-    await press(panel.root, "Project A");
-    assert.deepEqual(visibleTasks(panel.root), ["Task A"]);
-  });
-}
