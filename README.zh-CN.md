@@ -91,7 +91,7 @@ npm run check
 
 ## 版本发布
 
-参见 [0.1.3 版本说明](./docs/releases/0.1.3.md)。每版 npm 包与 GitHub Release 对应同一个版本 tag，GitHub 附带经过验证的 npm tarball。`main` 可能包含最新发布版之后的改动。
+参见 [0.1.4 版本说明](./docs/releases/0.1.4.md)。每版 npm 包与 GitHub Release 对应同一个版本 tag，GitHub 附带经过验证的 npm tarball。`main` 可能包含最新发布版之后的改动。
 
 ---
 
