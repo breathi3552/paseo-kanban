@@ -27,6 +27,11 @@ a reason for another test.
 **Action:** State what the user or API consumer provides and what they receive.
 Use requirements and observed bugs as the source of expected behavior.
 
+Trace the proposed guarantee from a reachable consumer action, through a real
+functional seam, to a promised observable result. A seam connects that action to
+its result, such as modal input to persistence or a drop target to animation.
+An exported application helper is not automatically a consumer-facing API.
+
 **Key point:** Describe “upstream locale → plugin text,” rather than listing
 normalization, detection, dictionary lookup, and rendering as separate features.
 
@@ -47,6 +52,8 @@ for a service, use its public request and observable response or state change.
 - Do not bypass language detection by supplying the expected plugin language,
   then claim to have tested upstream language adaptation.
 - Reuse existing fixtures. Avoid building another harness for the same boundary.
+- Keep an existing boundary if it already exercises the promise. A more expensive
+  UI or CLI harness needs a concrete missing connection to justify replacing it.
 
 **Why:** Separate passing tests for each step can miss broken connections between them.
 
@@ -62,6 +69,8 @@ table when examples differ only in inputs and expected outputs.
   another `if`, field alias, or fallback stage does not establish that need.
 - Use independent expected outputs from requirements or known fixtures, not
   values calculated by the implementation being tested.
+- Capture expected data before the action can change it. This avoids a self-confirming
+  assertion; it does not establish a requirement that input objects stay immutable.
 - Separate initialization, live updates, or error handling only when they are
   distinct promised behaviors. Do not multiply every business error by every locale.
 
@@ -76,8 +85,16 @@ failure, implement the minimum change, and run the appropriate checks.
 **Existing-test refactor:** Passing on the first run is expected when the behavior
 already exists. Do not change production behavior just to create a red phase.
 Replace repeated layer checks with the functional test and remove obsolete fixtures.
-When practical, replay the original bug in an isolated copy to verify that its
-regression test still fails for the right reason.
+When practical, replay the original bug or break a concrete functional seam in an
+isolated copy. Before treating the result as a coverage defect, establish the
+reachable consumer action and changed promised output. A surviving internal mutant
+or an old test that fails is insufficient. Do not add tests just to kill mutants.
+
+Reject injected scenarios requiring a new action through a disabled control,
+impossible state, or direct calls bypassing the real entry path, unless those calls
+belong to an independently supported consumer API. If a queued event can still
+arrive, demonstrate its real entry and lifecycle rather than assuming a bypass is
+reachable. Report unproven reachability as a limitation.
 
 **Scope:** A newly written test is not authorization to add an adjacent feature.
 Distinguish a requirement failure from an unrequested capability.
@@ -87,6 +104,7 @@ Distinguish a requirement failure from an unrequested capability.
 Before adding or retaining another test, answer:
 
 - What promised behavior would lose protection if this test disappeared?
+- Can the consumer reach its conditions through the selected real entry path?
 - Does the selected functional test already exercise that behavior?
 - Does this assert a result, or merely pin an internal call, branch, or helper?
 - Is the fixture and execution cost proportionate to the behavior protected?
@@ -95,7 +113,15 @@ A separate lower-level test is justified for an independently promised API or
 invariant, or when a required scenario cannot be exercised safely, deterministically,
 or at reasonable cost through the chosen boundary. Examples include a reusable
 parser, numerical accuracy, and a payment's idempotency contract. State the concrete
-reason; “different function” is insufficient.
+consumer promise and why that boundary is needed; “different function,” “exported,”
+or “the mutation survived” is insufficient. App-internal logic alone is not another
+functional contract.
+
+When coverage moves across tests or files, name the surviving scenario and verify
+that it observes the same promise. For a promise that holds during an operation,
+observe its result then: a captured save request does not prove the live UI stayed
+consistent. Replacing an external animation clock must retain its meaningful target
+or visible effect; completion alone does not prove arrival at the promised slot.
 
 Structural checks such as schema or dictionary completeness can remain as explicit
 quality guarantees. They are not substitutes for functional tests. If pruning drops
@@ -103,15 +129,18 @@ a unique guarantee, state that trade-off; do not claim identical coverage.
 
 ## Guardrails
 
-| Temptation                                              | Required decision                                                          |
-| ------------------------------------------------------- | -------------------------------------------------------------------------- |
-| “Every helper needs its own test.”                      | Start with the functional contract; justify any additional boundary.       |
-| “Another branch means another requirement.”             | Find the promised outcome before adding a case.                            |
-| “All functions pass, so the feature works.”             | Exercise the connected product path.                                       |
-| “Wrap all assertions in one test to simplify it.”       | Remove duplicate checks and setup; retain meaningful scenario diagnostics. |
-| “Fewer tests means faster or equally safe.”             | Check cost and lost guarantees; counts prove neither.                      |
-| “Behavior-first means deleting all unit tests.”         | A library's public function can be the complete functional boundary.       |
-| “The new test exposed an opportunity to add a feature.” | Keep production changes within the authorized behavior.                    |
+| Temptation                                                  | Required decision                                                               |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| “Every helper needs its own test.”                          | Start with the functional contract; justify any additional boundary.            |
+| “Another branch means another requirement.”                 | Find the promised outcome before adding a case.                                 |
+| “All functions pass, so the feature works.”                 | Exercise the connected product path.                                            |
+| “Wrap all assertions in one test to simplify it.”           | Remove duplicate checks and setup; retain meaningful scenario diagnostics.      |
+| “Fewer tests means faster or equally safe.”                 | Check cost and lost guarantees; counts prove neither.                           |
+| “Behavior-first means deleting all unit tests.”             | A library's public function can be the complete functional boundary.            |
+| “The new test exposed an opportunity to add a feature.”     | Keep production changes within the authorized behavior.                         |
+| “An internal mutation survived, so another test is needed.” | First prove reachable conditions and a violated consumer promise.               |
+| “The old test fails, so it must be valuable.”               | Check its observable contract; implementation-only differences may be harmless. |
+| “The UI blocks this input, but I can call its callback.”    | Reject the bypass as user-path evidence; justify a supported API separately.    |
 
 ## Completion and communication
 
@@ -123,3 +152,6 @@ Complete when the chosen scenarios exercise the product path, duplicate checks
 and unused fixtures are removed, appropriate checks pass, and any remaining unique
 quality guarantees or platform limitations are identified. Report observed results;
 do not describe a simulated host test as real host acceptance.
+For fault injection, distinguish historical bugs from synthetic seam breaks, and
+state the consumer conditions and observed output. Mutation survival alone does not
+prove a product defect or justify restoring removed internal checks.

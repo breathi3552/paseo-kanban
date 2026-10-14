@@ -59,3 +59,49 @@ Dictionary-key equality can catch omissions that a few rendered examples cannot.
 It is a separate quality guarantee, rather than a second proof of locale mapping.
 Keep it when that guarantee is wanted, or explicitly acknowledge its removal.
 Do not invent a compiler guarantee that the current types do not actually enforce.
+
+## Pending save and a reachable edit
+
+**Promise:** The user must not see a changed task title disappear when a pending
+save completes. Confirm the product's intended editing policy before testing it.
+
+Mount the real modal with a pending external save. Inspect whether its title input
+is editable, then enter text through that input. Compare the visible value during
+the save with the submitted content and the result after completion or failure.
+Keep the session and persistence conversion real. This exercises the input,
+subscription, draft and save connection; it is not a test of every setter guard.
+
+If the UI disables editing, firing its callback anyway does not demonstrate a user
+scenario. A removed internal guard may then be harmless at this boundary. Do not
+restore a lower-level test solely because its old assertion detects that change.
+
+## Landing position and an external animation clock
+
+**Promise:** Releasing a dragged card over a valid slot animates it to that slot,
+then commits its placement.
+
+Use real card input, target selection and overlay code with known platform layout.
+Make the release point differ from the slot. Substitute the platform clock if
+needed, while observing the rendered endpoint or the position requested from the
+external animation facility. Merely firing completion and checking persistence
+does not protect the visible landing position.
+
+A synthetic break that makes the overlay stay at the release point demonstrates
+a functional seam failure. It does not justify separate tests for every geometric
+helper or require pinning the current spring parameters.
+
+## Mutable inputs and a synthetic corruption
+
+**Promise:** Moving a task preserves its title, description and steps. Observe
+the displayed or persisted content after the real move path, or use the API boundary
+if that API is independently promised to consumers.
+
+Construct expected content from a fixture captured before the move. Reading a
+possibly modified input afterwards can make actual and expected share the same
+corruption. This is an assertion-quality issue, not proof that the product must
+return new objects. An in-place implementation with identical promised results
+is not a regression unless immutability itself is a documented consumer contract.
+
+Arbitrarily poisoning a helper's data is a synthetic probe, not a reported user
+bug. Trace its effect through the chosen functional boundary before calling it lost
+feature coverage; otherwise reject it as grounds for another defensive test.

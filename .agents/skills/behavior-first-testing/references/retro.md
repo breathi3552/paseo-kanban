@@ -58,3 +58,36 @@
 The operational lesson is a better boundary and clearer coverage, not a target
 number of tests. No automated behavioral benchmark or blind-agent evaluation of
 the new skill has been run; the accompanying scenarios define future evaluation.
+
+## Follow-up: fault injection must justify its boundary
+
+The repository-wide simplification in `ab25808` passed 64 tests. A later review
+found internal variants that passed the new tests but failed old assertions.
+That comparison was initially treated too broadly as proof of lost protection.
+It proves a difference in tests, not that the consumer can reach a broken result.
+
+Rechecking the product connections gave a more precise assessment:
+
+- The task modal leaves title input enabled while saving and routes its changes
+  to the real session. In an isolated copy, accepting that edit changed the visible
+  title while the captured save retained the original title and completion closed
+  the modal. This is a reachable UI-to-save inconsistency, suitable for a functional
+  scenario rather than a test for each setter guard.
+- Real card release passes its selected target to the real overlay and then to
+  the platform animation facility. Breaking that target connection left the
+  overlay at the release point instead of the known slot. Landing position is a
+  user-visible promise, distinct from successful persistence or callback counts.
+- Poisoning task descriptions before a helper call demonstrated that expected
+  data read after execution can self-confirm corruption. It did not establish a
+  requirement for input-object immutability or a historical user-facing bug.
+
+The first two conclusions came from actual component paths with external storage,
+layout and animation timing simulated. They are not real native-host acceptance.
+The third supports independent expected values, not another internal defensive
+test. Preserving an old assertion or killing more mutants is never the goal.
+
+Put the reachability and consumer-effect gate in the main skill, and keep these
+examples here. Do not turn this review into rules requiring tests for every guard,
+geometric helper or internal mutation. The evaluation scenarios now include
+unreachable UI actions and harmless internal changes; these remain proposed
+behavioral evaluations, not a measured blind-agent reliability benchmark.
