@@ -5,6 +5,7 @@ import {
   TextInput,
   Icon,
   ScrollView,
+  useToast,
 } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanLane } from "../shared/kanban";
@@ -55,6 +56,7 @@ export function TaskModal({
   );
   const isSaving = snapshot.isSaving;
   const errorMessage = snapshot.error;
+  const toast = useToast();
 
   const styles = useMemo(
     () =>
@@ -236,14 +238,29 @@ export function TaskModal({
   const handleSave = async () => {
     const result = await session.save();
     if (result.success) {
+      if (!result.unchanged) {
+        toast.show(
+          t(
+            session.mode === "create"
+              ? "notification.taskCreated"
+              : "notification.taskUpdated",
+          ),
+          { variant: "success" },
+        );
+      }
       onClose();
+    } else if (result.kind === "operation") {
+      toast.error(t("notification.taskSaveFailed"));
     }
   };
 
   const handleDelete = async () => {
     const result = await session.deleteTask();
     if (result.success) {
+      toast.show(t("notification.taskDeleted"), { variant: "success" });
       onClose();
+    } else if (result.kind === "operation") {
+      toast.error(t("notification.taskDeleteFailed"));
     }
   };
 

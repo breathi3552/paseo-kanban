@@ -13,6 +13,19 @@ export type TranslationParams = Record<
 
 export const translations = {
   zh: {
+    "notification.taskCreated": "任务已创建",
+    "notification.taskUpdated": "任务已更新",
+    "notification.taskDeleted": "任务已删除",
+    "notification.laneCreated": "泳道已创建",
+    "notification.laneRenamed": "泳道已重命名",
+    "notification.laneDeleted": "泳道已删除",
+    "notification.taskSaveFailed": "任务保存失败，草稿已保留，请核实最新数据。",
+    "notification.taskDeleteFailed": "任务删除失败，请核实最新数据。",
+    "notification.laneSaveFailed": "泳道保存失败，草稿已保留，请核实最新数据。",
+    "notification.laneDeleteFailed": "泳道删除失败，请核实最新数据。",
+    "notification.taskReorderFailed": "任务移动失败，请刷新最新数据后重试。",
+    "notification.taskCompletionFailed":
+      "任务完成状态保存失败，请核实最新状态。",
     "kanban.sidebarTitle": "看板",
     "kanban.title": "任务看板",
     "kanban.loading": "正在加载看板数据...",
@@ -78,6 +91,24 @@ export const translations = {
     "taskModal.submitCreate": "创建",
   },
   en: {
+    "notification.taskCreated": "Task created",
+    "notification.taskUpdated": "Task updated",
+    "notification.taskDeleted": "Task deleted",
+    "notification.laneCreated": "Lane created",
+    "notification.laneRenamed": "Lane renamed",
+    "notification.laneDeleted": "Lane deleted",
+    "notification.taskSaveFailed":
+      "Task save failed. Draft preserved; check the latest data.",
+    "notification.taskDeleteFailed":
+      "Task deletion failed. Check the latest data.",
+    "notification.laneSaveFailed":
+      "Lane save failed. Draft preserved; check the latest data.",
+    "notification.laneDeleteFailed":
+      "Lane deletion failed. Check the latest data.",
+    "notification.taskReorderFailed":
+      "Task move failed. Refresh the latest data and try again.",
+    "notification.taskCompletionFailed":
+      "Task completion change failed. Check the latest state.",
     "kanban.sidebarTitle": "Kanban",
     "kanban.title": "Task Kanban",
     "kanban.loading": "Loading kanban board data...",

@@ -1,6 +1,11 @@
 import { useState, useEffect, useMemo, useSyncExternalStore } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { Modal, TextInput, Icon } from "@getpaseo/plugin/client/react-native";
+import {
+  Modal,
+  TextInput,
+  Icon,
+  useToast,
+} from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { LaneEditSession } from "./kanban-session";
 import { useI18n } from "./i18n";
@@ -40,6 +45,7 @@ export function LaneModal({
   const canDelete = snapshot.canDelete;
   const isSaving = snapshot.isSaving;
   const errorMessage = snapshot.error;
+  const toast = useToast();
 
   const styles = useMemo(
     () =>
@@ -148,14 +154,29 @@ export function LaneModal({
   const handleSave = async () => {
     const result = await session.save();
     if (result.success) {
+      if (!result.unchanged) {
+        toast.show(
+          t(
+            session.mode === "create"
+              ? "notification.laneCreated"
+              : "notification.laneRenamed",
+          ),
+          { variant: "success" },
+        );
+      }
       onClose();
+    } else if (result.kind === "operation") {
+      toast.error(t("notification.laneSaveFailed"));
     }
   };
 
   const handleDelete = async () => {
     const result = await session.deleteLane();
     if (result.success) {
+      toast.show(t("notification.laneDeleted"), { variant: "success" });
       onClose();
+    } else if (result.kind === "operation") {
+      toast.error(t("notification.laneDeleteFailed"));
     }
   };
 
