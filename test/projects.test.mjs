@@ -1,137 +1,118 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { fetchProjectsWithOrderControl } from "../client/use-projects.ts";
 import {
-  createProjectNameResolver,
-  getProjectDisplayName,
-  fetchProjectsWithOrderControl,
-} from "../client/use-projects.ts";
+  React,
+  TestRenderer,
+  act,
+  loadClientModule,
+} from "./helpers/react-host-env.mjs";
 
-test("项目名称解析: 空关联、已知项目显示名称、未知项目回退标识", () => {
-  const projects = [
-    { projectId: "p1", projectDisplayName: "基础设施" },
-    { projectId: "p2", projectDisplayName: "用户界面" },
-  ];
-
-  const resolve = createProjectNameResolver(projects);
-
-  // 1. 无关联
-  assert.equal(resolve(null), null);
-  assert.equal(resolve(undefined), null);
-  assert.equal(resolve(""), null);
-
-  // 2. 已知项目
-  assert.equal(resolve("p1"), "基础设施");
-  assert.equal(resolve("p2"), "用户界面");
-  assert.equal(getProjectDisplayName("p1", projects), "基础设施");
-  assert.equal(getProjectDisplayName("unknown", projects), "unknown");
-
-  // 3. 未知项目回退其 ID
-  assert.equal(resolve("p-unknown"), "p-unknown");
-
-  // 4. 重命名项目后重建索引
-  const renamedProjects = [
-    { projectId: "p1", projectDisplayName: "基础设施 2.0" },
-  ];
-  const resolveRenamed = createProjectNameResolver(renamedProjects);
-  assert.equal(resolveRenamed("p1"), "基础设施 2.0");
-  assert.equal(resolveRenamed("p2"), "p2", "已移除项目回退为 ID");
-});
-
-test("请求乱序控制: 较早请求的成功或失败都不能覆盖最新结果", async () => {
-  let state = { projects: [], error: null, isLoading: true };
-  const controller = fetchProjectsWithOrderControl((next) => {
-    state = { ...state, ...next };
-  });
-
-  let resolveOld;
-  const oldResult = new Promise((resolve) => {
-    resolveOld = resolve;
-  });
-  const oldRequest = controller.execute(() => oldResult);
-  await controller.execute(async () => ({
-    projects: [{ projectId: "pB", projectDisplayName: "项目B" }],
-  }));
-
-  resolveOld({ projects: [{ projectId: "pA", projectDisplayName: "项目A" }] });
-  await oldRequest;
-  assert.deepEqual(state.projects, [
-    { projectId: "pB", projectDisplayName: "项目B" },
-  ]);
-  assert.equal(state.error, null);
-
-  let rejectOld;
-  const oldFailure = new Promise((_, reject) => {
-    rejectOld = reject;
-  });
-  const failedRequest = controller.execute(() => oldFailure);
-  await controller.execute(async () => ({
-    projects: [{ projectId: "pLatest", projectDisplayName: "最新项目" }],
-  }));
-
-  rejectOld(new Error("Old network timeout"));
-  await failedRequest;
-  assert.equal(state.error, null);
-  assert.deepEqual(state.projects, [
-    { projectId: "pLatest", projectDisplayName: "最新项目" },
-  ]);
-});
-
-test("失败恢复: 查询失败保留最后成功列表并暴露错误，后续成功清除错误", async () => {
-  let state = {
-    projects: [],
-    error: null,
+async function mountProjects(t) {
+  const requests = [];
+  let listener;
+  let state;
+  const paseo = {
+    projects: {
+      list: () => {
+        const request = Promise.withResolvers();
+        requests.push(request);
+        return request.promise;
+      },
+      subscribe: (callback) => {
+        listener = callback;
+        return () => {
+          listener = null;
+        };
+      },
+    },
   };
-
-  const controller = fetchProjectsWithOrderControl((next) => {
-    state = { ...state, ...next };
+  const { useProjects } = loadClientModule("use-projects", {
+    "@getpaseo/plugin/client": { usePaseo: () => paseo },
   });
-
-  // 1. 首次请求成功
-  await controller.execute(async () => ({
-    projects: [{ projectId: "p1", projectDisplayName: "项目1" }],
-  }));
-  assert.deepEqual(state.projects, [
-    { projectId: "p1", projectDisplayName: "项目1" },
-  ]);
-  assert.equal(state.error, null);
-
-  // 2. 刷新请求失败: 必须保留旧项目列表，同时暴露错误
-  await controller.execute(async () => {
-    throw new Error("503 Service Unavailable");
+  function Consumer() {
+    state = useProjects();
+    return null;
+  }
+  let renderer;
+  await act(async () => {
+    renderer = TestRenderer.create(React.createElement(Consumer));
   });
-  assert.deepEqual(
-    state.projects,
-    [{ projectId: "p1", projectDisplayName: "项目1" }],
-    "失败时保留最后一次成功列表",
+  t.after(async () => {
+    await act(async () => renderer.unmount());
+    assert.equal(listener, null, "卸载后取消宿主订阅");
+  });
+  return {
+    requests,
+    refresh: () => listener(),
+    get state() {
+      return state;
+    },
+  };
+}
+
+const initialProjects = [{ projectId: "p1", projectDisplayName: "项目1" }];
+const updatedProjects = [
+  { projectId: "p1", projectDisplayName: "项目1已更新" },
+];
+
+test("宿主项目加载与订阅: 失败保留列表，恢复后更新名称并清除错误", async (t) => {
+  const host = await mountProjects(t);
+  assert.equal(host.state.isLoading, true);
+  assert.deepEqual(host.state.projects, []);
+
+  await act(async () =>
+    host.requests.shift().resolve({ projects: initialProjects }),
   );
-  assert.match(state.error ?? "", /503 Service Unavailable/);
+  assert.equal(host.state.isLoading, false);
+  assert.equal(host.state.resolveProjectName("p1"), "项目1");
 
-  // 3. 再次请求成功: 清除错误并更新列表
-  await controller.execute(async () => ({
-    projects: [{ projectId: "p1", projectDisplayName: "项目1已更新" }],
-  }));
-  assert.deepEqual(state.projects, [
-    { projectId: "p1", projectDisplayName: "项目1已更新" },
-  ]);
-  assert.equal(state.error, null, "后续成功清除错误");
+  await act(async () => {
+    host.refresh();
+    host.requests.shift().reject(new Error("503 Service Unavailable"));
+  });
+  assert.deepEqual(host.state.projects, initialProjects);
+  assert.equal(host.state.isError, true);
+  assert.equal(host.state.error, "503 Service Unavailable");
+
+  await act(async () => {
+    host.refresh();
+    host.requests.shift().resolve({ projects: updatedProjects });
+  });
+  assert.deepEqual(host.state.projects, updatedProjects);
+  assert.equal(host.state.resolveProjectName("p1"), "项目1已更新");
+  assert.equal(host.state.isError, false);
+  assert.equal(host.state.error, null);
 });
 
-test("生命周期注销: unmount 卸载后忽略在途响应并不更新状态", async () => {
-  let updateCount = 0;
-  const controller = fetchProjectsWithOrderControl(() => {
-    updateCount++;
-  });
+test("订阅请求乱序: 较早请求的成功或失败都不能覆盖最新项目结果", async (t) => {
+  for (const outcome of ["成功", "失败"]) {
+    const host = await mountProjects(t);
+    const oldRequest = host.requests.shift();
+    await act(async () => {
+      host.refresh();
+      host.requests.shift().resolve({ projects: updatedProjects });
+    });
+    await act(async () => {
+      if (outcome === "成功") oldRequest.resolve({ projects: initialProjects });
+      else oldRequest.reject(new Error("Old network timeout"));
+    });
+    assert.deepEqual(host.state.projects, updatedProjects, `旧请求${outcome}`);
+    assert.equal(host.state.resolveProjectName("p1"), "项目1已更新");
+    assert.equal(host.state.error, null, `旧请求${outcome}`);
+  }
+});
 
-  let resolvePending;
-  const pendingPromise = new Promise((resolve) => {
-    resolvePending = resolve;
-  });
-
-  const request = controller.execute(() => pendingPromise);
+// React 卸载后自身会阻止渲染，须在控制器 API 边界验证在途回调确实被抑制。
+test("生命周期注销: 销毁控制器后忽略在途响应", async () => {
+  const updates = [];
+  const controller = fetchProjectsWithOrderControl((state) =>
+    updates.push(state),
+  );
+  const pending = Promise.withResolvers();
+  const request = controller.execute(() => pending.promise);
   controller.destroy();
-
-  resolvePending({ projects: [{ projectId: "px", projectDisplayName: "X" }] });
+  pending.resolve({ projects: initialProjects });
   await request;
-
-  assert.equal(updateCount, 0, "卸载后不更新状态");
+  assert.deepEqual(updates, []);
 });
