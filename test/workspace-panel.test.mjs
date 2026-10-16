@@ -111,7 +111,7 @@ test("新任务关联跟随项目筛选，All 和 No Project 默认不关联，�
     ["No Project", "Task new-unassigned", "No Project", false],
   ]) {
     await press(panel.root, filter);
-    await press(panel.root, "+ New Task");
+    await press(panel.root, "+ Add");
     const modal = panel.root.findByType("Modal");
     await act(async () =>
       modal

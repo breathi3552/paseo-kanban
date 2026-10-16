@@ -54,7 +54,14 @@ test("任务草稿从创建、编辑到删除，完整持久化内容与子步�
   const create = openTaskSession({ ...store.options(), mode: "create" });
   assert.deepEqual(await create.saveDraft(draft), { success: true });
   assert.deepEqual(store.values.tasks, [
-    { ...draft, completed: false, completedAt: null },
+    {
+      ...draft,
+      completed: false,
+      completedAt: null,
+      source: "manual",
+      issueNumber: null,
+      externalUrl: null,
+    },
   ]);
 
   const edit = openTaskSession({
@@ -87,6 +94,9 @@ test("任务草稿从创建、编辑到删除，完整持久化内容与子步�
       ],
       completed: false,
       completedAt: null,
+      source: "manual",
+      issueNumber: null,
+      externalUrl: null,
     },
   ]);
   const remove = openTaskSession({

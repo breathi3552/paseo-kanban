@@ -38,11 +38,14 @@ export async function press(root, label) {
       node.findAllByType("Text").some((child) => text(child) === label),
     );
   assert.ok(button, `button ${label} exists`);
-  await act(async () => button.props.onPress());
+  await act(async () => button.props.onPress({ stopPropagation() {} }));
 }
 
 export function createHost({
   projectsAvailable = true,
+  board,
+  rpc = async () => ({ repository: "example/repo", issues: [], totalCount: 0 }),
+  compact = false,
   workspaces = {
     "workspace-a": { projectId: "project-a" },
     "workspace-b": { projectId: "project-b" },
@@ -70,6 +73,12 @@ export function createHost({
       subtasks: [],
     })),
   };
+  if (board) values = board;
+  let failSave = false;
+  let failReload = false;
+  let pendingSave = null;
+  const notifications = [];
+  const externalUrls = [];
   let settings = { status: "ready", values, revision: String(revision) };
   const paseo = {
     projects: {
@@ -82,6 +91,13 @@ export function createHost({
   };
   const sdk = {
     usePaseo: () => paseo,
+    useRpc: (contract) =>
+      React.useCallback(
+        async (input) =>
+          contract.output.parse(await rpc(contract.input.parse(input))),
+        [contract],
+      ),
+    openExternalUrl: async (url) => externalUrls.push(url),
     useWorkspace: (id, selector) => {
       const snapshot = React.useSyncExternalStore(
         (listener) => {
@@ -102,7 +118,19 @@ export function createHost({
       );
       return {
         ...snapshot,
+        reload: async () => {
+          settings = failReload
+            ? { status: "error", error: "Settings read failed" }
+            : { status: "ready", values, revision: String(revision) };
+          failReload = false;
+          settingsListeners.forEach((listener) => listener());
+        },
         save: async (next, expectedRevision) => {
+          if (pendingSave) await pendingSave;
+          if (failSave) {
+            failSave = false;
+            return false;
+          }
           if (expectedRevision !== String(revision)) return false;
           values = contract.schema.parse(next);
           settings = { status: "ready", values, revision: String(++revision) };
@@ -138,7 +166,13 @@ export function createHost({
       TextInput: "TextInput",
       Icon: "Icon",
       ScrollView: mockReactNative.ScrollView,
-      useToast: () => ({ show() {}, error() {} }),
+      useToast: () => ({
+        show: (message) => notifications.push(message),
+        error: (message) => notifications.push(message),
+      }),
+    },
+    "@getpaseo/plugin/client/ui": {
+      SettingsSelect: (props) => React.createElement("Select", props),
     },
   });
   const cleanup = contribute(client);
@@ -147,12 +181,32 @@ export function createHost({
     sidebars,
     panels,
     cleanup,
+    get board() {
+      return values;
+    },
+    notifications,
+    externalUrls,
+    failNextSave() {
+      failSave = true;
+    },
+    failNextReload() {
+      failReload = true;
+    },
+    holdSave(promise) {
+      pendingSave = promise;
+    },
+    replaceBoard(next) {
+      values = next;
+      settings = { status: "ready", values, revision: String(++revision) };
+      settingsListeners.forEach((listener) => listener());
+    },
     open(workspaceId) {
       const Component = workspaceId
         ? panels.get("kanban").Component
         : surfaces.get("kanban").Component;
       return React.createElement(Component, {
         ...hostProps,
+        layout: { ...hostProps.layout, compact },
         ...(workspaceId ? { context: "workspace", workspaceId } : {}),
       });
     },

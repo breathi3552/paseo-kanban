@@ -8,6 +8,7 @@
 
 ## 核心功能
 
+- **GitHub Issue 导入**：从项目仓库选择 Open Issues，每次最多导入 25 项到指定泳道；卡片可打开来源链接，任务独立管理。
 - **灵活的泳道管理**：支持泳道增删与改名。
 - **丰富的任务卡片**：
   - 任务标题与多行描述编辑。
@@ -20,7 +21,8 @@
 
 ## 环境要求
 
-- **Paseo 宿主**：`>= 0.8.0`（声明于 `paseo-plugin.json`），由 Paseo 运行插件。
+- **Paseo 宿主**：`>= 0.11.4`（声明于 `paseo-plugin.json`），由 Paseo 运行插件。
+- **GitHub 导入（可选）**：在 daemon 所在机器安装 Git 与 GitHub CLI（`gh`），执行 `gh auth login`，并将项目仓库的 `origin` 配置为 GitHub.com 仓库；支持公开及有权访问的私有仓库。
 - **开发与 CI**：使用 Node.js 24（声明于 `.nvmrc` 与 `.node-version`）执行质量检查、TypeScript 类型擦除和原生测试。
 
 ---
