@@ -91,7 +91,7 @@ Individual commands (`npm test`, `npm run typecheck`, `npm run lint`, `npm run f
 
 ## Releases
 
-See the [0.1.3 release notes](./docs/releases/0.1.3.md). Each release's npm package and GitHub Release share the same version tag; GitHub includes the verified npm tarball. `main` may contain changes beyond the latest release.
+See the [0.1.4 release notes](./docs/releases/0.1.4.md). Each release's npm package and GitHub Release share the same version tag; GitHub includes the verified npm tarball. `main` may contain changes beyond the latest release.
 
 ---
 
