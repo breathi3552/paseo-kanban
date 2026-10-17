@@ -142,6 +142,66 @@ export function GitHubImportModal(props: Props) {
     selectable.length > 0 && chosen.length === selectable.length;
   const disabled = saving || !ready || !props.settingsReady;
   const colors = props.theme.colors;
+  const containerRef = useRef<View>(null);
+
+  useEffect(() => {
+    const doc = (
+      globalThis as unknown as {
+        document?: {
+          getElementById?: (id: string) => { remove: () => void } | null;
+          createElement?: (tag: string) => {
+            id: string;
+            textContent: string;
+          };
+          head?: { appendChild: (child: unknown) => void };
+        };
+      }
+    ).document;
+    if (
+      !doc ||
+      typeof doc.getElementById !== "function" ||
+      typeof doc.createElement !== "function" ||
+      !doc.head
+    )
+      return;
+
+    const styleId = "github-import-dialog-style";
+    const existing = doc.getElementById(styleId);
+    if (!existing) {
+      const created = doc.createElement("style");
+      created.id = styleId;
+      created.textContent = `
+        [role="dialog"]:has(#github-import-dialog) {
+          max-width: 840px !important;
+          width: 90vw !important;
+        }
+      `;
+      doc.head.appendChild(created);
+    }
+
+    const el = containerRef.current as unknown as {
+      closest?: (selector: string) => {
+        style?: { maxWidth?: string; width?: string };
+      } | null;
+    } | null;
+    const dialog = el?.closest?.('[role="dialog"]');
+    const prevMaxWidth = dialog?.style?.maxWidth ?? "";
+    const prevWidth = dialog?.style?.width ?? "";
+
+    if (dialog?.style && !props.compact) {
+      dialog.style.maxWidth = "840px";
+      dialog.style.width = "90vw";
+    }
+
+    return () => {
+      if (dialog?.style) {
+        dialog.style.maxWidth = prevMaxWidth;
+        dialog.style.width = prevWidth;
+      }
+      doc.getElementById?.(styleId)?.remove();
+    };
+  }, [props.compact]);
+
   const styles = useMemo(
     () =>
       StyleSheet.create({
@@ -152,8 +212,16 @@ export function GitHubImportModal(props: Props) {
           backgroundColor: colors.surface0,
         },
         selectors: { flexDirection: props.compact ? "column" : "row", gap: 12 },
-        select: { flex: 1 },
-        list: { flex: 1, minHeight: 0, maxHeight: props.compact ? 340 : 420 },
+        select: { flex: 1, minWidth: 0 },
+        selectProject: {
+          flex: props.compact ? undefined : 1.15,
+          minWidth: 0,
+        },
+        selectLane: {
+          flex: props.compact ? undefined : 1,
+          minWidth: 0,
+        },
+        list: { flex: 1, minHeight: 0, maxHeight: props.compact ? 340 : 520 },
         row: {
           flexDirection: "row",
           alignItems: "center",
@@ -257,9 +325,18 @@ export function GitHubImportModal(props: Props) {
         if (!open && !savingRef.current) props.onClose();
       }}
     >
-      <Modal.Content scrollable={false} contentContainerStyle={styles.body}>
-        <View style={styles.selectors}>
-          <View style={styles.select}>
+      <Modal.Content
+        scrollable={false}
+        style={{ backgroundColor: colors.surface0 }}
+        contentContainerStyle={styles.body}
+      >
+        <View
+          ref={containerRef}
+          nativeID="github-import-dialog"
+          testID="github-import-dialog"
+          style={styles.selectors}
+        >
+          <View style={[styles.select, styles.selectProject]}>
             <SettingsSelect
               label={t("import.project")}
               value={projectId}
@@ -279,7 +356,7 @@ export function GitHubImportModal(props: Props) {
               }}
             />
           </View>
-          <View style={styles.select}>
+          <View style={[styles.select, styles.selectLane]}>
             <SettingsSelect
               label={t("import.lane")}
               value={laneId}
