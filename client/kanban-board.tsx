@@ -362,12 +362,12 @@ function KanbanBoardContent(props: KanbanBoardProps) {
         },
         lanesContainer: {
           flex: 1,
-          padding: layout.compact ? 10 : 16,
           userSelect: "none",
         },
         lanesContent: {
           flexDirection: "row",
           gap: layout.compact ? 10 : 14,
+          padding: layout.compact ? 10 : 16,
           paddingRight: 24,
         },
         centerBox: {

@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { KanbanDragController } from "../client/kanban-drag.ts";
 
-// Public controller input → feedback/reorder tests keep geometry and timers
-// deterministic. Real card/Hook/Overlay paths live in kanban-card-drag.test.mjs;
+// Focused geometry/scroll scenarios supply deterministic native measurements.
+// Connected card/lane/overlay behavior lives in kanban-card-drag.test.mjs;
 // native layout/touch still requires host acceptance.
 const mockContainer = { x: 20, y: 80, width: 800, height: 600 };
 const mockLanes = [
@@ -40,7 +40,7 @@ const threeCards = [
   ["3", 160, 64],
 ];
 
-test("释放时重算落点：视口外、泳道间隙、内容外与已移除泳道均不提交", async () => {
+test("释放时重算落点：视口外、泳道间隙、内容外与已移除泳道均不提交且回弹回原槽位", async () => {
   for (const [label, point, removedLane] of [
     ["视口上方", { x: 340, y: 30 }],
     ["视口下方", { x: 340, y: 700 }],
@@ -50,11 +50,19 @@ test("释放时重算落点：视口外、泳道间隙、内容外与已移除�
     ["已移除泳道", { x: 340, y: 130 }, "in-progress"],
   ]) {
     const { controller, requests } = setupController();
+    registerCards(controller, "to-plan", threeCards);
     controller.handlePointerDown(context, { x: 70, y: 130 }, "handle");
     controller.handlePointerMove({ x: 340, y: 130 });
     assert.equal(controller.getFeedback().hoveredLaneId, "in-progress", label);
     if (removedLane) controller.setLanes(["to-plan", "done"]);
-    await controller.handlePointerUp(point);
+    const drop = await controller.beginDropAnimation(point);
+    assert.equal(drop.isDrop, false, label);
+    assert.equal(
+      drop.targetIndex,
+      0,
+      `${label}: 回弹期间源泳道槽位保持在原位 0`,
+    );
+    await controller.reportDropComplete(drop.operationId);
     assert.deepEqual(requests, [], label);
     assert.equal(controller.getFeedback().isDragging, false, label);
     assert.equal(controller.getFeedback().hoveredLaneId, null, label);
@@ -118,24 +126,6 @@ test("卡片边界微颤保持占位槽，突破迟滞区后切换并提交最�
   assert.deepEqual(requests, [["task-1", "in-progress", 1]]);
 });
 
-test("同泳道从底部向上覆盖卡片，按目标槽位提交", async () => {
-  const { controller, requests } = setupController();
-  registerCards(controller, "in-progress", [
-    ["A", 0, 60],
-    ["B", 70, 60],
-    ["C", 140, 60],
-  ]);
-  controller.handlePointerDown(
-    { taskId: "C", laneId: "in-progress" },
-    { x: 340, y: 260 },
-    "handle",
-  );
-  controller.handlePointerMove({ x: 340, y: 190 });
-  assert.equal(controller.getFeedback().targetIndex, 1);
-  await controller.handlePointerUp({ x: 340, y: 190 });
-  assert.deepEqual(requests, [["C", "in-progress", 1]]);
-});
-
 test("列表顶部偏移与纵向滚动参与命中，静止指针滚动后按新槽位落位", async () => {
   const { controller, requests } = setupController();
   controller.registerCardsViewportLayout("to-plan", {
@@ -190,24 +180,6 @@ test("占位动画改变卡片布局时，同一指针保持槽位并按该槽�
   assert.deepEqual(requests, [["task-1", "to-plan", 1]]);
 });
 
-// 自动滚动速度是平台滚动驱动消费的公开输出，普通落位不能验证方向。
-test("左右边缘输出相应滚动方向，视口中部停止滚动", () => {
-  const { controller } = setupController();
-  controller.handlePointerDown(context, { x: 70, y: 130 }, "handle");
-  for (const [x, direction] of [
-    [30, -1],
-    [400, 0],
-    [800, 1],
-  ]) {
-    controller.handlePointerMove({ x, y: 130 });
-    assert.equal(
-      Math.sign(controller.getFeedback().autoScrollVelocity),
-      direction,
-    );
-  }
-  controller.handlePointerCancel();
-});
-
 test("保存异常后清理并解锁，下一次拖拽可以成功提交", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
   const { controller, requests } = setupController();
@@ -259,53 +231,6 @@ test("触屏快速滑动让渡滚动；长按抓起后可落位，两者都不�
   }
 });
 
-test("落位动画完成才提交一次，重复完成与动画中断不再提交", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
-  const { controller, requests } = setupController();
-  controller.handlePointerDown(context, { x: 70, y: 130 }, "handle");
-  const drop = await controller.beginDropAnimation({ x: 340, y: 130 });
-  assert.deepEqual(requests, []);
-  await controller.reportDropComplete(drop.operationId);
-  await controller.reportDropComplete(drop.operationId);
-  assert.deepEqual(requests, [["task-1", "in-progress", 0]]);
-  t.mock.timers.tick(60);
-  controller.handlePointerDown(context, { x: 70, y: 130 }, "handle");
-  const aborted = await controller.beginDropAnimation({ x: 340, y: 130 });
-  controller.abortDrop(aborted.operationId);
-  await controller.reportDropComplete(aborted.operationId);
-  assert.deepEqual(requests, [["task-1", "in-progress", 0]]);
-});
-
-test("动态预览参与落位，保存期间保持浮层状态，保存后清除并解锁", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
-  const { controller, requests } = setupController();
-  controller.setGetTaskPreview(() => null);
-  controller.setGetTaskPreview((taskId) => ({
-    task: { id: taskId, title: "Dynamic Task", subtasks: [] },
-    projectDisplayName: "Project Alpha",
-  }));
-  let finishSave;
-  const save = new Promise((resolve) => {
-    finishSave = resolve;
-  });
-  controller.setOnReorderTask(async (...args) => {
-    requests.push(args);
-    await save;
-  });
-  controller.handlePointerDown(context, { x: 70, y: 130 }, "handle");
-  const drop = await controller.beginDropAnimation({ x: 340, y: 130 });
-  assert.equal(drop.task.title, "Dynamic Task");
-  assert.equal(drop.projectName, "Project Alpha");
-  const committing = controller.reportDropComplete(drop.operationId);
-  assert.deepEqual(requests, [["task-1", "in-progress", 0]]);
-  assert.equal(controller.getDroppingState(), drop);
-  finishSave();
-  await committing;
-  assert.equal(controller.getDroppingState(), null);
-  t.mock.timers.tick(60);
-  assert.equal(controller.isDragLocked(), false);
-});
-
 test("分屏移动和缩窄后按新的窗口坐标与横向滚动定位落点", async () => {
   const { controller, requests } = setupController();
   const bounds = { x: 520, y: 80, width: 360, height: 600 };
@@ -327,8 +252,19 @@ test("分屏移动和缩窄后按新的窗口坐标与横向滚动定位落点",
     width: 270,
     height: 550,
   });
+  controller.registerCardLayout("to-plan", "task-1", {
+    x: 10,
+    y: 20,
+    width: 246,
+    height: 64,
+  });
   controller.handleScroll(250);
   controller.handlePointerDown(context, { x: 535, y: 130 }, "handle");
-  await controller.handlePointerUp({ x: 620, y: 130 });
+  const feedback = controller.getFeedback();
+  const drop = await controller.beginDropAnimation({ x: 620, y: 130 });
+  assert.equal(drop.draggedCardWidth, 246);
+  assert.equal(drop.fromX, 620 - bounds.x - feedback.grabOffsetX);
+  assert.equal(drop.fromY, 130 - bounds.y - feedback.grabOffsetY);
+  await controller.reportDropComplete(drop.operationId);
   assert.deepEqual(requests, [["task-1", "in-progress", 0]]);
 });

@@ -43,6 +43,7 @@ function mountCards(
     ids = ["1", "2", "3"],
     onReorderTask,
     onPress,
+    getTaskPreview,
     strict = false,
     lanes = ["lane"],
   } = {},
@@ -52,7 +53,7 @@ function mountCards(
   let currentIds = ids;
   function Board({ ids }) {
     renders++;
-    drag = useKanbanDrag({ lanes, onReorderTask });
+    drag = useKanbanDrag({ lanes, onReorderTask, getTaskPreview });
     const lane = drag.bindLane("lane");
     return React.createElement(
       "View",
@@ -175,6 +176,16 @@ test("rerendered cards keep geometry; mouse dragging hides only the source throu
     opacity: 0,
   });
   assert.equal(board.card("2").props.style, undefined);
+  const rendersAtSlot2 = board.renders;
+  act(() => {
+    board.handlers("1").onPanResponderMove(event, { moveX: 105, moveY: 310 });
+    board.handlers("1").onPanResponderMove(event, { moveX: 115, moveY: 320 });
+  });
+  assert.equal(
+    board.renders,
+    rendersAtSlot2,
+    "pointer moves within the same slot must not rerender the board",
+  );
   act(() =>
     board.handlers("1").onPanResponderMove(event, { moveX: 100, moveY: 20 }),
   );
@@ -196,20 +207,51 @@ test("rerendered cards keep geometry; mouse dragging hides only the source throu
   assert.equal(board.drag.isDragLocked(), false);
 });
 
-test("moving a mouse-held card into another lane submits that lane and restores the source", async (t) => {
+test("moving a mouse-held card into another lane auto-scrolls at the viewport edge, submits that lane, and restores the source", async (t) => {
   mockTimers(t);
   const reorders = [];
+  const scrolledOffsets = [];
   const board = mountCards(t, {
     ids: ["task"],
     lanes: ["lane", "other"],
     onReorderTask: (...args) => reorders.push(args),
   });
-  act(() => {
-    board.handlers("task").onPanResponderGrant(event, press);
-    board
-      .handlers("task")
-      .onPanResponderMove(event, { moveX: 450, moveY: 240 });
+  board.drag.bindContainerRef({
+    scrollTo: ({ x }) => scrolledOffsets.push(x),
   });
+  act(() => {
+    board.handlers("task").onPanResponderGrant(event, { x0: 120, y0: 20 });
+  });
+  // Enter each edge from the center; observe the host scroll request, not velocity.
+  for (const [x, direction] of [
+    [605, 1],
+    [320, 0],
+    [30, -1],
+    [320, 0],
+    [605, 1],
+  ]) {
+    const previousOffset = scrolledOffsets.at(-1) ?? 0;
+    const previousCount = scrolledOffsets.length;
+    act(() =>
+      board
+        .handlers("task")
+        .onPanResponderMove(event, { moveX: x, moveY: 240 }),
+    );
+    act(() => t.mock.timers.tick(32));
+    if (direction === 0) {
+      assert.equal(
+        scrolledOffsets.length,
+        previousCount,
+        "center stops scrolling",
+      );
+    } else {
+      assert.equal(
+        Math.sign(scrolledOffsets.at(-1) - previousOffset),
+        direction,
+        `pointer x=${x} scrolls in the expected direction`,
+      );
+    }
+  }
   assert.equal(board.drag.bindLane("other").isHovered, true);
   assert.equal(board.card("task").props.style.opacity, 0);
   await release(board, "task");
@@ -314,63 +356,114 @@ test("long press lifts immediately, subsequent movement continues dragging, and 
   assert.deepEqual(clicks, []);
 });
 
-test("drop overlay renders a live task preview at the release point and animation completion submits the drop", async (t) => {
-  mockTimers(t);
-  const reorders = [];
-  const board = mountCards(t, {
-    ids: ["task"],
-    onReorderTask: (...args) => reorders.push(args),
-  });
-  act(() => board.handlers("task", "handle").onPanResponderGrant(event, press));
-  await release(board, "task", press, "handle");
-  // The native animation clock is external; retain the real overlay and drop transaction.
-  let finishAnimation;
-  const Overlay = loadClientComponent("kanban-overlay", "KanbanDragOverlay", {
-    "react-native": {
-      ...mockReactNative,
-      Animated: {
-        ...mockReactNative.Animated,
-        parallel: () => ({
-          start: (callback) => {
-            finishAnimation = callback;
-          },
-        }),
+for (const finished of [true, false]) {
+  test(`drop animation ${finished ? "arrives at the slot, keeps the preview while saving, and saves once" : "is interrupted and restores the card without saving"}`, async (t) => {
+    mockTimers(t);
+    const reorders = [];
+    let finishSave;
+    const saving = new Promise((resolve) => {
+      finishSave = resolve;
+    });
+    const board = mountCards(t, {
+      ids: ["task"],
+      getTaskPreview: () => ({
+        task: { id: "task", title: "Dynamic Drop Preview", subtasks: [] },
+        projectDisplayName: "Test Project",
+      }),
+      onReorderTask: (...args) => {
+        reorders.push(args);
+        return saving;
       },
-    },
-  });
-  let root;
-  act(() => {
-    root = TestRenderer.create(
-      React.createElement(Overlay, {
-        drag: {
-          ...board.drag,
-          getTaskPreview: () => ({
-            task: { id: "task", title: "Dynamic Drop Preview", subtasks: [] },
-            projectDisplayName: "Test Project",
+    });
+    board.drag.registerCardsViewportLayout("lane", {
+      x: 12,
+      y: 0,
+      width: 280,
+      height: 600,
+    });
+    act(() => {
+      board
+        .handlers("task", "handle")
+        .onPanResponderGrant(event, { x0: 120, y0: 20 });
+      board
+        .handlers("task", "handle")
+        .onPanResponderMove(event, { moveX: 120, moveY: 240 });
+    });
+    await release(board, "task", press, "handle");
+    // Replace only the native clock: finishing still applies the real animation targets.
+    let finishAnimation;
+    const Overlay = loadClientComponent("kanban-overlay", "KanbanDragOverlay", {
+      "react-native": {
+        ...mockReactNative,
+        Animated: {
+          ...mockReactNative.Animated,
+          parallel: (animations) => ({
+            start: (callback) => {
+              finishAnimation = () => {
+                if (finished)
+                  animations.forEach((animation) => animation.start());
+                callback({ finished });
+              };
+            },
           }),
         },
-        theme,
-        layout: { compact: false },
-      }),
+      },
+    });
+    let root;
+    act(() => {
+      root = TestRenderer.create(
+        React.createElement(Overlay, {
+          drag: board.drag,
+          theme,
+          layout: { compact: false },
+        }),
+      );
+    });
+    t.after(() => act(() => root.unmount()));
+    const position = () => {
+      const transform = root.toJSON().props.style[1].transform;
+      return [transform[0].translateX._value, transform[1].translateY._value];
+    };
+    assert.deepEqual(
+      position(),
+      [12, 220],
+      "preview starts at the release point with the original grab offset",
     );
+    const texts = root.root
+      .findAllByType("Text")
+      .flatMap((node) => node.children);
+    assert.ok(texts.includes("Dynamic Drop Preview"));
+    assert.ok(texts.includes("Test Project"));
+    assert.equal(board.card("task").props.style.opacity, 0);
+    assert.deepEqual(reorders, [], "no save before animation completes");
+
+    await act(async () => {
+      finishAnimation();
+      finishAnimation(); // A repeated native completion must not save twice.
+    });
+    assert.deepEqual(reorders, finished ? [["task", "lane", 0]] : []);
+    if (finished) {
+      assert.deepEqual(
+        position(),
+        [12, 0],
+        "preview arrives at the card slot with its 12px content inset",
+      );
+      assert.equal(
+        board.card("task").props.style.opacity,
+        0,
+        "source stays hidden while saving",
+      );
+    }
+    await act(async () => {
+      finishSave();
+      await saving;
+    });
+    assert.equal(root.toJSON(), null);
+    assert.equal(board.card("task").props.style, undefined);
+    act(() => t.mock.timers.tick(60));
+    assert.equal(board.drag.isDragLocked(), false);
   });
-  t.after(() => act(() => root.unmount()));
-  assert.deepEqual(
-    [root.toJSON().props.style[1].left, root.toJSON().props.style[1].top],
-    [-20, 220],
-  );
-  const texts = root.root
-    .findAllByType("Text")
-    .flatMap((node) => node.children);
-  assert.ok(texts.includes("Dynamic Drop Preview"));
-  assert.ok(texts.includes("Test Project"));
-  assert.equal(board.card("task").props.style.opacity, 0);
-  assert.deepEqual(reorders, [], "the animation has not completed yet");
-  await act(async () => finishAnimation({ finished: true }));
-  assert.deepEqual(reorders, [["task", "lane", 0]]);
-  assert.equal(root.toJSON(), null);
-  assert.equal(board.card("task").props.style, undefined);
-});
+}
 
 test("unmounting a pending card prevents a late long press; removing another card leaves the active drag usable", async (t) => {
   mockTimers(t);
@@ -519,106 +612,231 @@ test("StrictMode lifecycle replay and a fresh remount both allow long press and 
     ["2", "lane", 1],
   ]);
 });
-test("lane renders one matching-height slot among remaining cards for first, middle and last drops in either layout", (t) => {
+test("card gestures preview one matching-height slot, animate displacement, and save the displayed position", async (t) => {
   mockTimers(t);
+  const animations = [];
   const Lane = loadClientComponent("kanban-lane", "KanbanLaneView", {
+    "react-native": {
+      ...mockReactNative,
+      Animated: {
+        ...mockReactNative.Animated,
+        timing: (value, config) => ({
+          start: (callback) =>
+            animations.push(() => {
+              value.setValue(config.toValue);
+              callback?.({ finished: true });
+            }),
+        }),
+      },
+    },
     "./use-projects": { getProjectDisplayName: () => null },
   });
-  const tasks = ["1", "2", "3"].map((id) => ({
+  const equalCards = [
+    ["1", 0, 64],
+    ["2", 72, 64],
+    ["3", 144, 64],
+  ];
+  for (const {
+    name,
+    cards = equalCards,
     id,
-    laneId: "lane",
-    title: id,
-    subtasks: [],
-    projectId: null,
-  }));
-  for (const [id, y, compact, expected] of [
-    ["1", 20, false, ["slot", "2", "3"]],
-    ["2", 150, true, ["1", "slot", "3"]],
-    ["3", 300, false, ["1", "2", "slot"]],
-    ["1", 300, true, ["2", "3", "slot"]],
+    compact = false,
+    steps,
+    dropY,
+  } of [
+    {
+      name: "first card moves through middle and last slots",
+      id: "1",
+      steps: [
+        [20, ["slot", "2", "3"]],
+        [100, ["2", "slot", "3"]],
+        [220, ["2", "3", "slot"]],
+      ],
+      dropY: 144,
+    },
+    {
+      name: "middle card in compact layout",
+      id: "2",
+      compact: true,
+      steps: [[90, ["1", "slot", "3"]]],
+      dropY: 72,
+    },
+    {
+      name: "last card moves upward",
+      id: "3",
+      steps: [
+        [170, ["1", "2", "slot"]],
+        [100, ["1", "slot", "2"]],
+      ],
+      dropY: 72,
+    },
+    {
+      name: "short card waits until it crosses the taller replacement",
+      cards: [
+        ["1", 0, 50],
+        ["2", 58, 116],
+        ["3", 182, 76],
+      ],
+      id: "1",
+      compact: true,
+      steps: [
+        [25, ["slot", "2", "3"]],
+        [70, ["slot", "2", "3"]],
+        [135, ["2", "slot", "3"]],
+      ],
+      dropY: 124,
+    },
+    {
+      name: "tall card lands immediately after the shorter replacement",
+      cards: [
+        ["1", 0, 116],
+        ["2", 124, 50],
+        ["3", 182, 50],
+      ],
+      id: "1",
+      steps: [
+        [15, ["slot", "2", "3"]],
+        [65, ["2", "slot", "3"]],
+      ],
+      dropY: 58,
+    },
   ]) {
-    let drag;
-    function Board() {
-      drag = useKanbanDrag({ lanes: ["lane"] });
-      return React.createElement(Lane, {
-        lane: { id: "lane", title: "Lane" },
-        tasks,
-        projects: [],
-        theme,
-        layout: { compact, platform: "web" },
-        dragBinding: drag.bindLane("lane"),
-        onAddTask: () => {},
-        onManageLane: () => {},
-        onSelectTask: () => {},
-      });
-    }
-    let root;
-    act(() => {
-      root = TestRenderer.create(React.createElement(Board));
-    });
-    try {
-      drag.controller.registerContainerBounds({
-        x: 0,
-        y: 0,
-        width: 300,
-        height: 600,
-      });
-      const views = root.root.findAllByType("View");
-      const lane = views.find(
-        (node) => node.props.onLayout && Array.isArray(node.props.style),
-      );
-      const cards = views.filter(
-        (node) => node.props.onLayout && !Array.isArray(node.props.style),
-      );
-      act(() => {
-        lane.props.onLayout({
-          nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 600 } },
+    await t.test(name, async () => {
+      const requests = [];
+      const tasks = cards.map(([id]) => ({
+        id,
+        laneId: "lane",
+        title: id,
+        subtasks: [],
+        projectId: null,
+      }));
+      let drag;
+      function Board() {
+        drag = useKanbanDrag({
+          lanes: ["lane"],
+          onReorderTask: (...args) => requests.push(args),
         });
-        root.root.findByType("ScrollView").props.onLayout({
-          nativeEvent: { layout: { x: 0, y: 0, width: 280, height: 500 } },
+        return React.createElement(Lane, {
+          lane: { id: "lane", title: "Lane" },
+          tasks,
+          projects: [],
+          theme,
+          layout: { compact, platform: "web" },
+          dragBinding: drag.bindLane("lane"),
+          onAddTask: () => {},
+          onManageLane: () => {},
+          onSelectTask: () => {},
         });
-        cards.forEach((card, index) =>
-          card.props.onLayout({
-            nativeEvent: {
-              layout: { x: 0, y: index * 80, width: 280, height: 64 },
-            },
-          }),
-        );
-        root.root
-          .findAllByProps({ accessibilityRole: "button" })
-          [Number(id) - 1].props.onPanResponderGrant(event, { x0: 100, y0: y });
-      });
-      const scroll = root.root.findByType("ScrollView");
-      const cardNodes = scroll.findAll(
-        (node) => node.props.task && node.props.binding,
-      );
-      const visible = [];
-      for (const node of scroll.findAll(
-        (node) => node.type === "AnimatedView" || cardNodes.includes(node),
-      )) {
-        if (node.type === "AnimatedView") {
-          assert.equal(
-            node.props.style[1].height._value,
-            64,
-            "placeholder matches the lifted card",
-          );
-          visible.push("slot");
-        } else if (node.findAllByType("View")[0].props.style?.opacity !== 0) {
-          visible.push(
-            node
-              .findAllByType("Text")
-              .flatMap((text) => text.children)
-              .find((text) => ["1", "2", "3"].includes(text)),
-          );
-        }
       }
-      assert.deepEqual(
-        visible,
-        expected,
-        `${id} at y=${y}, compact=${compact}`,
-      );
-    } finally {
-      act(() => root.unmount());
-    }
+      let root;
+      act(() => {
+        root = TestRenderer.create(React.createElement(Board));
+      });
+      try {
+        drag.controller.registerContainerBounds({
+          x: 0,
+          y: 0,
+          width: 300,
+          height: 600,
+        });
+        const lane = root.root
+          .findAllByType("View")
+          .find(
+            (node) => node.props.onLayout && Array.isArray(node.props.style),
+          );
+        const scroll = root.root.findByType("ScrollView");
+        const cardNodes = () =>
+          scroll.findAll((node) => node.props.task && node.props.binding);
+        const handle = () =>
+          cardNodes()
+            .find((node) => node.props.task.id === id)
+            .findByProps({ accessibilityRole: "button" }).props;
+        act(() => {
+          lane.props.onLayout({
+            nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 600 } },
+          });
+          scroll.props.onLayout({
+            nativeEvent: { layout: { x: 0, y: 0, width: 280, height: 500 } },
+          });
+          cardNodes().forEach((card, index) =>
+            card.findAllByType("View")[0].props.onLayout({
+              nativeEvent: {
+                layout: {
+                  x: 0,
+                  y: cards[index][1],
+                  width: 280,
+                  height: cards[index][2],
+                },
+              },
+            }),
+          );
+          handle().onPanResponderGrant(event, { x0: 100, y0: steps[0][0] });
+        });
+
+        for (const [index, [y, expected]] of steps.entries()) {
+          if (index > 0)
+            act(() =>
+              handle().onPanResponderMove(event, { moveX: 100, moveY: y }),
+            );
+          const mountedCards = cardNodes();
+          const visible = [];
+          for (const node of scroll.findAll(
+            (node) =>
+              (node.type === "AnimatedView" && node.props.onLayout) ||
+              mountedCards.includes(node),
+          )) {
+            if (node.type === "AnimatedView") {
+              assert.equal(
+                node.props.style[1].height._value,
+                cards.find(([cardId]) => cardId === id)[2],
+                "slot starts at the full lifted card height",
+              );
+              visible.push("slot");
+            } else if (
+              node.findAllByType("View")[0].props.style?.opacity !== 0
+            ) {
+              visible.push(
+                node
+                  .findAllByType("Text")
+                  .flatMap((text) => text.children)
+                  .find((text) => ["1", "2", "3"].includes(text)),
+              );
+            }
+          }
+          assert.deepEqual(visible, expected, `pointer y=${y}`);
+          if (cards === equalCards && id === "1" && index === 1) {
+            const translations = scroll
+              .findAllByType("AnimatedView")
+              .map((node) => node.props.style[1].transform?.[0].translateY)
+              .filter(Boolean);
+            assert.deepEqual(
+              translations.map((value) => value._value).sort((a, b) => a - b),
+              [-72, 72],
+            );
+            act(() => animations.splice(0).forEach((finish) => finish()));
+            assert.deepEqual(
+              translations.map((value) => value._value),
+              [0, 0],
+              "slot and displaced card settle into place",
+            );
+          } else {
+            act(() => animations.splice(0).forEach((finish) => finish()));
+          }
+        }
+        await act(async () => handle().onPanResponderRelease(event, press));
+        assert.deepEqual(requests, [], "release waits for drop animation");
+        assert.deepEqual(
+          [drag.droppingState.toX, drag.droppingState.toY],
+          [0, dropY],
+          "drop animation targets the displayed slot, excluding the lifted card's old height",
+        );
+        await act(async () => drag.commitDrop());
+        assert.deepEqual(requests, [
+          [id, "lane", steps.at(-1)[1].indexOf("slot")],
+        ]);
+      } finally {
+        act(() => root.unmount());
+      }
+    });
   }
 });

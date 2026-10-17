@@ -44,13 +44,14 @@ function KanbanDragOverlayInner({
     Animated?.ValueXY ? new Animated.ValueXY({ x: 0, y: 0 }) : null,
   ).current;
   const animRotate = useRef(
-    Animated?.Value ? new Animated.Value(1) : null,
+    Animated?.Value ? new Animated.Value(0) : null,
   ).current;
   const animScale = useRef(
-    Animated?.Value ? new Animated.Value(1.03) : null,
+    Animated?.Value ? new Animated.Value(1) : null,
   ).current;
   const droppingHandledRef = useRef<string | null>(null);
   const lastOpIdRef = useRef<string | null>(null);
+  const liftingTaskIdRef = useRef<string | null>(null);
 
   if (
     curDropping &&
@@ -66,6 +67,47 @@ function KanbanDragOverlayInner({
   } else if (!curDropping) {
     lastOpIdRef.current = null;
   }
+
+  useEffect(() => {
+    if (
+      !liveFeedback.isDragging ||
+      !liveFeedback.draggingTaskId ||
+      curDropping
+    ) {
+      if (!liveFeedback.isDragging && !curDropping) {
+        liftingTaskIdRef.current = null;
+      }
+      return;
+    }
+
+    if (liftingTaskIdRef.current === liveFeedback.draggingTaskId) {
+      return;
+    }
+    liftingTaskIdRef.current = liveFeedback.draggingTaskId;
+
+    if (!Animated || !animRotate || !animScale) {
+      return;
+    }
+
+    animRotate.setValue(0);
+    animScale.setValue(1);
+    Animated.timing(animRotate, {
+      toValue: 1,
+      duration: 120,
+      useNativeDriver: false,
+    }).start();
+    Animated.timing(animScale, {
+      toValue: 1.03,
+      duration: 120,
+      useNativeDriver: false,
+    }).start();
+  }, [
+    liveFeedback.isDragging,
+    liveFeedback.draggingTaskId,
+    curDropping,
+    animRotate,
+    animScale,
+  ]);
 
   useEffect(() => {
     if (!curDropping) {
@@ -151,13 +193,15 @@ function KanbanDragOverlayInner({
   const containerX = containerBounds?.x ?? 0;
   const containerY = containerBounds?.y ?? 0;
   const cardHalfWidth = layout.compact ? 125 : 140;
+  const activeCardWidth =
+    curDropping?.draggedCardWidth ?? liveFeedback.draggedCardWidth;
 
   let overlayStyle: Animated.WithAnimatedValue<ViewStyle>;
   if (curDropping && animPos && animRotate && animScale) {
     overlayStyle = {
-      left: animPos.x,
-      top: animPos.y,
       transform: [
+        { translateX: animPos.x },
+        { translateY: animPos.y },
         {
           rotate: animRotate.interpolate({
             inputRange: [0, 1],
@@ -171,10 +215,22 @@ function KanbanDragOverlayInner({
     typeof liveFeedback.pointerX === "number" &&
     typeof liveFeedback.pointerY === "number"
   ) {
+    const offsetX = liveFeedback.grabOffsetX ?? cardHalfWidth;
+    const offsetY = liveFeedback.grabOffsetY ?? 20;
     overlayStyle = {
-      left: liveFeedback.pointerX - containerX - cardHalfWidth,
-      top: liveFeedback.pointerY - containerY - 20,
-      transform: [{ rotate: "2.5deg" }, { scale: 1.03 }],
+      transform: [
+        { translateX: liveFeedback.pointerX - containerX - offsetX },
+        { translateY: liveFeedback.pointerY - containerY - offsetY },
+        {
+          rotate: animRotate
+            ? animRotate.interpolate({
+                inputRange: [0, 1],
+                outputRange: ["0deg", "2.5deg"],
+              })
+            : "2.5deg",
+        },
+        { scale: animScale ?? 1.03 },
+      ],
     };
   } else {
     return null;
@@ -190,6 +246,7 @@ function KanbanDragOverlayInner({
         projectDisplayName={activeProjectName ?? null}
         theme={theme}
         layout={layout}
+        width={activeCardWidth}
         animated={true}
       />
     </AnimatedView>
@@ -199,6 +256,8 @@ function KanbanDragOverlayInner({
 const styles = StyleSheet.create({
   dragOverlay: {
     position: "absolute",
+    left: 0,
+    top: 0,
     zIndex: 9999,
     pointerEvents: "none",
   },

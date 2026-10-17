@@ -60,14 +60,13 @@ export class MockAnimatedValue {
 
 export class MockAnimatedValueXY {
   constructor(val = { x: 0, y: 0 }) {
-    this.x = typeof val?.x === "number" ? val.x : 0;
-    this.y = typeof val?.y === "number" ? val.y : 0;
+    // Native ValueXY keeps stable Value objects so rendered transforms track updates.
+    this.x = new MockAnimatedValue(val.x);
+    this.y = new MockAnimatedValue(val.y);
   }
   setValue(val) {
-    if (val) {
-      if (typeof val.x === "number") this.x = val.x;
-      if (typeof val.y === "number") this.y = val.y;
-    }
+    this.x.setValue(val.x);
+    this.y.setValue(val.y);
   }
 }
 
