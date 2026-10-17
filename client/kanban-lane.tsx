@@ -1,4 +1,11 @@
-import { useMemo, useEffect, Fragment, memo } from "react";
+import {
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  Fragment,
+  memo,
+} from "react";
 import {
   View,
   Text,
@@ -60,12 +67,66 @@ function KanbanLaneViewInner({
   } = dragBinding;
 
   // Sync card order to controller whenever tasks in this lane change
-  useEffect(() => {
+  useLayoutEffect(() => {
     setLaneCardOrder?.(
       lane.id,
       tasks.map((t) => t.id),
     );
   }, [lane.id, tasks, setLaneCardOrder]);
+
+  const wasHoveredRef = useRef(false);
+  const wasDraggingInLaneRef = useRef(false);
+  const prevTargetIndexRef = useRef<number>(-1);
+  const slideSeqRef = useRef(0);
+  const displacedTasksRef = useRef<Map<string, { seq: number; fromY: number }>>(
+    new Map(),
+  );
+  const spacerSlideFromYRef = useRef<number>(0);
+
+  const hasDraggingTask = tasks.some((task) => isTaskDragging(task.id));
+  const isInitialLiftInSourceLane =
+    isHovered && hasDraggingTask && !wasDraggingInLaneRef.current;
+  const animateSpacerFromZero =
+    isHovered && !wasHoveredRef.current && !isInitialLiftInSourceLane;
+
+  const remainingTasks = isHovered
+    ? tasks.filter((task) => !isTaskDragging(task.id))
+    : [];
+
+  if (
+    isHovered &&
+    wasHoveredRef.current &&
+    prevTargetIndexRef.current >= 0 &&
+    targetIndex >= 0 &&
+    prevTargetIndexRef.current !== targetIndex
+  ) {
+    const prevIdx = prevTargetIndexRef.current;
+    const nextIdx = targetIndex;
+    const shift =
+      (draggedCardHeight && draggedCardHeight > 0 ? draggedCardHeight : 64) + 8;
+    const seq = ++slideSeqRef.current;
+    const minIdx = Math.min(prevIdx, nextIdx);
+    const maxIdx = Math.max(prevIdx, nextIdx);
+    const fromY = prevIdx < nextIdx ? shift : -shift;
+    spacerSlideFromYRef.current = prevIdx < nextIdx ? -shift : shift;
+    const nextMap = new Map<string, { seq: number; fromY: number }>();
+    for (let i = minIdx; i < maxIdx && i < remainingTasks.length; i++) {
+      nextMap.set(remainingTasks[i].id, { seq, fromY });
+    }
+    displacedTasksRef.current = nextMap;
+  } else if (!isHovered) {
+    displacedTasksRef.current = new Map();
+    spacerSlideFromYRef.current = 0;
+  } else {
+    spacerSlideFromYRef.current = 0;
+  }
+
+  prevTargetIndexRef.current = isHovered ? targetIndex : -1;
+
+  useEffect(() => {
+    wasHoveredRef.current = isHovered;
+    wasDraggingInLaneRef.current = hasDraggingTask;
+  }, [isHovered, hasDraggingTask]);
 
   const styles = useMemo(
     () =>
@@ -160,7 +221,7 @@ function KanbanLaneViewInner({
   );
 
   const dropBeforeTaskId = isHovered
-    ? tasks.filter((task) => !isTaskDragging(task.id))[targetIndex]?.id
+    ? remainingTasks[targetIndex]?.id
     : undefined;
 
   return (
@@ -217,6 +278,8 @@ function KanbanLaneViewInner({
                 <KanbanDropSpacer
                   theme={theme}
                   height={draggedCardHeight}
+                  animateFromZero={animateSpacerFromZero}
+                  slideFromY={spacerSlideFromYRef.current}
                   onLayout={(rect) => setDropSpacerY(rect.y)}
                 />
               )}
@@ -234,6 +297,7 @@ function KanbanLaneViewInner({
                   () => onSelectTask(task),
                   PanResponder,
                 )}
+                slideAnimation={displacedTasksRef.current.get(task.id)}
                 onSetCompleted={onSetCompleted}
                 completionDisabled={
                   completionPending || (dragBinding.isDragLocked?.() ?? false)
@@ -247,6 +311,8 @@ function KanbanLaneViewInner({
             <KanbanDropSpacer
               theme={theme}
               height={draggedCardHeight}
+              animateFromZero={animateSpacerFromZero}
+              slideFromY={spacerSlideFromYRef.current}
               onLayout={(rect) => setDropSpacerY(rect.y)}
             />
           )}

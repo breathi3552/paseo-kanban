@@ -15,6 +15,7 @@ export interface KanbanCardProps {
   theme: PluginTheme;
   layout: { compact: boolean };
   binding: CardDragBinding;
+  slideAnimation?: { seq: number; fromY: number };
   onSetCompleted?: (taskId: string, completed: boolean) => void;
   completionDisabled?: boolean;
   interactionDisabled?: boolean;
@@ -55,6 +56,7 @@ export function KanbanCard({
   theme,
   layout,
   binding,
+  slideAnimation,
   onSetCompleted,
   completionDisabled = false,
   interactionDisabled = false,
@@ -62,6 +64,31 @@ export function KanbanCard({
   const { t } = useI18n();
   const bindingRef = useRef(binding);
   bindingRef.current = binding;
+  const animTranslateY = useRef(
+    Animated?.Value ? new Animated.Value(0) : null,
+  ).current;
+  const lastSlideSeqRef = useRef(0);
+
+  if (
+    slideAnimation &&
+    animTranslateY &&
+    slideAnimation.seq !== lastSlideSeqRef.current &&
+    !binding.isDragging
+  ) {
+    lastSlideSeqRef.current = slideAnimation.seq;
+    animTranslateY.setValue(slideAnimation.fromY);
+  }
+
+  useEffect(() => {
+    if (!slideAnimation || !animTranslateY || binding.isDragging) {
+      return;
+    }
+    Animated.timing(animTranslateY, {
+      toValue: 0,
+      duration: 160,
+      useNativeDriver: false,
+    }).start();
+  }, [slideAnimation, binding.isDragging, animTranslateY]);
 
   useEffect(() => {
     return () => {
@@ -158,6 +185,11 @@ export function KanbanCard({
     ],
   );
 
+  const CardContainer =
+    !binding.isDragging && slideAnimation && animTranslateY
+      ? Animated.View
+      : View;
+
   return (
     <View
       // Keep the responder mounted, but let the single drop slot replace its space.
@@ -166,9 +198,19 @@ export function KanbanCard({
           ? { position: "absolute", left: 0, right: 0, opacity: 0 }
           : undefined
       }
-      onLayout={(e) => binding.onLayout?.(e.nativeEvent.layout)}
+      onLayout={(e) => {
+        if (!binding.isDragging) {
+          binding.onLayout?.(e.nativeEvent.layout);
+        }
+      }}
     >
-      <View style={styles.card}>
+      <CardContainer
+        style={
+          !binding.isDragging && slideAnimation && animTranslateY
+            ? [styles.card, { transform: [{ translateY: animTranslateY }] }]
+            : styles.card
+        }
+      >
         <Pressable
           style={styles.completionControl}
           accessibilityRole="checkbox"
@@ -215,25 +257,27 @@ export function KanbanCard({
             </Text>
           </View>
 
-          <View style={styles.badgeRow}>
-            {projectDisplayName && (
-              <View style={styles.projectBadge}>
-                <Text style={styles.projectBadgeText} numberOfLines={1}>
-                  {projectDisplayName}
-                </Text>
-              </View>
-            )}
-            {task.subtasks.length > 0 && (
-              <View style={styles.subtaskBadge}>
-                <Text style={styles.subtaskBadgeText}>
-                  {t("card.subtasksCount", {
-                    completed: completedSubtasksCount,
-                    total: task.subtasks.length,
-                  })}
-                </Text>
-              </View>
-            )}
-          </View>
+          {(projectDisplayName || task.subtasks.length > 0) && (
+            <View style={styles.badgeRow}>
+              {projectDisplayName && (
+                <View style={styles.projectBadge}>
+                  <Text style={styles.projectBadgeText} numberOfLines={1}>
+                    {projectDisplayName}
+                  </Text>
+                </View>
+              )}
+              {task.subtasks.length > 0 && (
+                <View style={styles.subtaskBadge}>
+                  <Text style={styles.subtaskBadgeText}>
+                    {t("card.subtasksCount", {
+                      completed: completedSubtasksCount,
+                      total: task.subtasks.length,
+                    })}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
         </View>
         {task.source === "github_issue" && task.externalUrl && (
           <IssueLink
@@ -243,7 +287,7 @@ export function KanbanCard({
             disabled={interactionDisabled}
           />
         )}
-      </View>
+      </CardContainer>
     </View>
   );
 }
@@ -253,12 +297,14 @@ export function KanbanCardPreview({
   projectDisplayName,
   theme,
   layout,
+  width,
   animated = false,
 }: {
   task: KanbanTask;
   projectDisplayName: string | null;
   theme: PluginTheme;
   layout: { compact: boolean };
+  width?: number;
   animated?: boolean;
 }) {
   const { t } = useI18n();
@@ -266,19 +312,22 @@ export function KanbanCardPreview({
     () => task.subtasks.filter((s) => s.completed).length,
     [task.subtasks],
   );
+  const resolvedWidth = width && width > 0 ? width : layout.compact ? 250 : 280;
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
         previewCard: {
           userSelect: "none",
-          width: layout.compact ? 250 : 280,
+          width: resolvedWidth,
           backgroundColor: theme.colors.surface2,
           borderColor: theme.colors.accent,
           borderWidth: 2,
           borderRadius: 8,
           padding: layout.compact ? 10 : 12,
           gap: 8,
+          flexDirection: "row",
+          alignItems: "flex-start",
           ...(animated
             ? {}
             : { transform: [{ rotate: "2.5deg" }, { scale: 1.03 }] }),
@@ -287,6 +336,13 @@ export function KanbanCardPreview({
           shadowOpacity: 0.25,
           shadowRadius: 10,
           elevation: 8,
+        },
+        cardBody: {
+          flex: 1,
+          gap: 8,
+        },
+        completionControl: {
+          padding: 2,
         },
         cardHeader: {
           flexDirection: "row",
@@ -344,6 +400,7 @@ export function KanbanCardPreview({
     [
       theme,
       layout.compact,
+      resolvedWidth,
       task.subtasks.length,
       completedSubtasksCount,
       animated,
@@ -352,48 +409,61 @@ export function KanbanCardPreview({
 
   return (
     <View style={styles.previewCard} pointerEvents="none">
-      <View style={styles.cardHeader}>
+      <View style={styles.completionControl}>
         <CompletionIndicator
           completed={Boolean(task.completed)}
           theme={theme}
         />
-        <View style={styles.dragHandle}>
-          <Icon name="GripVertical" size={14} color={theme.colors.accent} />
+      </View>
+      <View style={styles.cardBody}>
+        <View style={styles.cardHeader}>
+          <View style={styles.dragHandle}>
+            <Icon name="GripVertical" size={14} color={theme.colors.accent} />
+          </View>
+          <Text style={styles.title} numberOfLines={2}>
+            {task.title}
+          </Text>
         </View>
-        <Text style={styles.title} numberOfLines={2}>
-          {task.title}
-        </Text>
-      </View>
 
-      <View style={styles.badgeRow}>
-        {projectDisplayName && (
-          <View style={styles.projectBadge}>
-            <Text style={styles.projectBadgeText} numberOfLines={1}>
-              {projectDisplayName}
-            </Text>
-          </View>
-        )}
-        {task.subtasks.length > 0 && (
-          <View style={styles.subtaskBadge}>
-            <Text style={styles.subtaskBadgeText}>
-              {t("card.subtasksCount", {
-                completed: completedSubtasksCount,
-                total: task.subtasks.length,
-              })}
-            </Text>
+        {(projectDisplayName || task.subtasks.length > 0) && (
+          <View style={styles.badgeRow}>
+            {projectDisplayName && (
+              <View style={styles.projectBadge}>
+                <Text style={styles.projectBadgeText} numberOfLines={1}>
+                  {projectDisplayName}
+                </Text>
+              </View>
+            )}
+            {task.subtasks.length > 0 && (
+              <View style={styles.subtaskBadge}>
+                <Text style={styles.subtaskBadgeText}>
+                  {t("card.subtasksCount", {
+                    completed: completedSubtasksCount,
+                    total: task.subtasks.length,
+                  })}
+                </Text>
+              </View>
+            )}
           </View>
         )}
       </View>
+      {task.source === "github_issue" && task.externalUrl && (
+        <IssueLink url={task.externalUrl} theme={theme} iconOnly disabled />
+      )}
     </View>
   );
 }
 
 export function KanbanDropSpacer({
   height,
+  animateFromZero = true,
+  slideFromY = 0,
   theme,
   onLayout,
 }: {
   height?: number;
+  animateFromZero?: boolean;
+  slideFromY?: number;
   theme: PluginTheme;
   onLayout?: (layout: {
     x: number;
@@ -402,16 +472,36 @@ export function KanbanDropSpacer({
     height: number;
   }) => void;
 }) {
-  const animHeight = useRef(new Animated.Value(0)).current;
+  const targetHeight = height && height > 0 ? height : 64;
+  const animHeight = useRef(
+    new Animated.Value(animateFromZero ? 0 : targetHeight),
+  ).current;
+  const animTranslateY = useRef(new Animated.Value(slideFromY)).current;
+  const prevTargetHeightRef = useRef(animateFromZero ? 0 : targetHeight);
 
   useEffect(() => {
-    const targetHeight = height && height > 0 ? height : 64;
+    if (prevTargetHeightRef.current === targetHeight) {
+      animHeight.setValue(targetHeight);
+      return;
+    }
+    prevTargetHeightRef.current = targetHeight;
     Animated.timing(animHeight, {
       toValue: targetHeight,
       duration: 160,
       useNativeDriver: false,
     }).start();
-  }, [height, animHeight]);
+  }, [targetHeight, animHeight]);
+
+  useEffect(() => {
+    if (!slideFromY) {
+      return;
+    }
+    Animated.timing(animTranslateY, {
+      toValue: 0,
+      duration: 160,
+      useNativeDriver: false,
+    }).start();
+  }, [slideFromY, animTranslateY]);
 
   const styles = useMemo(
     () =>
@@ -430,7 +520,12 @@ export function KanbanDropSpacer({
 
   return (
     <Animated.View
-      style={[styles.spacer, { height: animHeight }]}
+      style={[
+        styles.spacer,
+        slideFromY
+          ? { height: animHeight, transform: [{ translateY: animTranslateY }] }
+          : { height: animHeight },
+      ]}
       pointerEvents="none"
       onLayout={(e) => onLayout?.(e.nativeEvent.layout)}
     />

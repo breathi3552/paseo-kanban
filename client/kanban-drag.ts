@@ -71,6 +71,7 @@ export interface DragSlotState {
   readonly draggingSourceLaneId: string | null;
   readonly hoveredLaneId: string | null;
   readonly targetIndex: number;
+  readonly draggedCardWidth?: number;
   readonly draggedCardHeight?: number;
   readonly dragLock: boolean;
 }
@@ -81,7 +82,10 @@ export interface DragFeedback {
   readonly draggingSourceLaneId: string | null;
   readonly hoveredLaneId: string | null;
   readonly targetIndex?: number;
+  readonly draggedCardWidth?: number;
   readonly draggedCardHeight?: number;
+  readonly grabOffsetX?: number;
+  readonly grabOffsetY?: number;
   readonly pointerX?: number;
   readonly pointerY?: number;
   readonly autoScrollVelocity?: number;
@@ -107,6 +111,20 @@ export interface ContainerRefTarget {
   measureInWindow?: (
     callback: (x: number, y: number, width: number, height: number) => void,
   ) => void;
+  getBoundingClientRect?: () => {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  };
+  getScrollableNode?: () => {
+    getBoundingClientRect?: () => {
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+    };
+  } | null;
   scrollTo?: (options: { x: number; animated: boolean }) => void;
 }
 
@@ -126,6 +144,7 @@ export interface LaneDragBinding {
   readonly isHovered: boolean;
   readonly targetIndex: number;
   readonly isTaskDragging: (taskId: string) => boolean;
+  readonly draggedCardWidth?: number;
   readonly draggedCardHeight?: number;
   readonly isDragLocked: () => boolean;
   readonly bindCard: (
@@ -164,6 +183,10 @@ interface ActiveDragSession {
   lastPointerY: number;
   isActivated: boolean;
   currentTargetIndex?: number;
+  draggedCardWidth?: number;
+  draggedCardHeight?: number;
+  grabOffsetX: number;
+  grabOffsetY: number;
   cardLayouts: Map<string, Map<string, Rect>>;
 }
 
@@ -357,6 +380,27 @@ export class KanbanDragController {
           }
         }
       });
+      return;
+    }
+
+    const domNode =
+      this.containerRef?.getScrollableNode?.() ?? this.containerRef;
+    if (domNode && typeof domNode.getBoundingClientRect === "function") {
+      const rect = domNode.getBoundingClientRect();
+      if (rect && rect.width > 0 && rect.height > 0) {
+        this.containerBounds = {
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+        };
+        if (this.activeSession) {
+          this.recomputeHover(
+            this.activeSession.lastPointerX,
+            this.activeSession.lastPointerY,
+          );
+        }
+      }
     }
   };
 
@@ -541,9 +585,10 @@ export class KanbanDragController {
           draggingSourceLaneId: this.activeSession.sourceLaneId,
           hoveredLaneId: initialHit,
           targetIndex,
-          draggedCardHeight: this.activeSession.cardLayouts
-            .get(this.activeSession.sourceLaneId)
-            ?.get(this.activeSession.taskId)?.height,
+          draggedCardWidth: this.activeSession.draggedCardWidth,
+          draggedCardHeight: this.activeSession.draggedCardHeight,
+          grabOffsetX: this.activeSession.grabOffsetX,
+          grabOffsetY: this.activeSession.grabOffsetY,
           dragLock: true,
         };
         this.notifyListeners();
@@ -633,6 +678,18 @@ export class KanbanDragController {
       this.dragLock = true;
     }
 
+    const cardLayoutsSnapshot = new Map(
+      [...this.cardLayouts].map(([id, cards]) => [id, new Map(cards)]),
+    );
+    const { draggedCardWidth, draggedCardHeight, grabOffsetX, grabOffsetY } =
+      this.computeInitialCardGeometry(
+        sourceLaneId,
+        taskId,
+        pointerX,
+        pointerY,
+        cardLayoutsSnapshot,
+      );
+
     this.activeSession = {
       taskId,
       sourceLaneId,
@@ -642,9 +699,11 @@ export class KanbanDragController {
       lastPointerY: pointerY,
       isActivated,
       currentTargetIndex: undefined,
-      cardLayouts: new Map(
-        [...this.cardLayouts].map(([id, cards]) => [id, new Map(cards)]),
-      ),
+      draggedCardWidth,
+      draggedCardHeight,
+      grabOffsetX,
+      grabOffsetY,
+      cardLayouts: cardLayoutsSnapshot,
     };
 
     if (isActivated) {
@@ -660,9 +719,10 @@ export class KanbanDragController {
         draggingSourceLaneId: sourceLaneId,
         hoveredLaneId: initialHit,
         targetIndex,
-        draggedCardHeight: this.activeSession.cardLayouts
-          .get(sourceLaneId)
-          ?.get(taskId)?.height,
+        draggedCardWidth,
+        draggedCardHeight,
+        grabOffsetX,
+        grabOffsetY,
         pointerX,
         pointerY,
         autoScrollVelocity,
@@ -675,6 +735,10 @@ export class KanbanDragController {
         draggingSourceLaneId: sourceLaneId,
         hoveredLaneId: null,
         targetIndex: undefined,
+        draggedCardWidth,
+        draggedCardHeight,
+        grabOffsetX,
+        grabOffsetY,
         pointerX,
         pointerY,
         autoScrollVelocity: 0,
@@ -725,9 +789,10 @@ export class KanbanDragController {
       draggingSourceLaneId: this.activeSession.sourceLaneId,
       hoveredLaneId: hitLaneId,
       targetIndex,
-      draggedCardHeight: this.activeSession.cardLayouts
-        .get(this.activeSession.sourceLaneId)
-        ?.get(this.activeSession.taskId)?.height,
+      draggedCardWidth: this.activeSession.draggedCardWidth,
+      draggedCardHeight: this.activeSession.draggedCardHeight,
+      grabOffsetX: this.activeSession.grabOffsetX,
+      grabOffsetY: this.activeSession.grabOffsetY,
       pointerX: this.activeSession.lastPointerX,
       pointerY: this.activeSession.lastPointerY,
       autoScrollVelocity,
@@ -793,22 +858,27 @@ export class KanbanDragController {
 
     const hitLaneId = this.computeHit(finalX, finalY);
     const targetLaneId = hitLaneId ?? session.sourceLaneId;
-    const targetIndex = this.computeTargetIndex(targetLaneId, finalY);
-
     const isValidTarget = Boolean(
       hitLaneId && this.validLaneSet.has(hitLaneId),
     );
     const isDrop = isValidTarget;
+    const sourceIndex = Math.max(
+      0,
+      this.laneCardOrders.get(session.sourceLaneId)?.indexOf(session.taskId) ??
+        0,
+    );
+    const targetIndex = isDrop
+      ? this.computeTargetIndex(targetLaneId, finalY)
+      : sourceIndex;
 
     const opId = `op_${++this.operationSeq}_${Date.now()}`;
     this.currentOperationId = opId;
 
     const containerX = this.containerBounds?.x ?? 0;
     const containerY = this.containerBounds?.y ?? 0;
-    const cardHalfWidth = 140;
 
-    const fromX = finalX - containerX - cardHalfWidth;
-    const fromY = finalY - containerY - 20;
+    const fromX = finalX - containerX - session.grabOffsetX;
+    const fromY = finalY - containerY - session.grabOffsetY;
 
     let toX = fromX;
     let toY = fromY;
@@ -832,12 +902,6 @@ export class KanbanDragController {
         }
       }
     } else {
-      const sourceIndex = Math.max(
-        0,
-        this.laneCardOrders
-          .get(session.sourceLaneId)
-          ?.indexOf(session.taskId) ?? 0,
-      );
       const sourceSlot = this.getDropSlotPosition(
         session.sourceLaneId,
         sourceIndex,
@@ -861,6 +925,8 @@ export class KanbanDragController {
       targetLaneId,
       targetIndex,
       isDrop,
+      draggedCardWidth: session.draggedCardWidth,
+      draggedCardHeight: session.draggedCardHeight,
       fromX,
       fromY,
       toX,
@@ -869,7 +935,8 @@ export class KanbanDragController {
       releaseY: finalY,
     };
 
-    const savedCardHeight = this.feedback.draggedCardHeight;
+    const savedCardWidth = session.draggedCardWidth;
+    const savedCardHeight = session.draggedCardHeight;
     this.currentDroppingState = droppingState;
     this.activeSession = null;
     this.dragLock = true;
@@ -883,6 +950,7 @@ export class KanbanDragController {
       pointerY: undefined,
       autoScrollVelocity: 0,
       dragLock: true,
+      draggedCardWidth: savedCardWidth,
       draggedCardHeight: savedCardHeight,
     };
     this.notifyListeners();
@@ -1046,6 +1114,80 @@ export class KanbanDragController {
     return this.laneScrollY.get(laneId) ?? 0;
   };
 
+  private getCollapsedLaneCards(laneId: string): {
+    firstCardY: number;
+    cards: { id: string; baseY: number; height: number; gap: number }[];
+  } {
+    const allCardIds = this.laneCardOrders.get(laneId) ?? [];
+    const activeTaskId =
+      this.activeSession?.taskId ??
+      this.feedback.draggingTaskId ??
+      this.currentDroppingState?.taskId;
+    const isSourceLane =
+      (this.activeSession?.sourceLaneId ??
+        this.feedback.draggingSourceLaneId ??
+        this.currentDroppingState?.sourceLaneId) === laneId &&
+      Boolean(activeTaskId && allCardIds.includes(activeTaskId));
+
+    const laneCardsMap = (
+      this.activeSession?.cardLayouts ?? this.cardLayouts
+    ).get(laneId);
+
+    const firstRect =
+      allCardIds.length > 0 ? laneCardsMap?.get(allCardIds[0]) : undefined;
+    const firstCardY = firstRect ? firstRect.y : 0;
+
+    const cards: { id: string; baseY: number; height: number; gap: number }[] =
+      [];
+    let seenActive = false;
+    let defaultGap = 8;
+
+    for (let i = 0; i < allCardIds.length; i++) {
+      const id = allCardIds[i];
+      const rect = laneCardsMap?.get(id);
+      if (rect && i < allCardIds.length - 1) {
+        const nextRect = laneCardsMap?.get(allCardIds[i + 1]);
+        if (nextRect) {
+          const measuredGap = nextRect.y - (rect.y + rect.height);
+          if (measuredGap >= 0) {
+            defaultGap = measuredGap;
+          }
+        }
+      }
+
+      if (isSourceLane && id === activeTaskId) {
+        seenActive = true;
+        continue;
+      }
+
+      const height = rect?.height ?? 64;
+      let gap = defaultGap;
+      if (rect && i < allCardIds.length - 1) {
+        const nextRect = laneCardsMap?.get(allCardIds[i + 1]);
+        if (nextRect) {
+          const measuredGap = nextRect.y - (rect.y + rect.height);
+          if (measuredGap >= 0) {
+            gap = measuredGap;
+          }
+        }
+      }
+
+      let baseY: number;
+      if (cards.length === 0) {
+        baseY = !seenActive && rect ? rect.y : firstCardY;
+      } else if (!seenActive && rect) {
+        baseY = rect.y;
+      } else {
+        const prev = cards[cards.length - 1];
+        baseY = prev.baseY + prev.height + prev.gap;
+      }
+
+      cards.push({ id, baseY, height, gap });
+    }
+
+    return { firstCardY, cards };
+  }
+
   getDropSlotPosition = (
     laneId: string,
     targetIndex: number,
@@ -1055,42 +1197,21 @@ export class KanbanDragController {
 
     const cardsViewport = this.cardsViewportLayouts.get(laneId);
     const scrollY = this.laneScrollY.get(laneId) ?? 0;
-    const laneCardsMap = (
-      this.activeSession?.cardLayouts ?? this.cardLayouts
-    ).get(laneId);
 
     const slotX = laneRect.x - this.scrollX + (cardsViewport?.x ?? 12);
-    const activeTaskId =
-      this.activeSession?.taskId ??
-      this.feedback.draggingTaskId ??
-      this.currentDroppingState?.taskId;
-    const allCardIds = this.laneCardOrders.get(laneId) ?? [];
-    const remainingCardIds = allCardIds.filter((id) => id !== activeTaskId);
+    const { firstCardY, cards } = this.getCollapsedLaneCards(laneId);
 
     const laneOriginY = laneRect.y;
     const cardsOriginY = cardsViewport?.y ?? 0;
 
-    let slotCardY = 0;
-    if (remainingCardIds.length === 0 || targetIndex <= 0) {
-      slotCardY = 0;
-    } else if (targetIndex < remainingCardIds.length) {
-      const nextCardId = remainingCardIds[targetIndex];
-      const nextCardRect = laneCardsMap?.get(nextCardId);
-      if (nextCardRect) {
-        slotCardY = nextCardRect.y;
-      } else {
-        const prevCardId = remainingCardIds[targetIndex - 1];
-        const prevRect = laneCardsMap?.get(prevCardId);
-        slotCardY = prevRect
-          ? prevRect.y + prevRect.height + 8
-          : targetIndex * 80;
-      }
+    let slotCardY = firstCardY;
+    if (cards.length === 0 || targetIndex <= 0) {
+      slotCardY = firstCardY;
+    } else if (targetIndex < cards.length) {
+      slotCardY = cards[targetIndex].baseY;
     } else {
-      const lastCardId = remainingCardIds[remainingCardIds.length - 1];
-      const lastCardRect = laneCardsMap?.get(lastCardId);
-      slotCardY = lastCardRect
-        ? lastCardRect.y + lastCardRect.height + 8
-        : remainingCardIds.length * 80;
+      const lastCard = cards[cards.length - 1];
+      slotCardY = lastCard.baseY + lastCard.height + lastCard.gap;
     }
 
     const slotY = laneOriginY + cardsOriginY - scrollY + slotCardY;
@@ -1174,9 +1295,21 @@ export class KanbanDragController {
       targetIndex:
         this.feedback.targetIndex ??
         (isDropping ? (this.currentDroppingState?.targetIndex ?? 0) : 0),
-      draggedCardHeight: this.feedback.draggedCardHeight,
+      draggedCardWidth:
+        this.feedback.draggedCardWidth ??
+        (isDropping ? this.currentDroppingState?.draggedCardWidth : undefined),
+      draggedCardHeight:
+        this.feedback.draggedCardHeight ??
+        (isDropping ? this.currentDroppingState?.draggedCardHeight : undefined),
       dragLock: this.feedback.dragLock,
     };
+
+    if (
+      this.slotState.hoveredLaneId !== nextSlotState.hoveredLaneId ||
+      this.slotState.targetIndex !== nextSlotState.targetIndex
+    ) {
+      this.dropSpacerY = null;
+    }
 
     const slotChanged =
       this.slotState.isDragging !== nextSlotState.isDragging ||
@@ -1185,6 +1318,7 @@ export class KanbanDragController {
         nextSlotState.draggingSourceLaneId ||
       this.slotState.hoveredLaneId !== nextSlotState.hoveredLaneId ||
       this.slotState.targetIndex !== nextSlotState.targetIndex ||
+      this.slotState.draggedCardWidth !== nextSlotState.draggedCardWidth ||
       this.slotState.draggedCardHeight !== nextSlotState.draggedCardHeight ||
       this.slotState.dragLock !== nextSlotState.dragLock;
 
@@ -1201,6 +1335,61 @@ export class KanbanDragController {
     for (const listener of this.listeners) {
       listener();
     }
+  }
+
+  private computeInitialCardGeometry(
+    sourceLaneId: string,
+    taskId: string,
+    pointerX: number,
+    pointerY: number,
+    layouts: Map<string, Map<string, Rect>>,
+  ): {
+    draggedCardWidth?: number;
+    draggedCardHeight?: number;
+    grabOffsetX: number;
+    grabOffsetY: number;
+  } {
+    const cardRect = layouts.get(sourceLaneId)?.get(taskId);
+    const draggedCardWidth = cardRect?.width;
+    const draggedCardHeight = cardRect?.height;
+    let grabOffsetX = (draggedCardWidth ?? 280) / 2;
+    let grabOffsetY = 20;
+
+    const laneRect = this.laneLayouts.get(sourceLaneId);
+    if (cardRect && laneRect) {
+      const containerX = this.containerBounds?.x ?? 0;
+      const containerY = this.containerBounds?.y ?? 0;
+      const cardsViewport = this.cardsViewportLayouts.get(sourceLaneId);
+      const scrollY = this.laneScrollY.get(sourceLaneId) ?? 0;
+      const cardWinX =
+        containerX +
+        laneRect.x -
+        this.scrollX +
+        (cardsViewport?.x ?? (cardRect.x || 12));
+      const cardWinY =
+        containerY +
+        laneRect.y +
+        (cardsViewport?.y ?? 0) -
+        scrollY +
+        cardRect.y;
+
+      if (
+        pointerX >= cardWinX &&
+        pointerX <= cardWinX + cardRect.width &&
+        pointerY >= cardWinY &&
+        pointerY <= cardWinY + cardRect.height
+      ) {
+        grabOffsetX = pointerX - cardWinX;
+        grabOffsetY = pointerY - cardWinY;
+      }
+    }
+
+    return {
+      draggedCardWidth,
+      draggedCardHeight,
+      grabOffsetX,
+      grabOffsetY,
+    };
   }
 
   private computeAutoScrollVelocity(pointerX: number): number {
@@ -1220,77 +1409,40 @@ export class KanbanDragController {
 
   private computeTargetIndex(laneId: string, pointerY: number): number {
     if (this.completionLaneSet.has(laneId)) return 0;
-    const allCardIds = this.laneCardOrders.get(laneId) ?? [];
-    const activeTaskId = this.activeSession?.taskId;
-    const isSourceLane = this.activeSession
-      ? this.activeSession.sourceLaneId === laneId
-      : false;
-
-    const remainingCount =
-      isSourceLane && allCardIds.includes(activeTaskId ?? "")
-        ? Math.max(0, allCardIds.length - 1)
-        : allCardIds.length;
-
-    if (allCardIds.length === 0 || remainingCount === 0) return 0;
+    const { cards } = this.getCollapsedLaneCards(laneId);
+    const remainingCount = cards.length;
+    if (remainingCount === 0) return 0;
 
     const laneRect = this.laneLayouts.get(laneId);
     const containerOriginY = this.containerBounds?.y ?? 0;
     const laneOriginY = laneRect?.y ?? 0;
     const cardsOriginY = this.cardsViewportLayouts.get(laneId)?.y ?? 0;
     const scrollY = this.laneScrollY.get(laneId) ?? 0;
-    const laneCardsMap = (
-      this.activeSession?.cardLayouts ?? this.cardLayouts
-    ).get(laneId);
+    const originY = containerOriginY + laneOriginY + cardsOriginY - scrollY;
 
     const prevIndex =
       this.feedback.hoveredLaneId === laneId
         ? (this.activeSession?.currentTargetIndex ?? -1)
         : -1;
 
-    for (let i = 0; i < allCardIds.length; i++) {
-      const cardId = allCardIds[i];
-      const cardRect = laneCardsMap?.get(cardId);
-      if (!cardRect) continue;
-
-      const cardTop =
-        containerOriginY + laneOriginY + cardsOriginY - scrollY + cardRect.y;
-      const cardBottom = cardTop + cardRect.height;
-
-      let thresholdY: number;
-      if (i < allCardIds.length - 1) {
-        const nextCardId = allCardIds[i + 1];
-        const nextCardRect = laneCardsMap?.get(nextCardId);
-        if (nextCardRect) {
-          const nextCardTop =
-            containerOriginY +
-            laneOriginY +
-            cardsOriginY -
-            scrollY +
-            nextCardRect.y;
-          thresholdY = (cardBottom + nextCardTop) / 2;
-        } else {
-          thresholdY = cardBottom + 4;
-        }
-      } else {
-        thresholdY = cardBottom + 4;
-      }
+    for (let i = 0; i < cards.length; i++) {
+      const card = cards[i];
+      const thresholdY = originY + card.baseY + card.height + card.gap / 2;
 
       const lowerBuffer = thresholdY - 8;
       const upperBuffer = thresholdY + 8;
 
       if (pointerY < lowerBuffer) {
-        return Math.min(i, remainingCount);
+        return i;
       }
       if (pointerY <= upperBuffer) {
         if (prevIndex === i) {
-          return Math.min(i, remainingCount);
+          return i;
         }
         if (prevIndex === i + 1) {
-          return Math.min(i + 1, remainingCount);
+          return i + 1;
         }
-        return pointerY >= thresholdY
-          ? Math.min(i + 1, remainingCount)
-          : Math.min(i, remainingCount);
+        return pointerY >= thresholdY ? i + 1 : i;
       }
     }
 
@@ -1355,6 +1507,8 @@ export interface DroppingState {
   readonly targetLaneId: string;
   readonly targetIndex: number;
   readonly isDrop: boolean;
+  readonly draggedCardWidth?: number;
+  readonly draggedCardHeight?: number;
   readonly fromX: number;
   readonly fromY: number;
   readonly toX: number;
@@ -1430,10 +1584,12 @@ export function useKanbanDrag(
     controller.getSlotState,
   );
 
-  const feedback = useSyncExternalStore(
+  // Keep subscription lifecycle bound to the controller while avoiding board
+  // re-renders on high-frequency pointer coordinate updates.
+  useSyncExternalStore(
     controller.subscribe,
-    controller.getFeedback,
-    controller.getFeedback,
+    controller.getSlotState,
+    controller.getSlotState,
   );
 
   const droppingState = useSyncExternalStore(
@@ -1453,20 +1609,26 @@ export function useKanbanDrag(
 
   // Smooth edge auto-scroll when dragging near viewport boundaries
   useEffect(() => {
-    const curFeedback = controller.getFeedback();
-    const velocity = curFeedback.autoScrollVelocity ?? 0;
-    if (!velocity || !curFeedback.isDragging) return;
+    if (!slotState.isDragging) return;
 
     const timer = setInterval(() => {
       const liveFeedback = controller.getFeedback();
       const curVelocity = liveFeedback.autoScrollVelocity ?? 0;
-      if (!curVelocity || !liveFeedback.isDragging) return;
+      if (
+        !curVelocity ||
+        !liveFeedback.isDragging ||
+        !containerScrollRef.current?.scrollTo
+      ) {
+        return;
+      }
       const nextOffset = Math.max(0, currentScrollX.current + curVelocity * 14);
+      if (nextOffset === currentScrollX.current) return;
       currentScrollX.current = nextOffset;
-      containerScrollRef.current?.scrollTo?.({
+      containerScrollRef.current.scrollTo({
         x: nextOffset,
         animated: false,
       });
+      controller.handleScroll(nextOffset);
     }, 16);
 
     return () => clearInterval(timer);
@@ -1546,6 +1708,7 @@ export function useKanbanDrag(
       isHovered,
       targetIndex,
       isTaskDragging,
+      draggedCardWidth: slotState.draggedCardWidth,
       draggedCardHeight: slotState.draggedCardHeight,
       isDragLocked,
       bindCard: (
@@ -1584,7 +1747,9 @@ export function useKanbanDrag(
   return {
     controller,
     slotState,
-    feedback,
+    get feedback() {
+      return controller.getFeedback();
+    },
     isDropping: droppingState !== null,
     droppingTaskId: droppingState?.taskId ?? null,
     droppingState,
