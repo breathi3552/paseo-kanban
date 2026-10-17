@@ -643,6 +643,7 @@ test("card gestures preview one matching-height slot, animate displacement, and 
     compact = false,
     steps,
     dropY,
+    followUp,
   } of [
     {
       name: "first card moves through middle and last slots",
@@ -662,13 +663,22 @@ test("card gestures preview one matching-height slot, animate displacement, and 
       dropY: 72,
     },
     {
-      name: "last card moves upward",
+      name: "last card moves upward and second drag uses reflowed card positions without re-layout",
       id: "3",
       steps: [
         [170, ["1", "2", "slot"]],
-        [100, ["1", "slot", "2"]],
+        [20, ["slot", "1", "2"]],
       ],
-      dropY: 72,
+      dropY: 0,
+      followUp: {
+        id: "2",
+        steps: [
+          [180, ["3", "1", "slot"]],
+          [90, ["3", "slot", "1"]],
+        ],
+        fromY: 54,
+        dropY: 72,
+      },
     },
     {
       name: "short card waits until it crosses the taller replacement",
@@ -685,6 +695,15 @@ test("card gestures preview one matching-height slot, animate displacement, and 
         [135, ["2", "slot", "3"]],
       ],
       dropY: 124,
+      followUp: {
+        id: "1",
+        steps: [
+          [150, ["2", "slot", "3"]],
+          [215, ["2", "3", "slot"]],
+        ],
+        fromY: 189,
+        dropY: 208,
+      },
     },
     {
       name: "tall card lands immediately after the shorter replacement",
@@ -712,13 +731,22 @@ test("card gestures preview one matching-height slot, animate displacement, and 
       }));
       let drag;
       function Board() {
+        const [boardTasks, setBoardTasks] = React.useState(tasks);
         drag = useKanbanDrag({
           lanes: ["lane"],
-          onReorderTask: (...args) => requests.push(args),
+          onReorderTask: (taskId, targetLaneId, targetIndex) => {
+            requests.push([taskId, targetLaneId, targetIndex]);
+            setBoardTasks((prev) => {
+              const moving = prev.find((item) => item.id === taskId);
+              const rest = prev.filter((item) => item.id !== taskId);
+              rest.splice(targetIndex, 0, moving);
+              return rest;
+            });
+          },
         });
         return React.createElement(Lane, {
           lane: { id: "lane", title: "Lane" },
-          tasks,
+          tasks: boardTasks,
           projects: [],
           theme,
           layout: { compact, platform: "web" },
@@ -747,10 +775,109 @@ test("card gestures preview one matching-height slot, animate displacement, and 
         const scroll = root.root.findByType("ScrollView");
         const cardNodes = () =>
           scroll.findAll((node) => node.props.task && node.props.binding);
-        const handle = () =>
+        const handle = (taskId = id) =>
           cardNodes()
-            .find((node) => node.props.task.id === id)
+            .find((node) => node.props.task.id === taskId)
             .findByProps({ accessibilityRole: "button" }).props;
+        const runGesture = async ({
+          taskId,
+          gestureSteps,
+          expectedFromY,
+          expectedDropY,
+        }) => {
+          const priorRequests = requests.length;
+          act(() => {
+            handle(taskId).onPanResponderGrant(event, {
+              x0: 100,
+              y0: gestureSteps[0][0],
+            });
+          });
+
+          for (const [index, [y, expected]] of gestureSteps.entries()) {
+            if (index > 0)
+              act(() =>
+                handle(taskId).onPanResponderMove(event, {
+                  moveX: 100,
+                  moveY: y,
+                }),
+              );
+            const mountedCards = cardNodes();
+            const visible = [];
+            for (const node of scroll.findAll(
+              (node) =>
+                (node.type === "AnimatedView" && node.props.onLayout) ||
+                mountedCards.includes(node),
+            )) {
+              if (node.type === "AnimatedView") {
+                assert.equal(
+                  node.props.style[1].height._value,
+                  cards.find(([cardId]) => cardId === taskId)[2],
+                  "slot starts at the full lifted card height",
+                );
+                visible.push("slot");
+              } else if (
+                node.findAllByType("View")[0].props.style?.opacity !== 0
+              ) {
+                visible.push(
+                  node
+                    .findAllByType("Text")
+                    .flatMap((text) => text.children)
+                    .find((text) => ["1", "2", "3"].includes(text)),
+                );
+              }
+            }
+            assert.deepEqual(visible, expected, `pointer y=${y}`);
+            if (cards === equalCards && taskId === "1" && index === 1) {
+              const translations = scroll
+                .findAllByType("AnimatedView")
+                .map((node) => node.props.style[1].transform?.[0].translateY)
+                .filter(Boolean);
+              assert.deepEqual(
+                translations.map((value) => value._value).sort((a, b) => a - b),
+                [-72, 72],
+              );
+              act(() => animations.splice(0).forEach((finish) => finish()));
+              assert.deepEqual(
+                translations.map((value) => value._value),
+                [0, 0],
+                "slot and displaced card settle into place",
+              );
+            } else {
+              act(() => animations.splice(0).forEach((finish) => finish()));
+            }
+          }
+          await act(async () =>
+            handle(taskId).onPanResponderRelease(event, {
+              ...press,
+              moveX: 100,
+              moveY: gestureSteps.at(-1)[0],
+            }),
+          );
+          assert.equal(
+            requests.length,
+            priorRequests,
+            "release waits for drop animation",
+          );
+          if (expectedFromY !== undefined) {
+            assert.equal(
+              drag.droppingState.fromY,
+              expectedFromY,
+              "drop animation starts from grab-anchored card position",
+            );
+          }
+          assert.deepEqual(
+            [drag.droppingState.toX, drag.droppingState.toY],
+            [0, expectedDropY],
+            "drop animation targets the displayed slot, excluding the lifted card's old height",
+          );
+          await act(async () => drag.commitDrop());
+          assert.deepEqual(requests.at(-1), [
+            taskId,
+            "lane",
+            gestureSteps.at(-1)[1].indexOf("slot"),
+          ]);
+        };
+
         act(() => {
           lane.props.onLayout({
             nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 600 } },
@@ -770,70 +897,23 @@ test("card gestures preview one matching-height slot, animate displacement, and 
               },
             }),
           );
-          handle().onPanResponderGrant(event, { x0: 100, y0: steps[0][0] });
         });
 
-        for (const [index, [y, expected]] of steps.entries()) {
-          if (index > 0)
-            act(() =>
-              handle().onPanResponderMove(event, { moveX: 100, moveY: y }),
-            );
-          const mountedCards = cardNodes();
-          const visible = [];
-          for (const node of scroll.findAll(
-            (node) =>
-              (node.type === "AnimatedView" && node.props.onLayout) ||
-              mountedCards.includes(node),
-          )) {
-            if (node.type === "AnimatedView") {
-              assert.equal(
-                node.props.style[1].height._value,
-                cards.find(([cardId]) => cardId === id)[2],
-                "slot starts at the full lifted card height",
-              );
-              visible.push("slot");
-            } else if (
-              node.findAllByType("View")[0].props.style?.opacity !== 0
-            ) {
-              visible.push(
-                node
-                  .findAllByType("Text")
-                  .flatMap((text) => text.children)
-                  .find((text) => ["1", "2", "3"].includes(text)),
-              );
-            }
-          }
-          assert.deepEqual(visible, expected, `pointer y=${y}`);
-          if (cards === equalCards && id === "1" && index === 1) {
-            const translations = scroll
-              .findAllByType("AnimatedView")
-              .map((node) => node.props.style[1].transform?.[0].translateY)
-              .filter(Boolean);
-            assert.deepEqual(
-              translations.map((value) => value._value).sort((a, b) => a - b),
-              [-72, 72],
-            );
-            act(() => animations.splice(0).forEach((finish) => finish()));
-            assert.deepEqual(
-              translations.map((value) => value._value),
-              [0, 0],
-              "slot and displaced card settle into place",
-            );
-          } else {
-            act(() => animations.splice(0).forEach((finish) => finish()));
-          }
+        await runGesture({
+          taskId: id,
+          gestureSteps: steps,
+          expectedDropY: dropY,
+        });
+
+        if (followUp) {
+          act(() => t.mock.timers.tick(60));
+          await runGesture({
+            taskId: followUp.id,
+            gestureSteps: followUp.steps,
+            expectedFromY: followUp.fromY,
+            expectedDropY: followUp.dropY,
+          });
         }
-        await act(async () => handle().onPanResponderRelease(event, press));
-        assert.deepEqual(requests, [], "release waits for drop animation");
-        assert.deepEqual(
-          [drag.droppingState.toX, drag.droppingState.toY],
-          [0, dropY],
-          "drop animation targets the displayed slot, excluding the lifted card's old height",
-        );
-        await act(async () => drag.commitDrop());
-        assert.deepEqual(requests, [
-          [id, "lane", steps.at(-1)[1].indexOf("slot")],
-        ]);
       } finally {
         act(() => root.unmount());
       }

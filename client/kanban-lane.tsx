@@ -1,11 +1,4 @@
-import {
-  useMemo,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  Fragment,
-  memo,
-} from "react";
+import { useMemo, useLayoutEffect, useRef, Fragment, memo } from "react";
 import {
   View,
   Text,
@@ -78,6 +71,11 @@ function KanbanLaneViewInner({
   const wasDraggingInLaneRef = useRef(false);
   const prevTargetIndexRef = useRef<number>(-1);
   const slideSeqRef = useRef(0);
+  const lastTransitionRef = useRef<{ from: number; to: number; seq: number }>({
+    from: -1,
+    to: -1,
+    seq: 0,
+  });
   const displacedTasksRef = useRef<Map<string, { seq: number; fromY: number }>>(
     new Map(),
   );
@@ -104,7 +102,17 @@ function KanbanLaneViewInner({
     const nextIdx = targetIndex;
     const shift =
       (draggedCardHeight && draggedCardHeight > 0 ? draggedCardHeight : 64) + 8;
-    const seq = ++slideSeqRef.current;
+    if (
+      lastTransitionRef.current.from !== prevIdx ||
+      lastTransitionRef.current.to !== nextIdx
+    ) {
+      lastTransitionRef.current = {
+        from: prevIdx,
+        to: nextIdx,
+        seq: ++slideSeqRef.current,
+      };
+    }
+    const seq = lastTransitionRef.current.seq;
     const minIdx = Math.min(prevIdx, nextIdx);
     const maxIdx = Math.max(prevIdx, nextIdx);
     const fromY = prevIdx < nextIdx ? shift : -shift;
@@ -121,12 +129,18 @@ function KanbanLaneViewInner({
     spacerSlideFromYRef.current = 0;
   }
 
-  prevTargetIndexRef.current = isHovered ? targetIndex : -1;
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     wasHoveredRef.current = isHovered;
     wasDraggingInLaneRef.current = hasDraggingTask;
-  }, [isHovered, hasDraggingTask]);
+    prevTargetIndexRef.current = isHovered ? targetIndex : -1;
+    if (!isHovered) {
+      lastTransitionRef.current = {
+        from: -1,
+        to: -1,
+        seq: slideSeqRef.current,
+      };
+    }
+  }, [isHovered, hasDraggingTask, targetIndex]);
 
   const styles = useMemo(
     () =>
