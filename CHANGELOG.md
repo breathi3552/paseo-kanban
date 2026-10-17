@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), adapted 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-17
+
 ### Features
 
 - **GitHub issue import**: Import up to 25 open issues from the project's GitHub.com origin repository into a chosen swimlane with pagination, creation-time sorting, and automatic deduplication. Cards display source links and open issues in the system browser while imported tasks are managed independently.
