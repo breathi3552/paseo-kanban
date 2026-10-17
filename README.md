@@ -8,6 +8,7 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 
 ## Features
 
+- **GitHub Issue import**: Select open issues from the project repository and import up to 25 tasks into a lane. Cards link back to GitHub; imported tasks are managed independently.
 - **Flexible Swimlanes**: Add, delete, and rename lanes.
 - **Rich Task Cards**:
   - Task title and multi-line description editing.
@@ -20,7 +21,8 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 
 ## Requirements
 
-- **Paseo host**: `>= 0.8.0` (declared in `paseo-plugin.json`). The host runs the plugin.
+- **Paseo host**: `>= 0.11.4` (declared in `paseo-plugin.json`). The host runs the plugin.
+- **GitHub import (optional)**: Install Git and GitHub CLI (`gh`) on the daemon machine, sign in with `gh auth login`, and configure the project repository’s `origin` on GitHub.com. Both public and authorized private repositories are supported.
 - **Development and CI**: Node.js 24 (pinned in `.nvmrc` and `.node-version`) for checks, TypeScript stripping, and native tests.
 
 ---

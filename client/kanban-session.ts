@@ -11,7 +11,9 @@ import {
   deleteLane,
   reorderTask,
   setTaskCompleted,
+  importGitHubTasks,
 } from "../shared/kanban.ts";
+import type { GitHubIssue } from "../shared/github-import";
 
 export type SessionResult =
   | { success: true; unchanged?: boolean }
@@ -25,8 +27,35 @@ export type SaveFn = (board: KanbanBoard, revision: string) => Promise<boolean>;
 
 export type SessionLanguage = "zh" | "en";
 
+export async function executeIssueImport(input: {
+  baseBoard: KanbanBoard;
+  baseRevision: string;
+  projectId: string;
+  laneId: string;
+  issues: GitHubIssue[];
+  descriptions: string[];
+  save: SaveFn;
+  language: SessionLanguage;
+}): Promise<SessionResult> {
+  try {
+    const next = importGitHubTasks(input.baseBoard, input);
+    if (await input.save(next, input.baseRevision)) return { success: true };
+  } catch {
+    /* Preserve the selection and recheck current board before retry. */
+  }
+  return {
+    success: false,
+    kind: "operation",
+    error:
+      input.language === "zh"
+        ? "导入失败或版本冲突，请核实最新数据后重试。"
+        : "Import failed or version conflict. Check the latest board and retry.",
+  };
+}
+
 export const sessionMessages = {
   zh: {
+    importedProjectLocked: "GitHub 导入任务的关联项目不可更改。",
     subtaskEmpty: "新增子步骤内容不能为空",
     savingInProgress: "正在保存中，请勿重复提交",
     taskTitleEmpty: "任务标题不能为空",
@@ -49,6 +78,8 @@ export const sessionMessages = {
       "完成状态保存失败或版本冲突，未修改数据。请核实最新状态后重试。",
   },
   en: {
+    importedProjectLocked:
+      "The project of an imported GitHub task cannot be changed.",
     subtaskEmpty: "Subtask content cannot be empty",
     savingInProgress: "Saving in progress, please do not submit repeatedly",
     taskTitleEmpty: "Task title cannot be empty",
@@ -106,6 +137,8 @@ export interface TaskSessionSnapshot {
   readonly lanes: readonly KanbanLane[];
   readonly isSaving: boolean;
   readonly error: string | null;
+  readonly source: "manual" | "github_issue";
+  readonly externalUrl: string | null;
 }
 
 export interface TaskEditSession {
@@ -243,6 +276,8 @@ export function openTaskSession(
         lanes: baseBoard.lanes.filter((lane) => !lane.isCompletionLane),
         isSaving,
         error,
+        source: task?.source ?? "manual",
+        externalUrl: task?.externalUrl ?? null,
       };
     }
     return cachedSnapshot;
@@ -276,7 +311,12 @@ export function openTaskSession(
   }
 
   function setProjectId(newProjectId: string | null) {
-    if (isSaving || newProjectId === projectId) return;
+    if (
+      isSaving ||
+      task?.source === "github_issue" ||
+      newProjectId === projectId
+    )
+      return;
     projectId = newProjectId;
     notify();
   }
@@ -346,6 +386,15 @@ export function openTaskSession(
     }
 
     if (draft) {
+      if (
+        task?.source === "github_issue" &&
+        draft.projectId !== undefined &&
+        draft.projectId !== task.projectId
+      ) {
+        error = msgs.importedProjectLocked;
+        notify();
+        return { success: false, kind: "validation", error };
+      }
       if (draft.title !== undefined) title = draft.title;
       if (draft.description !== undefined)
         description = draft.description ?? "";

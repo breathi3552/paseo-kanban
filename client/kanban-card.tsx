@@ -5,6 +5,7 @@ import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanTask } from "../shared/kanban";
 import type { CardDragBinding } from "./kanban-drag";
 import { useI18n } from "./i18n";
+import { IssueLink } from "./issue-link";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 
@@ -234,6 +235,14 @@ export function KanbanCard({
             )}
           </View>
         </View>
+        {task.source === "github_issue" && task.externalUrl && (
+          <IssueLink
+            url={task.externalUrl}
+            theme={theme}
+            iconOnly
+            disabled={interactionDisabled}
+          />
+        )}
       </View>
     </View>
   );

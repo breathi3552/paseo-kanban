@@ -1,5 +1,12 @@
-import { useState, useEffect, useMemo, useSyncExternalStore } from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+  useSyncExternalStore,
+} from "react";
+import { View, Text, Pressable, StyleSheet, PanResponder } from "react-native";
 import {
   Modal,
   TextInput,
@@ -12,6 +19,7 @@ import type { KanbanLane } from "../shared/kanban";
 import type { ProjectItem } from "./use-projects";
 import type { TaskEditSession } from "./kanban-session";
 import { useI18n } from "./i18n";
+import { IssueLink } from "./issue-link";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 
@@ -43,13 +51,179 @@ export function TaskModal({
 
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [descHeight, setDescHeight] = useState<number>(() =>
+    Math.max(
+      100,
+      Math.min(
+        240,
+        snapshot.description
+          ? snapshot.description.split("\n").length * 24 + 40
+          : 100,
+      ),
+    ),
+  );
+  const dragStartY = useRef<number>(0);
+  const dragStartHeight = useRef<number>(100);
+  const isDragging = useRef<boolean>(false);
 
   useEffect(() => {
     if (open) {
       setNewSubtaskTitle("");
       setShowDeleteConfirm(false);
+      setDescHeight(
+        Math.max(
+          100,
+          Math.min(
+            240,
+            snapshot.description
+              ? snapshot.description.split("\n").length * 24 + 40
+              : 100,
+          ),
+        ),
+      );
     }
-  }, [open, session]);
+  }, [open, session, snapshot.description]);
+
+  useEffect(() => {
+    const doc = (
+      globalThis as unknown as {
+        document?: {
+          getElementById?: (id: string) => { remove: () => void } | null;
+          createElement?: (tag: string) => {
+            id: string;
+            textContent: string;
+          };
+          head?: { appendChild: (child: unknown) => void };
+        };
+      }
+    ).document;
+    if (
+      !doc ||
+      typeof doc.getElementById !== "function" ||
+      typeof doc.createElement !== "function" ||
+      !doc.head
+    )
+      return;
+
+    const styleId = "task-modal-focus-style";
+    const existing = doc.getElementById(styleId);
+    if (!existing) {
+      const created = doc.createElement("style");
+      created.id = styleId;
+      created.textContent = `
+        #task-modal-root input:focus,
+        #task-modal-root textarea:focus {
+          outline: 2px solid ${theme.colors.accent} !important;
+          outline-offset: 1px !important;
+          border-color: ${theme.colors.accent} !important;
+        }
+      `;
+      doc.head.appendChild(created);
+    }
+
+    return () => {
+      doc.getElementById?.(styleId)?.remove();
+    };
+  }, [theme.colors.accent]);
+
+  const startDrag = useCallback(
+    (clientY: number) => {
+      isDragging.current = true;
+      dragStartY.current = clientY;
+      dragStartHeight.current = descHeight;
+    },
+    [descHeight],
+  );
+
+  const moveDrag = useCallback((clientY: number) => {
+    if (!isDragging.current) return;
+    const delta = clientY - dragStartY.current;
+    const next = Math.max(80, Math.min(600, dragStartHeight.current + delta));
+    setDescHeight(next);
+  }, []);
+
+  const endDrag = useCallback(() => {
+    isDragging.current = false;
+  }, []);
+
+  const resizeResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (evt) => {
+          startDrag(evt.nativeEvent.pageY);
+        },
+        onPanResponderMove: (evt) => {
+          moveDrag(evt.nativeEvent.pageY);
+        },
+        onPanResponderRelease: () => {
+          endDrag();
+        },
+        onPanResponderTerminate: () => {
+          endDrag();
+        },
+      }),
+    [startDrag, moveDrag, endDrag],
+  );
+
+  useEffect(() => {
+    const win = globalThis as unknown as {
+      window?: {
+        addEventListener?: (
+          type: string,
+          listener: (e: MouseEvent | TouchEvent) => void,
+        ) => void;
+        removeEventListener?: (
+          type: string,
+          listener: (e: MouseEvent | TouchEvent) => void,
+        ) => void;
+      };
+    };
+    if (!win.window?.addEventListener) return;
+
+    interface DragEventLike {
+      clientY?: number;
+      touches?: ArrayLike<{ clientY: number }>;
+    }
+
+    const onMove = (e: DragEventLike) => {
+      if (!isDragging.current) return;
+      const clientY =
+        e.touches && e.touches.length > 0 ? e.touches[0].clientY : e.clientY;
+      if (typeof clientY === "number") {
+        moveDrag(clientY);
+      }
+    };
+    const onUp = () => {
+      if (isDragging.current) {
+        endDrag();
+      }
+    };
+
+    win.window.addEventListener("mousemove", onMove as (e: unknown) => void);
+    win.window.addEventListener("mouseup", onUp as (e: unknown) => void);
+    win.window.addEventListener("touchmove", onMove as (e: unknown) => void);
+    win.window.addEventListener("touchend", onUp as (e: unknown) => void);
+    return () => {
+      win.window?.removeEventListener?.(
+        "mousemove",
+        onMove as (e: unknown) => void,
+      );
+      win.window?.removeEventListener?.(
+        "mouseup",
+        onUp as (e: unknown) => void,
+      );
+      win.window?.removeEventListener?.(
+        "touchmove",
+        onMove as (e: unknown) => void,
+      );
+      win.window?.removeEventListener?.(
+        "touchend",
+        onUp as (e: unknown) => void,
+      );
+    };
+  }, [endDrag, moveDrag]);
 
   const lanes = (propLanes ?? snapshot.lanes).filter(
     (lane) => !lane.isCompletionLane,
@@ -71,6 +245,8 @@ export function TaskModal({
         },
         container: {
           gap: layout.compact ? 12 : 16,
+          paddingHorizontal: 6,
+          paddingVertical: 4,
         },
         fieldGroup: {
           gap: 6,
@@ -101,6 +277,40 @@ export function TaskModal({
           fontSize: 14,
           minHeight: 80,
           textAlignVertical: "top",
+        },
+        descWrapper: {
+          position: "relative",
+        },
+        resizeHandle: {
+          position: "absolute",
+          right: 4,
+          bottom: 4,
+          width: 22,
+          height: 22,
+          alignItems: "flex-end",
+          justifyContent: "flex-end",
+          paddingRight: 4,
+          paddingBottom: 4,
+          cursor: "se-resize" as unknown as "pointer",
+          zIndex: 3,
+        },
+        resizeGripOuter: {
+          width: 10,
+          height: 10,
+          borderBottomWidth: 1.5,
+          borderRightWidth: 1.5,
+          borderColor: theme.colors.foregroundMuted,
+          alignItems: "flex-end",
+          justifyContent: "flex-end",
+          opacity: 0.6,
+        },
+        resizeGripInner: {
+          width: 5,
+          height: 5,
+          borderBottomWidth: 1.5,
+          borderRightWidth: 1.5,
+          borderColor: theme.colors.foregroundMuted,
+          opacity: 0.6,
         },
         selectorRow: {
           flexDirection: "row",
@@ -287,6 +497,8 @@ export function TaskModal({
         contentContainerStyle={styles.modalBody}
       >
         <ScrollView
+          nativeID="task-modal-root"
+          testID="task-modal-root"
           style={styles.scrollBody}
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
@@ -338,60 +550,87 @@ export function TaskModal({
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>{t("taskModal.projectLabel")}</Text>
-            <View style={styles.selectorRow}>
-              <Pressable
-                onPress={() => session.setProjectId(null)}
-                style={[
-                  styles.optionChip,
-                  snapshot.projectId === null && styles.optionChipSelected,
-                ]}
-              >
-                <Text
+            {snapshot.source === "github_issue" ? (
+              <Text style={{ color: theme.colors.foreground }}>
+                {projects.find(
+                  (project) => project.projectId === snapshot.projectId,
+                )?.projectDisplayName ?? snapshot.projectId}
+              </Text>
+            ) : (
+              <View style={styles.selectorRow}>
+                <Pressable
+                  onPress={() => session.setProjectId(null)}
                   style={[
-                    styles.optionChipText,
-                    snapshot.projectId === null &&
-                      styles.optionChipTextSelected,
+                    styles.optionChip,
+                    snapshot.projectId === null && styles.optionChipSelected,
                   ]}
                 >
-                  {t("taskModal.noProject")}
-                </Text>
-              </Pressable>
-              {projects.map((proj) => {
-                const isSelected = proj.projectId === snapshot.projectId;
-                return (
-                  <Pressable
-                    key={proj.projectId}
-                    onPress={() => session.setProjectId(proj.projectId)}
+                  <Text
                     style={[
-                      styles.optionChip,
-                      isSelected && styles.optionChipSelected,
+                      styles.optionChipText,
+                      snapshot.projectId === null &&
+                        styles.optionChipTextSelected,
                     ]}
                   >
-                    <Text
+                    {t("taskModal.noProject")}
+                  </Text>
+                </Pressable>
+                {projects.map((proj) => {
+                  const isSelected = proj.projectId === snapshot.projectId;
+                  return (
+                    <Pressable
+                      key={proj.projectId}
+                      onPress={() => session.setProjectId(proj.projectId)}
                       style={[
-                        styles.optionChipText,
-                        isSelected && styles.optionChipTextSelected,
+                        styles.optionChip,
+                        isSelected && styles.optionChipSelected,
                       ]}
                     >
-                      {proj.projectDisplayName}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+                      <Text
+                        style={[
+                          styles.optionChipText,
+                          isSelected && styles.optionChipTextSelected,
+                        ]}
+                      >
+                        {proj.projectDisplayName}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
           </View>
+
+          {snapshot.source === "github_issue" && snapshot.externalUrl && (
+            <IssueLink url={snapshot.externalUrl} theme={theme} />
+          )}
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>{t("taskModal.descLabel")}</Text>
-            <TextInput
-              style={styles.multilineInput}
-              multiline
-              numberOfLines={3}
-              placeholder={t("taskModal.descPlaceholder")}
-              placeholderTextColor={theme.colors.foregroundMuted}
-              value={snapshot.description}
-              onChangeText={(t) => session.setDescription(t)}
-            />
+            <View style={styles.descWrapper}>
+              <TextInput
+                style={[
+                  styles.multilineInput,
+                  { height: descHeight, paddingBottom: 22 },
+                ]}
+                multiline
+                numberOfLines={3}
+                placeholder={t("taskModal.descPlaceholder")}
+                placeholderTextColor={theme.colors.foregroundMuted}
+                value={snapshot.description}
+                onChangeText={(t) => session.setDescription(t)}
+              />
+              <View
+                style={styles.resizeHandle}
+                {...resizeResponder.panHandlers}
+                accessibilityRole="adjustable"
+                accessibilityLabel="Resize description"
+              >
+                <View style={styles.resizeGripOuter}>
+                  <View style={styles.resizeGripInner} />
+                </View>
+              </View>
+            </View>
           </View>
 
           {/* Subtasks Section */}

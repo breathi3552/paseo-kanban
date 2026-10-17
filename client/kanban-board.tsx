@@ -11,9 +11,14 @@ import {
 import { useSettings } from "@getpaseo/plugin/client";
 import { useToast } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { kanbanSettings, getLaneTasks } from "../shared/kanban";
+import {
+  kanbanSettings,
+  getLaneTasks,
+  type KanbanBoard,
+} from "../shared/kanban";
 import { useProjects } from "./use-projects";
 import { TaskModal } from "./task-modal";
+import { GitHubImportModal } from "./github-import-modal";
 import { LaneModal } from "./lane-modal";
 import { useKanbanDrag } from "./kanban-drag";
 import { KanbanLaneView } from "./kanban-lane";
@@ -66,6 +71,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   const [selectedProjectId, setSelectedProjectId] = useState(
     props.initialProjectId || "all",
   );
+  const [importOpen, setImportOpen] = useState(false);
   const [activeTaskSession, setActiveTaskSession] =
     useState<TaskEditSession | null>(null);
   const [activeLaneSession, setActiveLaneSession] =
@@ -91,8 +97,17 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   }, [projects, props.initialProjectId, selectedProjectId]);
 
   const isReady = settings.status === "ready";
-  const board = isReady ? settings.values : null;
-  const revision = isReady ? settings.revision : "";
+  // Keep the open import draft mounted if a conflict refresh fails. The retained
+  // board is display-only: the modal cannot submit until settings are ready.
+  const lastReady = useRef<{ board: KanbanBoard; revision: string } | null>(
+    null,
+  );
+  if (isReady)
+    lastReady.current = { board: settings.values, revision: settings.revision };
+  const retained = importOpen ? lastReady.current : null;
+  const board = isReady ? settings.values : (retained?.board ?? null);
+  const revision = isReady ? settings.revision : (retained?.revision ?? "");
+  const preserveImport = importOpen && board !== null;
 
   const handleReorderTask = async (
     taskId: string,
@@ -371,7 +386,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
     [theme, layout.compact],
   );
 
-  if (settings.status === "loading") {
+  if (settings.status === "loading" && !preserveImport) {
     return (
       <View style={[styles.container, styles.centerBox]}>
         <ActivityIndicator size="large" color={theme.colors.accent} />
@@ -380,7 +395,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
     );
   }
 
-  if (settings.status === "error") {
+  if (settings.status === "error" && !preserveImport) {
     return (
       <View style={[styles.container, styles.centerBox]}>
         <Text style={[styles.centerText, { color: theme.colors.statusDanger }]}>
@@ -398,7 +413,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
     );
   }
 
-  if (settings.status === "invalid") {
+  if (settings.status === "invalid" && !preserveImport) {
     return (
       <View style={[styles.container, styles.centerBox]}>
         <Text
@@ -479,12 +494,13 @@ function KanbanBoardContent(props: KanbanBoardProps) {
             </Pressable>
 
             <Pressable
-              onPress={() => openNewTask()}
+              onPress={() => {
+                if (!drag.isDragLocked() && !completionPendingRef.current)
+                  setImportOpen(true);
+              }}
               style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonText}>
-                {t("kanban.newTask")}
-              </Text>
+              <Text style={styles.primaryButtonText}>{t("import.title")}</Text>
             </Pressable>
           </View>
         </View>
@@ -636,6 +652,24 @@ function KanbanBoardContent(props: KanbanBoardProps) {
       </View>
 
       {/* Modals with Session Baseline Locking */}
+      {importOpen && (
+        <GitHubImportModal
+          board={board}
+          revision={revision}
+          settingsReady={isReady}
+          projects={projects}
+          initialProjectId={selectedProjectId}
+          theme={theme}
+          compact={compact}
+          save={(next, expected) => settings.save(next, expected)}
+          reload={() => settings.reload()}
+          onClose={() => setImportOpen(false)}
+          onImported={(projectId) => {
+            if (selectedProjectId !== "all" && selectedProjectId !== projectId)
+              setSelectedProjectId(projectId);
+          }}
+        />
+      )}
       {activeTaskSession && (
         <TaskModal
           open={activeTaskSession !== null}

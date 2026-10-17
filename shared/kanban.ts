@@ -1,5 +1,6 @@
 import { defineSettings } from "@getpaseo/plugin";
 import { z } from "zod";
+import type { GitHubIssue } from "./github-import";
 
 export const DEFAULT_LANES = [
   { id: "to-plan", title: "待规划", isCompletionLane: false },
@@ -22,6 +23,9 @@ export const TaskSchema = z.object({
   subtasks: z.array(SubtaskSchema).default([]),
   completed: z.boolean().default(false),
   completedAt: z.number().int().nonnegative().nullable().default(null),
+  source: z.enum(["manual", "github_issue"]).default("manual"),
+  issueNumber: z.number().int().positive().nullable().default(null),
+  externalUrl: z.string().url().nullable().default(null),
 });
 
 export const LaneSchema = z.object({
@@ -123,6 +127,26 @@ export const KanbanBoardSchema = BoardShapeSchema.superRefine((board, ctx) => {
     });
   }
   for (const [i, task] of board.tasks.entries()) {
+    if (
+      task.source === "github_issue" &&
+      (!task.projectId || !task.issueNumber || !task.externalUrl)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Imported tasks require a project, Issue number and URL",
+        path: ["tasks", i],
+      });
+    }
+    if (
+      task.source === "manual" &&
+      (task.issueNumber !== null || task.externalUrl !== null)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Manual tasks cannot have Issue attributes",
+        path: ["tasks", i],
+      });
+    }
     if (completionLanes.some((lane) => lane.id === task.laneId)) {
       ctx.addIssue({
         code: "custom",
@@ -237,7 +261,7 @@ function migrateKanbanBoard(values: unknown, fromVersion: number): KanbanBoard {
 export const kanbanSettings = defineSettings({
   id: "kanban",
   scope: "host",
-  version: 2,
+  version: 3,
   schema: KanbanBoardSchema,
   migrate: migrateKanbanBoard,
 });
@@ -373,6 +397,9 @@ export function addTask(
     })),
     completed: false,
     completedAt: null,
+    source: "manual",
+    issueNumber: null,
+    externalUrl: null,
   };
 
   return KanbanBoardSchema.parse({
@@ -397,6 +424,13 @@ export function updateTask(
     throw new Error("Task title cannot be empty");
   }
   const currentTask = board.tasks.find((task) => task.id === taskId);
+  if (
+    currentTask?.source === "github_issue" &&
+    patch.projectId !== undefined &&
+    patch.projectId !== currentTask.projectId
+  ) {
+    throw new Error("Imported task project cannot be changed");
+  }
   if (
     patch.laneId !== undefined &&
     !board.lanes.some((l) => l.id === patch.laneId) &&
@@ -450,6 +484,56 @@ export function deleteTask(board: KanbanBoard, taskId: string): KanbanBoard {
   return KanbanBoardSchema.parse({
     lanes: board.lanes,
     tasks: nextTasks,
+  });
+}
+
+export function importGitHubTasks(
+  board: KanbanBoard,
+  input: {
+    projectId: string;
+    laneId: string;
+    issues: GitHubIssue[];
+    descriptions: string[];
+  },
+): KanbanBoard {
+  if (
+    !input.projectId ||
+    !board.lanes.some(
+      (lane) => lane.id === input.laneId && !lane.isCompletionLane,
+    )
+  )
+    throw new Error("import_target");
+  if (
+    input.issues.length === 0 ||
+    input.issues.length > 25 ||
+    input.descriptions.length !== input.issues.length
+  )
+    throw new Error("import_selection");
+  const numbers = new Set(
+    board.tasks
+      .filter((task) => task.projectId === input.projectId)
+      .map((task) => task.issueNumber),
+  );
+  const tasks = input.issues.map((issue, index) => {
+    if (numbers.has(issue.number)) throw new Error("import_duplicate");
+    numbers.add(issue.number);
+    return {
+      id: `task_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`,
+      title: issue.title,
+      description: input.descriptions[index],
+      laneId: input.laneId,
+      projectId: input.projectId,
+      subtasks: [],
+      completed: false,
+      completedAt: null,
+      source: "github_issue" as const,
+      issueNumber: issue.number,
+      externalUrl: issue.url,
+    };
+  });
+  return KanbanBoardSchema.parse({
+    ...board,
+    tasks: [...board.tasks, ...tasks],
   });
 }
 

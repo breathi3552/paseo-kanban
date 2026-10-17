@@ -97,6 +97,9 @@ test("编辑命令返回新看板，保留任务数据并保护包含未完成�
     {
       id: "task-a",
       title: "Setup DB",
+      source: "manual",
+      issueNumber: null,
+      externalUrl: null,
       description: "",
       laneId: "testing",
       projectId: null,

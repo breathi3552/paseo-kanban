@@ -98,8 +98,8 @@ test("修改宿主语言后返回插件，已打开的看板与入口标题同�
 test("提交空标题时，插件使用当前语言显示错误提示", async (t) => {
   const upstream = configureUpstream(t);
   for (const [language, newTask, submit, error] of [
-    ["zh-TW", "+ 新建任务", "创建", "任务标题不能为空"],
-    ["en", "+ New Task", "Create", "Task title cannot be empty"],
+    ["zh-TW", "+ 添加", "创建", "任务标题不能为空"],
+    ["en", "+ Add", "Create", "Task title cannot be empty"],
   ]) {
     upstream.select(language);
     const host = createHost();
