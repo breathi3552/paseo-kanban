@@ -4,18 +4,44 @@
 
 A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) workspaces.
 
+![Paseo Kanban Board](./assets/marketplace/board-0.1.3.png)
+
 ---
 
-## Features
+## Highlights
 
-- **GitHub Issue import**: Select open issues from the project repository and import up to 25 tasks into a lane. Cards link back to GitHub; imported tasks are managed independently.
-- **Flexible Swimlanes**: Add, delete, and rename lanes.
+- **Swimlane Management**: Freely add, rename, and delete custom swimlanes to organize tasks according to your team's workflow stages.
+- **Drag-and-Drop Interaction**: Fluid intra-lane reordering and cross-lane movement with animated drop-slot displacement, viewport edge auto-scrolling, and smooth drop-in feedback.
+- **GitHub Issue Import**: One-way import of open issues from the project repository's GitHub origin into a chosen lane, featuring pagination, repository-wide creation-time sorting, automatic deduplication, and source links.
+
+---
+
+## Other Features
+
 - **Rich Task Cards**:
-  - Task title and multi-line description editing.
-  - Subtasks checklist.
-  - Support linking tasks to projects created in Paseo.
-- **Workspace Tabs and Splits**: Open the board beside an agent or terminal, initially filtered to the workspace's project, or use the sidebar entry.
-- **Smooth Drag-and-Drop**: Support intra-lane reordering and cross-lane movement.
+  - Task title and multi-line description editing (with resizable description area).
+  - Subtask checklists with live completion progress tracking.
+  - Link tasks to projects created in Paseo.
+- **Task Completion & Restoration**: Check a card or drag it into the completion lane to finish; uncheck or drag out to restore cards to their original ordinary swimlane.
+- **Workspace Tabs and Splits**: Open the board beside an agent or terminal with Paseo's native split controls, initially filtered to the workspace's project, or use the sidebar entry.
+- **Independent Project Filtering**: Filter cards by specific Paseo projects or view unassigned tasks without isolating the shared underlying board data.
+- **Host Storage & Concurrency Protection**: Board data is safely stored in host-scoped plugin settings with optimistic revision checks (CAS) to prevent silent overwrites and preserve form drafts.
+
+---
+
+## Screenshots
+
+### Board Overview
+
+![Board Overview](./assets/marketplace/board-0.1.3.png)
+
+### Task Details & Subtasks Checklist
+
+![Task Editor](./assets/marketplace/task-editor-0.1.3.png)
+
+### Workspace Tabs & Split Controls
+
+![Workspace Split](./assets/marketplace/workspace-split-0.1.3.png)
 
 ---
 
@@ -93,7 +119,7 @@ Individual commands (`npm test`, `npm run typecheck`, `npm run lint`, `npm run f
 
 ## Releases
 
-See the [0.1.4 release notes](./docs/releases/0.1.4.md). Each release's npm package and GitHub Release share the same version tag; GitHub includes the verified npm tarball. `main` may contain changes beyond the latest release.
+See the [CHANGELOG](./CHANGELOG.md). Each release's npm package and GitHub Release share the same version tag; GitHub includes the verified npm tarball. `main` may contain changes beyond the latest release.
 
 ---
 

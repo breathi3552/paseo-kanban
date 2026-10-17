@@ -43,7 +43,7 @@ jobs:
           lock_version="$(node -p 'require("./package-lock.json").version')"
           root_version="$(node -p 'require("./package-lock.json").packages[""].version')"
           test "$tag" = "v$version" && test "$version" = "$lock_version" && test "$version" = "$root_version"
-          test -f "docs/releases/$version.md"
+          node scripts/extract-release-notes.mjs "$version" > /dev/null
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
@@ -87,7 +87,7 @@ jobs:
           node scripts/verify-release.mjs > "$RUNNER_TEMP/release-verification.md"
           cat "$RUNNER_TEMP/release-verification.md"
           {
-            cat "docs/releases/$VERSION.md"
+            node scripts/extract-release-notes.mjs "$VERSION"
             printf '\n## Verified artifact\n\n'
             cat "$RUNNER_TEMP/release-verification.md"
           } > "$RUNNER_TEMP/release-notes.md"

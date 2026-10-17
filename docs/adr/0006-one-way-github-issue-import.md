@@ -2,7 +2,7 @@
 
 ## 状态
 
-已接受。需求提出者于 2026-10-16 在 [Issue #15](https://github.com/breathi3552/paseo-kanban/issues/15) 的设计讨论中逐轮确认了功能边界及 UI/UX 约定。实施所需接口适配与宿主验证尚待完成。
+已实施。需求提出者于 2026-10-16 在 [Issue #15](https://github.com/breathi3552/paseo-kanban/issues/15) 的设计讨论中确认了功能边界及 UI/UX 约定。代码实现已在 PR #22 中合并落地，SDK 已升级至 `@getpaseo/plugin@0.11.4`，并通过自动化测试与代码审查（见 [Issue #15 实现验证](../verification/issue-15.md)）；真实宿主交互验收按 [开发指南](../development.md#5-github-issue-导入验收) 执行。
 
 ## 背景
 
@@ -59,9 +59,10 @@ Issue #15 希望将项目对应 GitHub 仓库中的 Issues 导入看板，减少
 
 ## 实施验证
 
-- 核对宿主正式外链接口、SDK 与最低宿主版本的兼容性。
-- 验证 `gh` 对 Open Issues 的全仓库排序、每页 25 条分页及私有仓库访问行为。
-- 结合现有整板版本校验落实批量导入和并发冲突恢复。
-- 在真实宿主验收窄屏弹窗、列表滚动、外链与卡片手势。
+- 已升级 SDK 至 `@getpaseo/plugin@0.11.4` 并接入正式外链接口 `openExternalUrl`。
+- 已实现 `github.issues` 服务端 RPC，支持 Open Issues 全仓库排序、每页 25 条分页与只读访问。
+- 结合现有整板版本校验实现了批量导入、去重与并发冲突恢复。
+- 端到端功能与边界行为测试已纳入测试套件（见 [Issue #15 实现验证](../verification/issue-15.md)）。
+- 真实宿主环境下的窄屏弹窗、列表滚动、外链与卡片手势按 [开发指南](../development.md#5-github-issue-导入验收) 验收。
 
-完整 UI/UX 约定、描述摘录模板及验收要点见 [Issue #15 设计记录](../design/issue-15-github-import.md)。这些待验证项不表示功能已实现或已通过宿主验收。
+完整 UI/UX 约定、描述摘录模板及验收要点见 [Issue #15 设计记录](../design/issue-15-github-import.md)。
