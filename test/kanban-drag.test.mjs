@@ -126,7 +126,8 @@ test("卡片边界微颤保持占位槽，突破迟滞区后切换并提交最�
   assert.deepEqual(requests, [["task-1", "in-progress", 1]]);
 });
 
-test("列表顶部偏移与纵向滚动参与命中，静止指针滚动后按新槽位落位", async () => {
+test("列表顶部偏移与纵向滚动参与命中，重排后二次拖拽按更新顺序重算抓取偏移与单调槽位", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
   const { controller, requests } = setupController();
   controller.registerCardsViewportLayout("to-plan", {
     x: 12,
@@ -147,6 +148,27 @@ test("列表顶部偏移与纵向滚动参与命中，静止指针滚动后按�
   assert.equal(controller.getFeedback().targetIndex, 2);
   await controller.handlePointerUp({ x: 100, y: 280 });
   assert.deepEqual(requests, [["task-1", "to-plan", 2]]);
+
+  t.mock.timers.tick(60);
+  controller.handleLaneScroll("to-plan", 0);
+  // 重排为 ["3"(0..100), "task-1"(108..204), "2"(212..272)]，不重新触发 registerCardLayout。
+  controller.setLaneCardOrder("to-plan", ["3", "task-1", "2"]);
+  controller.handlePointerDown(
+    { taskId: "2", laneId: "to-plan" },
+    { x: 100, y: 390 },
+    "handle",
+  );
+  assert.equal(controller.getFeedback().grabOffsetY, 28);
+  assert.equal(controller.getFeedback().targetIndex, 2);
+  controller.handlePointerMove({ x: 100, y: 270 });
+  assert.equal(controller.getFeedback().targetIndex, 1);
+  controller.handlePointerMove({ x: 100, y: 180 });
+  assert.equal(controller.getFeedback().targetIndex, 0);
+  await controller.handlePointerUp({ x: 100, y: 270 });
+  assert.deepEqual(requests, [
+    ["task-1", "to-plan", 2],
+    ["2", "to-plan", 1],
+  ]);
 });
 
 test("横向滚动使静止指针切换到空泳道，同时清除旧槽位", async () => {

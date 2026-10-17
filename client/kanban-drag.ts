@@ -197,6 +197,8 @@ export class KanbanDragController {
   private laneLayouts: Map<string, Rect> = new Map();
   private laneCardOrders: Map<string, string[]> = new Map();
   private cardLayouts: Map<string, Map<string, Rect>> = new Map();
+  private laneFirstCardY: Map<string, number> = new Map();
+  private laneCardGap: Map<string, number> = new Map();
   private cardsViewportLayouts: Map<string, Rect> = new Map();
   private laneScrollY: Map<string, number> = new Map();
   private containerBounds: Rect | null = null;
@@ -296,7 +298,18 @@ export class KanbanDragController {
   };
 
   setLaneCardOrder = (laneId: string, taskIds: string[]) => {
-    this.laneCardOrders.set(laneId, taskIds);
+    const prevOrder = this.laneCardOrders.get(laneId);
+    const laneMap = this.cardLayouts.get(laneId);
+
+    if (laneMap && laneMap.size > 0) {
+      this.captureLaneFlowMetrics(laneId, prevOrder ?? taskIds, laneMap);
+    }
+
+    this.laneCardOrders.set(laneId, [...taskIds]);
+
+    if (laneMap && laneMap.size > 0) {
+      this.reflowLaneCardLayouts(laneId);
+    }
   };
 
   registerCardLayout = (laneId: string, taskId: string, rect: Rect) => {
@@ -305,15 +318,135 @@ export class KanbanDragController {
       laneMap = new Map();
       this.cardLayouts.set(laneId, laneMap);
     }
+    const hadCard = laneMap.has(taskId);
+    const order = this.laneCardOrders.get(laneId);
+    const idx = order ? order.indexOf(taskId) : -1;
+
+    if (
+      !this.laneFirstCardY.has(laneId) &&
+      (idx === 0 || (!order && laneMap.size === 0))
+    ) {
+      this.laneFirstCardY.set(laneId, rect.y);
+    }
+
+    const hasSubsequentMeasuredCard =
+      order && idx >= 0
+        ? order.slice(idx + 1).some((id) => laneMap.has(id))
+        : false;
+
+    if (!hadCard && idx > 0 && order && !hasSubsequentMeasuredCard) {
+      const prevRect = laneMap.get(order[idx - 1]);
+      if (prevRect) {
+        const measuredGap = rect.y - (prevRect.y + prevRect.height);
+        if (measuredGap >= 0) {
+          this.laneCardGap.set(laneId, measuredGap);
+        }
+      }
+    }
+
     laneMap.set(taskId, rect);
+
+    if (
+      !this.activeSession &&
+      !this.currentDroppingState &&
+      order &&
+      idx >= 0 &&
+      (hadCard || hasSubsequentMeasuredCard)
+    ) {
+      this.reflowLaneCardLayouts(laneId);
+    }
   };
 
   unregisterCardLayout = (laneId: string, taskId: string) => {
     const laneMap = this.cardLayouts.get(laneId);
     if (laneMap) {
       laneMap.delete(taskId);
+      if (laneMap.size === 0) {
+        this.laneFirstCardY.delete(laneId);
+        this.laneCardGap.delete(laneId);
+      } else if (!this.activeSession && !this.currentDroppingState) {
+        this.reflowLaneCardLayouts(laneId);
+      }
     }
   };
+
+  private captureLaneFlowMetrics(
+    laneId: string,
+    order: string[],
+    laneMap: Map<string, Rect>,
+  ) {
+    if (!this.laneFirstCardY.has(laneId)) {
+      const firstRect = order.length > 0 ? laneMap.get(order[0]) : undefined;
+      if (firstRect) {
+        this.laneFirstCardY.set(laneId, firstRect.y);
+      } else {
+        let minY = Infinity;
+        for (const rect of laneMap.values()) {
+          if (rect.y < minY) minY = rect.y;
+        }
+        if (Number.isFinite(minY)) {
+          this.laneFirstCardY.set(laneId, minY);
+        }
+      }
+    }
+
+    if (!this.laneCardGap.has(laneId)) {
+      for (let i = 0; i < order.length - 1; i++) {
+        const curr = laneMap.get(order[i]);
+        const next = laneMap.get(order[i + 1]);
+        if (curr && next) {
+          const measuredGap = next.y - (curr.y + curr.height);
+          if (measuredGap >= 0) {
+            this.laneCardGap.set(laneId, measuredGap);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  private reflowLaneCardLayouts(laneId: string) {
+    const order = this.laneCardOrders.get(laneId);
+    const laneMap = this.cardLayouts.get(laneId);
+    if (!order || !laneMap || laneMap.size === 0) return;
+
+    const firstCardY = this.laneFirstCardY.get(laneId) ?? 0;
+    const gap = this.laneCardGap.get(laneId) ?? 8;
+
+    let currentY = firstCardY;
+    for (const id of order) {
+      const rect = laneMap.get(id);
+      if (rect) {
+        laneMap.set(id, { ...rect, y: currentY });
+        currentY += rect.height + gap;
+      } else {
+        currentY += 64 + gap;
+      }
+    }
+  }
+
+  private resolveCardOffsetY(
+    laneId: string,
+    taskId: string,
+    laneMap?: Map<string, Rect>,
+  ): number | undefined {
+    const order = this.laneCardOrders.get(laneId);
+    if (!order) return undefined;
+    const idx = order.indexOf(taskId);
+    if (idx < 0) return undefined;
+
+    const map = laneMap ?? this.cardLayouts.get(laneId);
+    const firstRect = order.length > 0 ? map?.get(order[0]) : undefined;
+    let currentY =
+      this.laneFirstCardY.get(laneId) ?? (firstRect ? firstRect.y : 0);
+    const gap = this.laneCardGap.get(laneId) ?? 8;
+
+    for (let i = 0; i < idx; i++) {
+      const prevRect = map?.get(order[i]);
+      currentY += (prevRect?.height ?? 64) + gap;
+    }
+    return currentY;
+  }
 
   unregisterCard = (laneId: string, taskId: string) => {
     const key = `${laneId}:${taskId}`;
@@ -887,11 +1020,17 @@ export class KanbanDragController {
       const targetSlot = this.getDropSlotPosition(targetLaneId, targetIndex);
       if (targetSlot) {
         toX = targetSlot.x;
+        const hasMeasuredCards =
+          (this.cardLayouts.get(targetLaneId)?.size ?? 0) > 0;
         const laneScroll = this.getLaneScroll(targetLaneId);
         const laneLayout = this.getLaneLayout(targetLaneId);
         const cardsViewport = this.getCardsViewportLayout(targetLaneId);
         const dropSpacerY = this.getDropSpacerY();
-        if (dropSpacerY !== null && hitLaneId === targetLaneId) {
+        if (
+          !hasMeasuredCards &&
+          dropSpacerY !== null &&
+          hitLaneId === targetLaneId
+        ) {
           toY =
             (laneLayout?.y ?? 0) +
             (cardsViewport?.y ?? 0) -
@@ -1135,17 +1274,17 @@ export class KanbanDragController {
 
     const firstRect =
       allCardIds.length > 0 ? laneCardsMap?.get(allCardIds[0]) : undefined;
-    const firstCardY = firstRect ? firstRect.y : 0;
+    const firstCardY =
+      this.laneFirstCardY.get(laneId) ?? (firstRect ? firstRect.y : 0);
 
     const cards: { id: string; baseY: number; height: number; gap: number }[] =
       [];
-    let seenActive = false;
-    let defaultGap = 8;
+    let defaultGap = this.laneCardGap.get(laneId) ?? 8;
 
     for (let i = 0; i < allCardIds.length; i++) {
       const id = allCardIds[i];
       const rect = laneCardsMap?.get(id);
-      if (rect && i < allCardIds.length - 1) {
+      if (!this.laneCardGap.has(laneId) && rect && i < allCardIds.length - 1) {
         const nextRect = laneCardsMap?.get(allCardIds[i + 1]);
         if (nextRect) {
           const measuredGap = nextRect.y - (rect.y + rect.height);
@@ -1156,13 +1295,12 @@ export class KanbanDragController {
       }
 
       if (isSourceLane && id === activeTaskId) {
-        seenActive = true;
         continue;
       }
 
       const height = rect?.height ?? 64;
       let gap = defaultGap;
-      if (rect && i < allCardIds.length - 1) {
+      if (!this.laneCardGap.has(laneId) && rect && i < allCardIds.length - 1) {
         const nextRect = laneCardsMap?.get(allCardIds[i + 1]);
         if (nextRect) {
           const measuredGap = nextRect.y - (rect.y + rect.height);
@@ -1172,15 +1310,12 @@ export class KanbanDragController {
         }
       }
 
-      let baseY: number;
-      if (cards.length === 0) {
-        baseY = !seenActive && rect ? rect.y : firstCardY;
-      } else if (!seenActive && rect) {
-        baseY = rect.y;
-      } else {
-        const prev = cards[cards.length - 1];
-        baseY = prev.baseY + prev.height + prev.gap;
-      }
+      const baseY =
+        cards.length === 0
+          ? firstCardY
+          : cards[cards.length - 1].baseY +
+            cards[cards.length - 1].height +
+            cards[cards.length - 1].gap;
 
       cards.push({ id, baseY, height, gap });
     }
@@ -1361,17 +1496,19 @@ export class KanbanDragController {
       const containerY = this.containerBounds?.y ?? 0;
       const cardsViewport = this.cardsViewportLayouts.get(sourceLaneId);
       const scrollY = this.laneScrollY.get(sourceLaneId) ?? 0;
+      const cardY =
+        this.resolveCardOffsetY(
+          sourceLaneId,
+          taskId,
+          layouts.get(sourceLaneId),
+        ) ?? cardRect.y;
       const cardWinX =
         containerX +
         laneRect.x -
         this.scrollX +
         (cardsViewport?.x ?? (cardRect.x || 12));
       const cardWinY =
-        containerY +
-        laneRect.y +
-        (cardsViewport?.y ?? 0) -
-        scrollY +
-        cardRect.y;
+        containerY + laneRect.y + (cardsViewport?.y ?? 0) - scrollY + cardY;
 
       if (
         pointerX >= cardWinX &&
