@@ -2,7 +2,7 @@
 
 ## 1. 本地检查
 
-开发与 CI 统一使用 Node.js 24（`.nvmrc`、`.node-version`），插件要求 Paseo 宿主版本 `>= 0.8.0`（`paseo-plugin.json`）。
+开发与 CI 统一使用 Node.js 24（`.nvmrc`、`.node-version`），插件要求 Paseo 宿主版本 `>= 0.11.4`（`paseo-plugin.json`）。
 
 ```bash
 npm ci
@@ -21,7 +21,7 @@ npm run check
 
 1. **NPM 凭据**：在仓库 Actions Secret 中配置 `NPM_TOKEN`（具备发布权限的 npm granular token，并开启 Bypass 2FA）。
 2. **质量与验收**：本地运行 `npm run check` 并通过，完成第 3 节宿主手工验收。
-3. **版本说明**：编写 `docs/releases/<version>.md`，同步更新 `README.md`、`README.zh-CN.md` 及 `OVERVIEW.md`。
+3. **版本说明**：在 `CHANGELOG.md` 顶部按中英镜像规范追加新版本说明，同步更新 `README.md`、`README.zh-CN.md` 及 `OVERVIEW.md`。
 
 ### 2.2 发布步骤
 
@@ -29,9 +29,9 @@ npm run check
 VERSION="0.1.4" # 替换为目标版本号
 
 npm version "$VERSION" --no-git-tag-version --ignore-scripts
-# 编辑 docs/releases/$VERSION.md、README 及 OVERVIEW.md
+# 在 CHANGELOG.md 顶部追加新版本记录，并更新 README 及 OVERVIEW.md
 npm run check
-git add package.json package-lock.json "docs/releases/$VERSION.md" README.md README.zh-CN.md OVERVIEW.md
+git add package.json package-lock.json CHANGELOG.md README.md README.zh-CN.md OVERVIEW.md
 git commit -m "chore(release): $VERSION"
 git tag -a "v$VERSION" -m "v$VERSION"
 git push --atomic origin main "refs/tags/v$VERSION"
@@ -85,6 +85,7 @@ gh workflow run release.yml --ref "v$VERSION"
 6. **多语言与热重载**：切换系统语言（中/英）界面即时响应；执行 `paseo plugin reload paseo-kanban` 热重载生效，无需重启守护进程。
 7. **任务完成与恢复**：卡片左侧勾选或拖入完成泳道即完成，按时间倒序展示；取消勾选恢复至原归属泳道末尾，拖出普通泳道按实际落点恢复。
 8. **操作反馈**：按[编码约定](./coding-standards.md)验收通知行为，并检查关窗后可见性、多入口去重、中英文及深浅色、窄屏呈现。
+9. **GitHub Issue 导入**：从项目 GitHub 仓库单向导入 Open Issues，支持分页、排序、去重、项目锁定与外部链接打开，详细用例见第 5 节。
 
 ## 4. 官方市场素材与验收
 

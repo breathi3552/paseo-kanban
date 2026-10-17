@@ -1,157 +1,75 @@
 ---
 name: behavior-first-testing
 description: >-
-  Use when designing, writing, reviewing, or simplifying automated feature and
-  regression tests, especially when test boundaries are unclear or a suite repeats
-  checks of implementation steps. Includes requests to 精简测试 or test a complete
-  feature from upstream input to observable output. Do NOT use for test runner
-  configuration, formatting-only changes, or infrastructure load testing.
+  用于设计、编写、审查或精简自动化测试。防止编写过度防御性的测试或对代码内部逻辑做无意义的断言。指导在功能或模块接缝处验证“输入到可观察结果”的完整行为，坚决不测通过阅读代码即可自明的内部实现与执行链路。
 ---
 
-# Behavior-first testing
+# 行为优先测试 (Behavior-first Testing)
 
-Test a feature from its real input to its observable result. Choose the boundary
-before choosing test cases. A helper function, branch, or module is not by itself
-a reason for another test.
+**测承诺，不测链路；测结果，不测过程。**
 
-## References
+编写测试最常见的坏毛病是**过度防御性测试**：单纯为了检查某段代码、内部逻辑或辅助函数是否存在，而在内部执行链路的各处打卡断言。**凡是直接阅读代码就能自明、确认的内部实现细节，一律不需要写自动化测试。**
 
-- [Worked examples](references/examples.md): functional boundaries and justified exceptions.
-- [Session retrospective](references/retro.md): evidence behind these rules.
-- [Evaluation scenarios](evals/evals.json): positive and negative trigger cases and expected decisions.
+测试真正的价值，在于**功能接缝处**或**端到端**上，验证系统对用户或外部调用方承诺的实际行为。
 
-## Workflow
+## 核心原则
 
-### 1. Name the behavior
+1. **代码自明的不测**：函数内部如何赋值、调用了哪个私有辅助函数、中间状态如何流转，通过静态阅读代码一目了然。严禁仅仅为了“验证某段代码是否存在或被执行了”而编写断言。
+2. **测在功能接缝处（Functional Seam）**：测试应立足于模块接缝、系统接缝或公开 API 处，贯通真实的产品执行路径。
+3. **断言可观察的结果**：输入是真实的调用方操作；断言是用户或调用方最终能感知到的结果（渲染的 UI 文本、持久化数据、公开 API 响应、状态变化）。
+4. **实现自由**：只要输入到可观察结果的契约得到保证，内部链路的任何重构（合并拆分函数、重命名变量、改变内部流转、原地修改）都不应破坏测试。测试绝不能锁死实现细节。
 
-**Action:** State what the user or API consumer provides and what they receive.
-Use requirements and observed bugs as the source of expected behavior.
+## 审查与精简测试的三道关卡
 
-Trace the proposed guarantee from a reachable consumer action, through a real
-functional seam, to a promised observable result. A seam connects that action to
-its result, such as modal input to persistence or a drop target to animation.
-An exported application helper is not automatically a consumer-facing API.
+在决定新增或保留任何一个测试前，必须通过以下三道关卡：
 
-**Key point:** Describe “upstream locale → plugin text,” rather than listing
-normalization, detection, dictionary lookup, and rendering as separate features.
+| 关卡              | 核心提问                                                         | 淘汰标准（命中则坚决不写 / 立即删除）                                  |
+| :---------------- | :--------------------------------------------------------------- | :--------------------------------------------------------------------- |
+| **1. 可观察性**   | 这个测试断言的是调用方可见的最终结果，还是在给内部调用打卡？     | 仅断言内部 helper 被调用、私有变量被修改、中间状态变化了一次。         |
+| **2. 代码自明性** | 该逻辑如果缺失，接缝处的测试能否察觉？它是否直接读代码就能确认？ | 只是单纯断言某行代码存在；删掉测试对功能承诺没有任何风险。             |
+| **3. 真实可达性** | 调用方能否通过真实入口路径触达该测试的前提条件？                 | 需要构造正常流程绝不可能出现的内部状态，或绕过公开入口直接调私有逻辑。 |
 
-**Why:** Those steps can change while the promised behavior stays the same.
+## 工作流
 
-### 2. Choose one functional boundary
+1. **明确行为承诺 (Name the behavior)**：用一句话定义“当给予输入 X 时，系统承诺产生可观察的结果 Y”。坚决杜绝按实现链路切片。
+2. **选定接缝边界 (Choose the seam boundary)**：选取跑通完整承诺的最小接缝（组件界面、公开 API、服务请求）。保持产品路径真实运行，仅隔离不可控的外部环境设施（如宿主 SDK、时钟、网络）。
+3. **挑选代表性场景 (Select scenarios)**：仅当场景代表了另一项独立的对外承诺时才增加用例。纯输入输出差异使用数据驱动表收敛，拒绝无意义的笛卡尔积。
+4. **实施与精简 (Refactor & prune)**：用接缝处的功能测试替换重复打卡的内部单测，清理废弃夹具。重构已有功能时测试首次通过是正常的，切勿为了制造红灯而故意改坏生产代码。坚决不为杀变体（mutant）盲目增设单测。
 
-**Action:** Exercise the actual product path to the promised output. For a UI,
-assert rendered text or user-visible effects; for a library, use its public API;
-for a service, use its public request and observable response or state change.
+## AI 常见过度防御反模式 (Anti-patterns)
 
-**Key points:**
+| 典型坏毛病           | 错误表现                                                 | 正确决策                                                                   |
+| :------------------- | :------------------------------------------------------- | :------------------------------------------------------------------------- |
+| **内部存在性打卡**   | `expect(helper).toHaveBeenCalled()`                      | 删掉。直接看代码就知道调用了，只断言最终输出结果。                         |
+| **按执行链路切片**   | 针对 pipeline 内部的 4 个处理步骤分别各写一组单测        | 删掉内部单测，在 pipeline 入口到出口写一个完整的行为测试。                 |
+| **为自明代码写测试** | 看到内部有 `if (!id) return null`，特意传空断言返回 null | 拒绝。代码本身一眼自明；若上游入口不可能传空，无需单测保护。               |
+| **中间状态假绿灯**   | 异步操作只断言 `onClick` 被触发了或 loading 变了         | 拒绝。必须跨越接缝断言最终真实结果（数据持久化或最终界面呈现）。           |
+| **伪造不可达状态**   | 绕过正常公开入口，强行构造内部绝不可能出现的错误状态     | 拒绝。测试只从真实入口路径输入；无法从入口触达的死逻辑应直接清理而非加测。 |
+| **盲目杀变体**       | 突变测试报告内部某个变体未挂，立刻补测该内部变量         | 拒绝。变体必须先证明可从真实入口触达且破坏了对外承诺，否则不加测试。       |
+| **把旧测试失败当宝** | 重构后旧单测挂了，但功能和接缝测试全部正常               | 检查旧测试断言的实质；若仅仅是内部实现细节发生变化，果断删除旧测试。       |
 
-- Use the smallest boundary that exercises the complete behavior. Full browser
-  end-to-end testing is not a universal requirement.
-- Keep product logic between input and result real. Substitute external services,
-  host SDKs, clocks, or platform facilities when necessary for deterministic tests.
-- Do not bypass language detection by supplying the expected plugin language,
-  then claim to have tested upstream language adaptation.
-- Reuse existing fixtures. Avoid building another harness for the same boundary.
-- Keep an existing boundary if it already exercises the promise. A more expensive
-  UI or CLI harness needs a concrete missing connection to justify replacing it.
+## 实战范式 (Worked Examples)
 
-**Why:** Separate passing tests for each step can miss broken connections between them.
+### 1. 拒绝执行链路打卡：测最终结果，不测调用链路
 
-### 3. Select representative scenarios
+- **反模式：** 在用户注册流程中，AI 用 Spy 挨个断言内部的 `validateInput()`、`hashPassword()`、`sendWelcomeEmail()` 是否按顺序各被调用了一次。
+- **痛点本质：** 执行链路通过直接阅读代码一目了然。为每个环节打卡会把实现细节死死锁死，一旦重构合并两步测试全挂，却不能证明最终用户真的注册成功。
+- **正例：** 不测中间调用。在接缝处输入注册信息，直接断言数据库是否生成了正确用户记录、接口是否返回了成功的凭证。
 
-**Action:** Put a small set of requirement examples at that boundary. Use a data
-table when examples differ only in inputs and expected outputs.
+### 2. 私有辅助函数不测：公开 API 即完整接缝
 
-**Key points:**
+- **反模式：** 开发公式解析模块 `MathParser`，内部抽出了私有辅助函数 `cleanString` 和 `tokenize`，AI 为每个私有函数各写了一堆单测。
+- **痛点本质：** 辅助函数如何拆分是内部实现，读代码即可自明。公开 API 才是对外承诺的功能接缝。
+- **正例：** 坚决不对私有 helper 单独写测试。只通过模块公开的 `parse()` 或 `evaluate()` API，以表驱动方式测试规范约定的输入、计算结果与合法报错。
 
-- Include the reported bug's actual conditions.
-- Add a scenario when it expresses another promised outcome. The existence of
-  another `if`, field alias, or fallback stage does not establish that need.
-- Use independent expected outputs from requirements or known fixtures, not
-  values calculated by the implementation being tested.
-- Capture expected data before the action can change it. This avoids a self-confirming
-  assertion; it does not establish a requirement that input objects stay immutable.
-- Separate initialization, live updates, or error handling only when they are
-  distinct promised behaviors. Do not multiply every business error by every locale.
+### 3. 拒绝无意义的存在性断言：代码自明的绝不测
 
-**Why:** Several useful examples can belong to one functional test; a smaller
-number of `test()` declarations alone does not mean the suite is simpler.
+- **反模式：** 代码里写了一行简单的状态赋值 `setStatus('active')` 或一个通用的防空 `if (!id) return null`，AI 专门写个单测断言“status 属性真的变成了 active”或传个 null 断言返回 null。
+- **痛点本质：** 这只是在单纯用测试抄写一遍代码，毫无业务防护价值。代码本身已经自明。
+- **正例：** 坚决不为代码字面存在性写单测。只从调用方真实诉求出发，验证最终对外可见的行为变化。
 
-### 4. Apply TDD or simplify existing coverage
+### 4. 拒绝中间状态假绿灯：断言最终可观察结果，不测触发过程
 
-**New or changed behavior:** Write the functional test, observe the intended
-failure, implement the minimum change, and run the appropriate checks.
-
-**Existing-test refactor:** Passing on the first run is expected when the behavior
-already exists. Do not change production behavior just to create a red phase.
-Replace repeated layer checks with the functional test and remove obsolete fixtures.
-When practical, replay the original bug or break a concrete functional seam in an
-isolated copy. Before treating the result as a coverage defect, establish the
-reachable consumer action and changed promised output. A surviving internal mutant
-or an old test that fails is insufficient. Do not add tests just to kill mutants.
-
-Reject injected scenarios requiring a new action through a disabled control,
-impossible state, or direct calls bypassing the real entry path, unless those calls
-belong to an independently supported consumer API. If a queued event can still
-arrive, demonstrate its real entry and lifecycle rather than assuming a bypass is
-reachable. Report unproven reachability as a limitation.
-
-**Scope:** A newly written test is not authorization to add an adjacent feature.
-Distinguish a requirement failure from an unrequested capability.
-
-### 5. Review each remaining test
-
-Before adding or retaining another test, answer:
-
-- What promised behavior would lose protection if this test disappeared?
-- Can the consumer reach its conditions through the selected real entry path?
-- Does the selected functional test already exercise that behavior?
-- Does this assert a result, or merely pin an internal call, branch, or helper?
-- Is the fixture and execution cost proportionate to the behavior protected?
-
-A separate lower-level test is justified for an independently promised API or
-invariant, or when a required scenario cannot be exercised safely, deterministically,
-or at reasonable cost through the chosen boundary. Examples include a reusable
-parser, numerical accuracy, and a payment's idempotency contract. State the concrete
-consumer promise and why that boundary is needed; “different function,” “exported,”
-or “the mutation survived” is insufficient. App-internal logic alone is not another
-functional contract.
-
-When coverage moves across tests or files, name the surviving scenario and verify
-that it observes the same promise. For a promise that holds during an operation,
-observe its result then: a captured save request does not prove the live UI stayed
-consistent. Replacing an external animation clock must retain its meaningful target
-or visible effect; completion alone does not prove arrival at the promised slot.
-
-Structural checks such as schema or dictionary completeness can remain as explicit
-quality guarantees. They are not substitutes for functional tests. If pruning drops
-a unique guarantee, state that trade-off; do not claim identical coverage.
-
-## Guardrails
-
-| Temptation                                                  | Required decision                                                               |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| “Every helper needs its own test.”                          | Start with the functional contract; justify any additional boundary.            |
-| “Another branch means another requirement.”                 | Find the promised outcome before adding a case.                                 |
-| “All functions pass, so the feature works.”                 | Exercise the connected product path.                                            |
-| “Wrap all assertions in one test to simplify it.”           | Remove duplicate checks and setup; retain meaningful scenario diagnostics.      |
-| “Fewer tests means faster or equally safe.”                 | Check cost and lost guarantees; counts prove neither.                           |
-| “Behavior-first means deleting all unit tests.”             | A library's public function can be the complete functional boundary.            |
-| “The new test exposed an opportunity to add a feature.”     | Keep production changes within the authorized behavior.                         |
-| “An internal mutation survived, so another test is needed.” | First prove reachable conditions and a violated consumer promise.               |
-| “The old test fails, so it must be valuable.”               | Check its observable contract; implementation-only differences may be harmless. |
-| “The UI blocks this input, but I can call its callback.”    | Reject the bypass as user-path evidence; justify a supported API separately.    |
-
-## Completion and communication
-
-Explain retained tests in terms of inputs and outcomes, without defending a list
-of implementation details. If the user challenges the test boundary, reassess the
-whole feature rather than shaving assertions from each layer.
-
-Complete when the chosen scenarios exercise the product path, duplicate checks
-and unused fixtures are removed, appropriate checks pass, and any remaining unique
-quality guarantees or platform limitations are identified. Report observed results;
-do not describe a simulated host test as real host acceptance.
-For fault injection, distinguish historical bugs from synthetic seam breaks, and
-state the consumer conditions and observed output. Mutation survival alone does not
-prove a product defect or justify restoring removed internal checks.
+- **反模式：** 测试保存操作时，单测只断言了按钮的 `onClick` 回调被触发了、`isSaving` 状态变成了 true。
+- **痛点本质：** 典型的链路打卡与假绿灯隐患。即使底层持久化彻底断裂、数据丢失，该单测依然是绿灯。
+- **正例：** 跨越整个功能接缝，断言提交后数据是否真实持久化写入、界面最终是否呈现了成功反馈或错误提示。
