@@ -74,6 +74,7 @@ export function LaneManagementModal(props: Props) {
   const reorder = useLaneReorder({
     ids: order,
     step,
+    scrollRef,
     disabled: request !== null || editing !== null || deleteId !== null,
     onChange: setOrder,
   });
@@ -367,7 +368,8 @@ export function LaneManagementModal(props: Props) {
             reorder.onScroll(event.nativeEvent.contentOffset.x)
           }
           scrollEventThrottle={16}
-          onContentSizeChange={() => {
+          onContentSizeChange={(width) => {
+            reorder.onContentSizeChange(width);
             if (adding) scrollRef.current?.scrollToEnd({ animated: true });
           }}
         >

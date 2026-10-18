@@ -223,10 +223,10 @@ export function createHost({
   };
 }
 
-export async function mount(t, host, workspaceId) {
+export async function mount(t, host, workspaceId, options) {
   let renderer;
   await act(async () => {
-    renderer = TestRenderer.create(host.open(workspaceId));
+    renderer = TestRenderer.create(host.open(workspaceId), options);
   });
   t.after(async () => {
     await act(async () => renderer.unmount());

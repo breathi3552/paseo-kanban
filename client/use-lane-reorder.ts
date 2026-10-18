@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import {
   Animated,
   PanResponder,
   type GestureResponderEvent,
+  type ScrollView,
 } from "react-native";
 
 interface Options {
   ids: string[];
   step: number;
   disabled: boolean;
+  scrollRef: RefObject<ScrollView | null>;
   onChange: (ids: string[]) => void;
 }
 interface Gesture {
@@ -16,9 +18,11 @@ interface Gesture {
   source: number;
   target: number;
   dx: number;
+  dy: number;
   startX: number;
   startY: number;
   grantDx: number;
+  grantDy: number;
   claimed: boolean;
   startScroll: number;
   active: boolean;
@@ -39,6 +43,9 @@ export function useLaneReorder(options: Options) {
   );
   const session = useRef<Gesture | null>(null);
   const scroll = useRef(0);
+  const contentWidth = useRef(0);
+  const autoScrollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoScrollTick = useRef<() => void>(() => {});
   const inputTouch = useRef<boolean | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);
@@ -49,6 +56,13 @@ export function useLaneReorder(options: Options) {
     id: string;
     target: number;
   } | null>(null);
+  const dragging = feedback !== null;
+  const stopAutoScroll = () => {
+    if (autoScrollTimer.current !== null) {
+      clearInterval(autoScrollTimer.current);
+      autoScrollTimer.current = null;
+    }
+  };
 
   const position = (id: string) => {
     let value = positions.current.get(id);
@@ -79,6 +93,7 @@ export function useLaneReorder(options: Options) {
     }, 0);
   };
   const cancel = () => {
+    stopAutoScroll();
     clearTimer();
     clearPressSuppression();
     session.current = null;
@@ -95,6 +110,7 @@ export function useLaneReorder(options: Options) {
     const gesture = session.current;
     if (!gesture || gesture.dropping) return;
     gesture.dx = dx;
+    gesture.dy = dy;
     const delta = dx + scroll.current - gesture.startScroll;
     if (!gesture.active && gesture.touch) {
       if (Math.hypot(dx, dy) >= 5) {
@@ -126,7 +142,47 @@ export function useLaneReorder(options: Options) {
         }).start();
     });
   };
+  autoScrollTick.current = () => {
+    const gesture = session.current;
+    const scroller = latest.current.scrollRef.current;
+    if (!gesture?.active || gesture.dropping || latest.current.disabled) return;
+    // Re-measure in window coordinates while held: resize/centering and native
+    // scrolling must not leave the edge zones attached to an old viewport.
+    scroller?.getNativeScrollRef()?.measureInWindow((x, y, width, height) => {
+      if (
+        !alive.current ||
+        session.current !== gesture ||
+        gesture.dropping ||
+        latest.current.disabled ||
+        width <= 0 ||
+        height <= 0
+      )
+        return;
+      const pointerX = gesture.startX + gesture.dx;
+      const pointerY = gesture.startY + gesture.dy;
+      if (pointerY < y - 24 || pointerY > y + height + 24) return;
+      const edge = Math.min(48, width / 3);
+      const localX = pointerX - x;
+      const velocity =
+        localX < edge
+          ? -Math.min(1, (edge - localX) / edge)
+          : localX > width - edge
+            ? Math.min(1, (localX - width + edge) / edge)
+            : 0;
+      const next = Math.max(
+        0,
+        Math.min(contentWidth.current - width, scroll.current + velocity * 18),
+      );
+      if (!velocity || next === scroll.current) return;
+      scroll.current = next;
+      scroller.scrollTo({ x: next, animated: false });
+      // The pointer can stay still while the content moves beneath it. Keep
+      // both the floating lane and its destination slot aligned with that move.
+      move(gesture.dx, gesture.dy);
+    });
+  };
   const release = () => {
+    stopAutoScroll();
     clearTimer();
     clearPressSuppression();
     const gesture = session.current;
@@ -154,6 +210,15 @@ export function useLaneReorder(options: Options) {
     });
   };
 
+  useEffect(() => {
+    if (!dragging) return;
+    const timer = setInterval(() => autoScrollTick.current(), 16);
+    autoScrollTimer.current = timer;
+    return () => {
+      clearInterval(timer);
+      if (autoScrollTimer.current === timer) autoScrollTimer.current = null;
+    };
+  }, [dragging]);
   useEffect(() => {
     if (session.current) return;
     options.ids.forEach((id, index) => {
@@ -209,9 +274,11 @@ export function useLaneReorder(options: Options) {
       source,
       target: source,
       dx: 0,
+      dy: 0,
       startX: event.nativeEvent.pageX,
       startY: event.nativeEvent.pageY,
       grantDx: 0,
+      grantDy: 0,
       claimed,
       startScroll: scroll.current,
       active: false,
@@ -258,14 +325,18 @@ export function useLaneReorder(options: Options) {
           if (pending?.id === id) {
             pending.claimed = true;
             // A long-pressed touch is claimed on its first move. PanResponder
-            // resets dx at grant, so keep the displacement before that handoff.
+            // resets dx/dy at grant, so keep both axes before that handoff.
             pending.grantDx = event.nativeEvent.pageX - pending.startX;
-            move(pending.grantDx, event.nativeEvent.pageY - pending.startY);
+            pending.grantDy = event.nativeEvent.pageY - pending.startY;
+            move(pending.grantDx, pending.grantDy);
           } else begin(id, event, true);
         },
         onShouldBlockNativeResponder: () => session.current?.active ?? false,
         onPanResponderMove: (_event, gesture) =>
-          move(gesture.dx + (session.current?.grantDx ?? 0), gesture.dy),
+          move(
+            gesture.dx + (session.current?.grantDx ?? 0),
+            gesture.dy + (session.current?.grantDy ?? 0),
+          ),
         onPanResponderRelease: release,
         onPanResponderTerminate: () => {
           suppressPress.current = true;
@@ -308,11 +379,14 @@ export function useLaneReorder(options: Options) {
 
   return {
     bind,
-    active: feedback !== null,
+    active: dragging,
     slot: feedback?.target ?? null,
+    onContentSizeChange: (width: number) => {
+      contentWidth.current = width;
+    },
     onScroll: (x: number) => {
       scroll.current = x;
-      if (session.current?.active) move(session.current.dx);
+      if (session.current?.active) move(session.current.dx, session.current.dy);
     },
     style: (id: string) => ({
       transform: [

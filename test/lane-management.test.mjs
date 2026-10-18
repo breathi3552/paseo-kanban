@@ -468,3 +468,103 @@ test("鼠标从名称区域拖动生成排序草稿，落位不改名且点击�
   );
   assert.deepEqual(host.notifications, ["Lane order saved"]);
 });
+
+test("拖住泳道停留在左右边缘持续滚动，回到中央和松手停止，保存超出初始视口的落点", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  language = "en";
+  const original = [
+    lanes[0],
+    lanes[1],
+    ...Array.from({ length: 6 }, (_, i) => ({
+      id: `stage-${i}`,
+      title: `Stage ${i}`,
+      isCompletionLane: false,
+    })),
+    lanes[2],
+  ];
+  const host = createHost({
+    board: KanbanBoardSchema.parse({ lanes: original, tasks: [] }),
+  });
+  let offset = 0;
+  let strip;
+  const renderer = await mount(t, host, undefined, {
+    createNodeMock: (element) =>
+      element.type === "ScrollView" &&
+      element.props.horizontal &&
+      element.props.onContentSizeChange
+        ? {
+            getNativeScrollRef: () => ({
+              measureInWindow: (callback) => callback(100, 100, 360, 180),
+            }),
+            scrollTo: ({ x }) => {
+              offset = x;
+              strip.props.onScroll({ nativeEvent: { contentOffset: { x } } });
+            },
+          }
+        : null,
+  });
+  await press(renderer.root, "Manage lanes");
+  strip = dialog(renderer)
+    .findAllByType("ScrollView")
+    .find((node) => node.props.horizontal);
+  await act(async () => {
+    strip.props.onContentSizeChange(1544, 180);
+    strip.props.onLayout?.({
+      nativeEvent: { layout: { x: 0, y: 0, width: 360, height: 180 } },
+    });
+  });
+  const event = {
+    nativeEvent: { pointerType: "mouse", pageX: 160, pageY: 160 },
+  };
+  const gesture = { x0: 160, y0: 160, moveX: 160, moveY: 160, dx: 0, dy: 0 };
+  const source = dragBody(renderer, "Todo").props;
+  await act(async () => source.onPanResponderGrant(event, gesture));
+  const move = async (x) =>
+    act(async () =>
+      source.onPanResponderMove(event, { ...gesture, moveX: x, dx: x - 160 }),
+    );
+  const wait = async (ms) => act(async () => t.mock.timers.tick(ms));
+  await move(448);
+  await wait(32);
+  assert.ok(offset > 0, "right edge starts scrolling");
+  const first = offset;
+  await wait(320);
+  assert.ok(offset > first, "stationary pointer keeps scrolling");
+  await wait(3000);
+  assert.ok(offset <= 1184, "scroll stays inside the content bounds");
+  const right = offset;
+  await move(120);
+  await wait(320);
+  assert.ok(offset < right, "left edge reverses scrolling");
+  await wait(3000);
+  assert.equal(offset, 0, "left boundary does not overscroll");
+  await move(448);
+  await wait(640);
+  const center = offset;
+  assert.ok(center > 0 && center < 1184);
+  await move(280);
+  await wait(320);
+  assert.equal(offset, center, "returning to the center stops scrolling");
+  await act(async () => source.onPanResponderRelease(event, gesture));
+  await wait(320);
+  assert.equal(
+    offset,
+    center,
+    "release stops scrolling away from the boundary",
+  );
+  const preview = displayedLanes(renderer).map((label) =>
+    label.slice("Rename ".length),
+  );
+  assert.ok(
+    preview.indexOf("Todo") > 2,
+    "drop reaches lanes beyond the original viewport",
+  );
+  assert.equal(preview.at(-1), "Finished");
+  assert.deepEqual(host.board.lanes, original);
+  await press(dialog(renderer), "Save order");
+  assert.deepEqual(
+    host.board.lanes.map((lane) => lane.title),
+    preview,
+  );
+  assert.deepEqual(host.notifications, ["Lane order saved"]);
+});
