@@ -72,9 +72,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   const [importOpen, setImportOpen] = useState(false);
   const [activeTaskSession, setActiveTaskSession] =
     useState<TaskEditSession | null>(null);
-  const [laneManagement, setLaneManagement] = useState<{
-    laneId?: string;
-  } | null>(null);
+  const [laneManagement, setLaneManagement] = useState(false);
   const [taskOperationError, setTaskOperationError] = useState<string | null>(
     null,
   );
@@ -106,8 +104,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   const retained = importOpen || laneManagement ? lastReady.current : null;
   const board = isReady ? settings.values : (retained?.board ?? null);
   const revision = isReady ? settings.revision : (retained?.revision ?? "");
-  const preserveImport =
-    (importOpen || laneManagement !== null) && board !== null;
+  const preserveImport = (importOpen || laneManagement) && board !== null;
 
   const handleReorderTask = async (
     taskId: string,
@@ -201,9 +198,9 @@ function KanbanBoardContent(props: KanbanBoardProps) {
     );
   };
 
-  const openLaneManagement = (laneId?: string) => {
+  const openLaneManagement = () => {
     if (completionPendingRef.current || drag.isDragLocked() || !board) return;
-    setLaneManagement({ laneId });
+    setLaneManagement(true);
   };
 
   const styles = useMemo(
@@ -620,7 +617,6 @@ function KanbanBoardContent(props: KanbanBoardProps) {
                 layout={layout}
                 dragBinding={drag.bindLane(lane.id)}
                 onAddTask={(laneId) => openNewTask(laneId)}
-                onManageLane={(laneId) => openLaneManagement(laneId)}
                 onSelectTask={(task) => openEditTask(task.id)}
                 onSetCompleted={handleSetCompleted}
                 completionPending={completionPending}
@@ -667,10 +663,9 @@ function KanbanBoardContent(props: KanbanBoardProps) {
           board={board}
           revision={revision}
           settingsReady={isReady}
-          focusLaneId={laneManagement.laneId}
           save={(next, expected) => settings.save(next, expected)}
           reload={() => settings.reload()}
-          onClose={() => setLaneManagement(null)}
+          onClose={() => setLaneManagement(false)}
           theme={theme}
           compact={compact}
         />

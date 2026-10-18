@@ -228,7 +228,7 @@ test("删除按未完成状态跨项目清理，确认无数量，保留完成�
       .some((n) => n.props.accessibilityLabel === "Delete Finished"),
     false,
   );
-  await press(dialog(renderer), "Close");
+  await act(async () => dialog(renderer).props.onOpenChange(false));
   await click(renderer.root, "Mark Archive incomplete");
   assert.equal(
     host.board.tasks.find((task) => task.id === "c").laneId,
@@ -392,19 +392,15 @@ test("删除保存与刷新失败时在确认窗口内保留错误和恢复入�
   assert.equal(host.notifications.length, 2);
 });
 
-test("快捷入口聚焦目标，关闭直接丢弃排序和未确认名称，但不撤销已保存修改", async (t) => {
+test("工具栏统一管理，右上角关闭丢弃排序和未确认名称，但不撤销已保存修改", async (t) => {
   const { host, renderer } = await setup(t);
   await click(dialog(renderer), "Rename Todo");
   await enter(renderer, "Ready");
   await press(dialog(renderer), "Confirm");
   await click(dialog(renderer), "Move Doing left");
-  await press(dialog(renderer), "Close");
+  await act(async () => dialog(renderer).props.onOpenChange(false));
   assert.equal(renderer.root.findAllByType("Modal").length, 0);
-  await click(renderer.root, "Manage lane Ready");
-  assert.equal(
-    button(dialog(renderer), "Rename Ready").props.accessibilityState.selected,
-    true,
-  );
+  await press(renderer.root, "Manage lanes");
   assert.deepEqual(displayedLanes(renderer), [
     "Rename Ready",
     "Rename Doing",
@@ -412,7 +408,7 @@ test("快捷入口聚焦目标，关闭直接丢弃排序和未确认名称，�
   ]);
   await click(dialog(renderer), "Rename Ready");
   await enter(renderer, "Unconfirmed");
-  await press(dialog(renderer), "Close");
+  await act(async () => dialog(renderer).props.onOpenChange(false));
   assert.equal(renderer.root.findAllByType("Modal").length, 0);
   assert.equal(host.board.lanes[0].title, "Ready");
   assert.deepEqual(host.notifications, ["Lane renamed"]);

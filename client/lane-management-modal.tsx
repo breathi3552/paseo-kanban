@@ -1,13 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { View, Text, Pressable, StyleSheet, Animated } from "react-native";
 import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-  Animated,
-  type ScrollView as NativeScrollView,
-} from "react-native";
-import {
+  Icon,
   Modal,
   TextInput,
   ScrollView,
@@ -30,7 +24,6 @@ interface Props {
   board: KanbanBoard;
   revision: string;
   settingsReady: boolean;
-  focusLaneId?: string;
   save: SaveFn;
   reload: () => Promise<void>;
   onClose: () => void;
@@ -66,12 +59,10 @@ export function LaneManagementModal(props: Props) {
   const busy = useRef(false);
   const current = useRef({ props, t, toast, lanes });
   current.current = { props, t, toast, lanes };
-  const scrollRef = useRef<NativeScrollView>(null);
-  const focusRef = useRef<View>(null);
   const colors = props.theme.colors;
-  const width = props.compact ? 180 : 220;
+  const width = props.compact ? 156 : 160;
+  const height = 180;
   const step = width + 12;
-  const focused = useRef(false);
   const reorder = useLaneReorder({
     ids: order,
     step,
@@ -82,32 +73,67 @@ export function LaneManagementModal(props: Props) {
     label: string,
     onPress: () => void,
     disabled = false,
-    focus = false,
     display?: string,
-  ) => (
-    <Pressable
-      ref={focus ? focusRef : undefined}
-      accessibilityState={{
-        selected: focus,
-        disabled: disabled || request !== null,
-      }}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      disabled={disabled || request !== null}
-      style={[
-        styles.button,
-        (disabled || request !== null) && { opacity: 0.4 },
-      ]}
-    >
-      <Text
-        numberOfLines={1}
-        style={{ color: colors.foreground, fontSize: 14 }}
+    tone:
+      | "secondary"
+      | "primary"
+      | "danger"
+      | "destructive"
+      | "title" = "secondary",
+    icon?: ComponentProps<typeof Icon>["name"],
+  ) => {
+    const filled = tone === "primary" || tone === "destructive";
+    const danger = tone === "danger" || tone === "destructive";
+    const textColor = filled
+      ? colors.accentForeground
+      : danger
+        ? colors.statusDanger
+        : colors.foreground;
+    const blocked = disabled || request !== null;
+    return (
+      <Pressable
+        accessibilityState={{ disabled: blocked }}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        onPress={onPress}
+        disabled={blocked}
+        style={({ pressed }) => [
+          styles.button,
+          {
+            borderColor: danger
+              ? colors.statusDanger
+              : filled
+                ? colors.accent
+                : colors.border,
+            backgroundColor:
+              tone === "destructive"
+                ? colors.statusDanger
+                : filled
+                  ? colors.accent
+                  : colors.surface1,
+          },
+          tone === "title" && styles.titleButton,
+          icon && styles.iconButton,
+          { opacity: blocked ? 0.4 : pressed ? 0.8 : 1 },
+        ]}
       >
-        {display ?? label}
-      </Text>
-    </Pressable>
-  );
+        {icon ? (
+          <Icon name={icon} size={16} color={textColor} />
+        ) : (
+          <Text
+            numberOfLines={1}
+            style={{
+              color: textColor,
+              fontSize: tone === "title" ? 14 : 13,
+              fontWeight: filled || tone === "title" ? "600" : "400",
+            }}
+          >
+            {display ?? label}
+          </Text>
+        )}
+      </Pressable>
+    );
+  };
   const queue = (command: Command) => {
     if (busy.current) return;
     busy.current = true;
@@ -276,13 +302,19 @@ export function LaneManagementModal(props: Props) {
           minHeight: 36,
         }}
       />
-      {action(t("laneManagement.confirm"), () => {
-        void saveName();
-      })}
-      {action(t("laneModal.cancel"), () => {
-        setEditing(null);
-        setError(null);
-      })}
+      <View style={styles.controls}>
+        {action(t("laneModal.cancel"), () => {
+          setEditing(null);
+          setError(null);
+        })}
+        {action(
+          t("laneManagement.confirm"),
+          saveName,
+          false,
+          undefined,
+          "primary",
+        )}
+      </View>
     </>
   );
   const errorPanel = error && (
@@ -304,14 +336,10 @@ export function LaneManagementModal(props: Props) {
       >
         <Modal.Content
           style={{ backgroundColor: colors.surface0 }}
-          contentContainerStyle={{
-            gap: props.compact ? 8 : 12,
-            padding: props.compact ? 12 : 20,
-          }}
+          contentContainerStyle={{ padding: props.compact ? 12 : 20, gap: 12 }}
         >
           {!deleteId && errorPanel}
           <ScrollView
-            ref={scrollRef}
             horizontal
             keyboardShouldPersistTaps="handled"
             scrollEnabled={!reorder.active}
@@ -319,22 +347,9 @@ export function LaneManagementModal(props: Props) {
               reorder.onScroll(event.nativeEvent.contentOffset.x)
             }
             scrollEventThrottle={16}
-            onContentSizeChange={() => {
-              if (!focused.current && props.focusLaneId) {
-                const index = order.indexOf(props.focusLaneId);
-                if (index >= 0) {
-                  scrollRef.current?.scrollTo({
-                    x: index * step,
-                    animated: false,
-                  });
-                  focusRef.current?.focus();
-                  focused.current = true;
-                }
-              }
-            }}
           >
             <View style={styles.row}>
-              <View style={{ width: order.length * step - 12, height: 270 }}>
+              <View style={{ width: order.length * step - 12, height }}>
                 {reorder.slot !== null && (
                   <View
                     pointerEvents="none"
@@ -344,7 +359,7 @@ export function LaneManagementModal(props: Props) {
                         position: "absolute",
                         width,
                         left: reorder.slot * step,
-                        height: 270,
+                        height,
                         borderStyle: "dashed",
                         borderColor: colors.accent,
                         backgroundColor: colors.surface2,
@@ -377,13 +392,10 @@ export function LaneManagementModal(props: Props) {
                           position: "absolute",
                           left: 0,
                           top: 0,
-                          height: 270,
+                          height,
                           width,
                           backgroundColor: colors.surface1,
-                          borderColor:
-                            lane.id === props.focusLaneId
-                              ? colors.accent
-                              : colors.border,
+                          borderColor: colors.border,
                         },
                         reorder.style(lane.id),
                       ]}
@@ -401,7 +413,7 @@ export function LaneManagementModal(props: Props) {
                         editor
                       ) : (
                         <View
-                          style={{ minHeight: 70, justifyContent: "center" }}
+                          style={{ minHeight: 44, justifyContent: "center" }}
                           accessibilityLabel={dragLabel}
                           {...binding}
                         >
@@ -409,8 +421,8 @@ export function LaneManagementModal(props: Props) {
                             t("laneManagement.rename", { title: lane.title }),
                             binding?.onPress ?? rename,
                             dirty || reorder.active,
-                            lane.id === props.focusLaneId,
                             lane.title,
+                            "title",
                           )}
                         </View>
                       )}
@@ -429,8 +441,9 @@ export function LaneManagementModal(props: Props) {
                               t("laneManagement.left", { title: lane.title }),
                               () => move(index, -1),
                               index === 0 || editing !== null || reorder.active,
-                              false,
-                              "←",
+                              undefined,
+                              "secondary",
+                              "ArrowLeft",
                             )}
                             {action(
                               t("laneManagement.right", { title: lane.title }),
@@ -438,15 +451,17 @@ export function LaneManagementModal(props: Props) {
                               index === order.length - 2 ||
                                 editing !== null ||
                                 reorder.active,
-                              false,
-                              "→",
+                              undefined,
+                              "secondary",
+                              "ArrowRight",
                             )}
                             {action(
                               t("laneManagement.delete", { title: lane.title }),
                               () => remove(lane.id),
                               dirty || lanes.length <= 2 || reorder.active,
-                              false,
-                              t("laneManagement.deleteShort"),
+                              undefined,
+                              "danger",
+                              "Trash2",
                             )}
                           </View>
                           {lanes.length <= 2 && (
@@ -470,6 +485,7 @@ export function LaneManagementModal(props: Props) {
                   styles.lane,
                   {
                     width,
+                    height,
                     borderColor: colors.border,
                     backgroundColor: colors.surface1,
                   },
@@ -499,6 +515,8 @@ export function LaneManagementModal(props: Props) {
                   t("laneManagement.saveOrder"),
                   saveOrder,
                   reorder.active,
+                  undefined,
+                  "primary",
                 )}
                 {action(
                   t("laneManagement.restoreOrder"),
@@ -508,7 +526,6 @@ export function LaneManagementModal(props: Props) {
               </View>
             </>
           )}
-          {action(t("laneManagement.close"), props.onClose)}
         </Modal.Content>
       </Modal>
       {deleteId && (
@@ -521,16 +538,25 @@ export function LaneManagementModal(props: Props) {
         >
           <Modal.Content
             style={{ backgroundColor: colors.surface0 }}
-            contentContainerStyle={{ gap: 12 }}
+            contentContainerStyle={{
+              padding: props.compact ? 12 : 20,
+              gap: 12,
+            }}
           >
             <Text style={{ color: colors.foreground }}>
               {t("laneManagement.deletePrompt")}
             </Text>
             {errorPanel}
-            {action(t("laneModal.cancel"), () => setDeleteId(null))}
-            {action(t("laneManagement.confirmDelete"), () => {
-              void remove(deleteId, true);
-            })}
+            <View style={styles.footer}>
+              {action(t("laneModal.cancel"), () => setDeleteId(null))}
+              {action(
+                t("laneManagement.confirmDelete"),
+                () => remove(deleteId, true),
+                false,
+                undefined,
+                "destructive",
+              )}
+            </View>
           </Modal.Content>
         </Modal>
       )}
@@ -555,13 +581,38 @@ function sameLanes(left: KanbanBoard["lanes"], right: KanbanBoard["lanes"]) {
 const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: 12, padding: 4 },
   lane: {
-    width: 220,
-    minHeight: 150,
+    minHeight: 180,
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    gap: 12,
+    borderRadius: 10,
+    padding: 10,
+    gap: 10,
   },
-  controls: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
-  button: { padding: 8, borderRadius: 6 },
+  controls: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  footer: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 10,
+  },
+  button: {
+    minHeight: 32,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  iconButton: {
+    width: 32,
+    height: 32,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  titleButton: {
+    alignItems: "flex-start",
+    borderWidth: 0,
+    paddingHorizontal: 0,
+    backgroundColor: "transparent",
+  },
 });

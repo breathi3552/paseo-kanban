@@ -79,8 +79,6 @@ export const translations = {
     "kanban.filterUnassigned": "未关联项目",
     "kanban.projectsError": "(项目列表更新受限)",
     "lane.add": "+ 添加",
-    "lane.manage": "管理",
-    "lane.manageSpecific": "管理泳道 {title}",
     "lane.emptyHint": "暂无卡片，可点击右上角添加或拖动卡片至此",
     "lane.emptyCompletionHint": "暂无已完成任务，可勾选任务或将卡片拖入此泳道",
     "card.completeTask": "完成任务：{title}",
@@ -90,7 +88,6 @@ export const translations = {
     "laneManagement.title": "管理泳道",
     "laneManagement.add": "＋ 添加泳道",
     "laneManagement.confirm": "确认",
-    "laneManagement.close": "关闭",
     "laneManagement.rename": "重命名 {title}",
     "laneManagement.empty": "泳道名称不能为空",
     "laneManagement.duplicate": "泳道名称不可重复",
@@ -98,7 +95,6 @@ export const translations = {
     "laneManagement.left": "左移 {title}",
     "laneManagement.right": "右移 {title}",
     "laneManagement.delete": "删除 {title}",
-    "laneManagement.deleteShort": "删除",
     "laneManagement.saveOrder": "保存顺序",
     "laneManagement.restoreOrder": "还原顺序",
     "laneManagement.orderPending":
@@ -226,8 +222,6 @@ export const translations = {
     "kanban.filterUnassigned": "No Project",
     "kanban.projectsError": "(Project list update restricted)",
     "lane.add": "+ Add",
-    "lane.manage": "Manage",
-    "lane.manageSpecific": "Manage lane {title}",
     "lane.emptyHint":
       "No cards yet. Click '+' in the top right or drag cards here.",
     "lane.emptyCompletionHint":
@@ -239,7 +233,6 @@ export const translations = {
     "laneManagement.title": "Manage lanes",
     "laneManagement.add": "+ Add lane",
     "laneManagement.confirm": "Confirm",
-    "laneManagement.close": "Close",
     "laneManagement.rename": "Rename {title}",
     "laneManagement.empty": "Lane name cannot be empty",
     "laneManagement.duplicate": "Lane names must be unique",
@@ -247,7 +240,6 @@ export const translations = {
     "laneManagement.left": "Move {title} left",
     "laneManagement.right": "Move {title} right",
     "laneManagement.delete": "Delete {title}",
-    "laneManagement.deleteShort": "Delete",
     "laneManagement.saveOrder": "Save order",
     "laneManagement.restoreOrder": "Restore order",
     "laneManagement.orderPending":

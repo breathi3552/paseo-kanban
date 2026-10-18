@@ -752,7 +752,6 @@ test("card gestures preview one matching-height slot, animate displacement, and 
           layout: { compact, platform: "web" },
           dragBinding: drag.bindLane("lane"),
           onAddTask: () => {},
-          onManageLane: () => {},
           onSelectTask: () => {},
         });
       }
