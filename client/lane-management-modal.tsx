@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState, type ComponentProps } from "react";
-import { View, Text, Pressable, StyleSheet, Animated } from "react-native";
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  Animated,
+  type ScrollView as NativeScrollView,
+} from "react-native";
 import {
   Icon,
-  Modal,
   TextInput,
   ScrollView,
   useToast,
@@ -19,6 +25,7 @@ import {
 import type { SaveFn } from "./kanban-session";
 import { useI18n } from "./i18n";
 import { useLaneReorder } from "./use-lane-reorder";
+import { LaneManagementDialog } from "./lane-management-dialog";
 
 interface Props {
   board: KanbanBoard;
@@ -60,6 +67,7 @@ export function LaneManagementModal(props: Props) {
   const current = useRef({ props, t, toast, lanes });
   current.current = { props, t, toast, lanes };
   const colors = props.theme.colors;
+  const scrollRef = useRef<NativeScrollView>(null);
   const width = props.compact ? 156 : 160;
   const height = 180;
   const step = width + 12;
@@ -74,12 +82,7 @@ export function LaneManagementModal(props: Props) {
     onPress: () => void,
     disabled = false,
     display?: string,
-    tone:
-      | "secondary"
-      | "primary"
-      | "danger"
-      | "destructive"
-      | "title" = "secondary",
+    tone: "secondary" | "primary" | "danger" | "destructive" = "secondary",
     icon?: ComponentProps<typeof Icon>["name"],
   ) => {
     const filled = tone === "primary" || tone === "destructive";
@@ -112,7 +115,6 @@ export function LaneManagementModal(props: Props) {
                   ? colors.accent
                   : colors.surface1,
           },
-          tone === "title" && styles.titleButton,
           icon && styles.iconButton,
           { opacity: blocked ? 0.4 : pressed ? 0.8 : 1 },
         ]}
@@ -124,8 +126,8 @@ export function LaneManagementModal(props: Props) {
             numberOfLines={1}
             style={{
               color: textColor,
-              fontSize: tone === "title" ? 14 : 13,
-              fontWeight: filled || tone === "title" ? "600" : "400",
+              fontSize: 13,
+              fontWeight: filled ? "600" : "400",
             }}
           >
             {display ?? label}
@@ -284,37 +286,51 @@ export function LaneManagementModal(props: Props) {
     setOrder(next);
   };
   const saveOrder = () => queue({ kind: "order", ids: order.slice(0, -1) });
+  const adding = editing?.kind === "add";
+  const beginAdd = () => {
+    setEditing({ kind: "add" });
+    setTitle("");
+    setError(null);
+  };
+  const cancelName = () => {
+    setEditing(null);
+    setError(null);
+  };
   const editor = (
-    <>
-      <TextInput
-        autoFocus
-        accessibilityLabel={t("laneModal.nameLabel")}
-        value={title}
-        editable={request === null}
-        onChangeText={setTitle}
-        style={{
+    <TextInput
+      autoFocus
+      accessibilityLabel={t("laneModal.nameLabel")}
+      value={title}
+      editable={request === null}
+      onChangeText={setTitle}
+      style={[
+        styles.nameInput,
+        {
           color: colors.foreground,
           backgroundColor: colors.surface2,
           borderColor: colors.border,
-          borderWidth: 1,
-          borderRadius: 6,
-          padding: 8,
-          minHeight: 36,
-        }}
-      />
-      <View style={styles.controls}>
-        {action(t("laneModal.cancel"), () => {
-          setEditing(null);
-          setError(null);
-        })}
-        {action(
-          t("laneManagement.confirm"),
-          saveName,
-          false,
-          undefined,
-          "primary",
-        )}
-      </View>
+        },
+      ]}
+    />
+  );
+  const editorActions = (
+    <>
+      {action(
+        t("laneManagement.confirm"),
+        saveName,
+        false,
+        undefined,
+        "primary",
+        "Check",
+      )}
+      {action(
+        t("laneModal.cancel"),
+        cancelName,
+        false,
+        undefined,
+        "secondary",
+        "X",
+      )}
     </>
   );
   const errorPanel = error && (
@@ -325,240 +341,269 @@ export function LaneManagementModal(props: Props) {
       {action(t("laneManagement.reload"), () => queue({ kind: "reload" }))}
     </View>
   );
+  const dialogProps = { theme: props.theme, compact: props.compact };
   return (
     <>
-      <Modal
+      <LaneManagementDialog
+        {...dialogProps}
         title={t("laneManagement.title")}
-        open
+        wide
         onOpenChange={(open) => {
           if (!open && !busy.current) props.onClose();
         }}
+        actions={action(
+          t("laneManagement.add"),
+          beginAdd,
+          dirty || reorder.active || editing !== null,
+        )}
       >
-        <Modal.Content
-          style={{ backgroundColor: colors.surface0 }}
-          contentContainerStyle={{ padding: props.compact ? 12 : 20, gap: 12 }}
+        {!deleteId && errorPanel}
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          keyboardShouldPersistTaps="handled"
+          scrollEnabled={!reorder.active}
+          onScroll={(event) =>
+            reorder.onScroll(event.nativeEvent.contentOffset.x)
+          }
+          scrollEventThrottle={16}
+          onContentSizeChange={() => {
+            if (adding) scrollRef.current?.scrollToEnd({ animated: true });
+          }}
         >
-          {!deleteId && errorPanel}
-          <ScrollView
-            horizontal
-            keyboardShouldPersistTaps="handled"
-            scrollEnabled={!reorder.active}
-            onScroll={(event) =>
-              reorder.onScroll(event.nativeEvent.contentOffset.x)
-            }
-            scrollEventThrottle={16}
-          >
-            <View style={styles.row}>
-              <View style={{ width: order.length * step - 12, height }}>
-                {reorder.slot !== null && (
-                  <View
-                    pointerEvents="none"
+          <View style={styles.row}>
+            <View style={{ width: order.length * step - 12, height }}>
+              {reorder.slot !== null && (
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.lane,
+                    {
+                      position: "absolute",
+                      width,
+                      left: reorder.slot * step,
+                      height,
+                      borderStyle: "dashed",
+                      borderColor: colors.accent,
+                      backgroundColor: colors.surface2,
+                    },
+                  ]}
+                />
+              )}
+              {displayed.map((lane, index) => {
+                const editingThis =
+                  editing?.kind === "rename" && editing.id === lane.id;
+                const binding =
+                  !lane.isCompletionLane && !editingThis
+                    ? reorder.bind(lane.id, () => {})
+                    : undefined;
+                const dragLabel = binding
+                  ? t("laneManagement.reorder", { title: lane.title })
+                  : undefined;
+                return (
+                  <Animated.View
+                    key={lane.id}
                     style={[
                       styles.lane,
                       {
                         position: "absolute",
-                        width,
-                        left: reorder.slot * step,
+                        left: 0,
+                        top: 0,
                         height,
-                        borderStyle: "dashed",
-                        borderColor: colors.accent,
-                        backgroundColor: colors.surface2,
+                        width,
+                        backgroundColor: colors.surface1,
+                        borderColor: colors.border,
                       },
+                      reorder.style(lane.id),
                     ]}
-                  />
-                )}
-                {displayed.map((lane, index) => {
-                  const editingThis =
-                    editing?.kind === "rename" && editing.id === lane.id;
-                  const rename = () => {
-                    if (dirty || busy.current) return;
-                    setEditing({ kind: "rename", id: lane.id });
-                    setTitle(lane.title);
-                    setError(null);
-                  };
-                  const binding =
-                    !lane.isCompletionLane && !editingThis
-                      ? reorder.bind(lane.id, rename)
-                      : undefined;
-                  const dragLabel = binding
-                    ? t("laneManagement.reorder", { title: lane.title })
-                    : undefined;
-                  return (
-                    <Animated.View
-                      key={lane.id}
-                      style={[
-                        styles.lane,
-                        {
-                          position: "absolute",
-                          left: 0,
-                          top: 0,
-                          height,
-                          width,
-                          backgroundColor: colors.surface1,
-                          borderColor: colors.border,
-                        },
-                        reorder.style(lane.id),
-                      ]}
+                  >
+                    {/* The background handles blank space; foreground inputs and
+                        buttons never participate in the drag responder. */}
+                    {binding && (
+                      <View
+                        style={StyleSheet.absoluteFill}
+                        accessibilityLabel={dragLabel}
+                        {...binding}
+                      />
+                    )}
+                    <View
+                      style={styles.grip}
+                      accessibilityLabel={dragLabel}
+                      {...binding}
                     >
-                      {/* Behind the controls, this catches every blank part of
-                          the block without intercepting buttons or inputs. */}
-                      {binding && (
-                        <View
-                          style={StyleSheet.absoluteFill}
-                          accessibilityLabel={dragLabel}
-                          {...binding}
-                        />
-                      )}
+                      <Icon
+                        name={
+                          lane.isCompletionLane
+                            ? "LockKeyhole"
+                            : "GripHorizontal"
+                        }
+                        size={18}
+                        color={colors.foregroundMuted}
+                      />
+                    </View>
+                    <View pointerEvents="box-none" style={styles.nameRow}>
                       {editingThis ? (
                         editor
                       ) : (
-                        <View
-                          style={{ minHeight: 44, justifyContent: "center" }}
-                          accessibilityLabel={dragLabel}
-                          {...binding}
-                        >
-                          {action(
-                            t("laneManagement.rename", { title: lane.title }),
-                            binding?.onPress ?? rename,
-                            dirty || reorder.active,
-                            lane.title,
-                            "title",
-                          )}
-                        </View>
-                      )}
-                      {lane.isCompletionLane && (
-                        <Text style={{ color: colors.foregroundMuted }}>
-                          {t("laneManagement.completion")}
-                        </Text>
-                      )}
-                      {!lane.isCompletionLane && (
                         <>
                           <View
-                            pointerEvents="box-none"
-                            style={styles.controls}
+                            style={styles.nameDisplay}
+                            accessibilityLabel={dragLabel}
+                            {...binding}
                           >
-                            {action(
-                              t("laneManagement.left", { title: lane.title }),
-                              () => move(index, -1),
-                              index === 0 || editing !== null || reorder.active,
-                              undefined,
-                              "secondary",
-                              "ArrowLeft",
-                            )}
-                            {action(
-                              t("laneManagement.right", { title: lane.title }),
-                              () => move(index, 1),
-                              index === order.length - 2 ||
-                                editing !== null ||
-                                reorder.active,
-                              undefined,
-                              "secondary",
-                              "ArrowRight",
-                            )}
-                            {action(
-                              t("laneManagement.delete", { title: lane.title }),
-                              () => remove(lane.id),
-                              dirty || lanes.length <= 2 || reorder.active,
-                              undefined,
-                              "danger",
-                              "Trash2",
-                            )}
-                          </View>
-                          {lanes.length <= 2 && (
                             <Text
+                              numberOfLines={1}
                               style={{
-                                color: colors.foregroundMuted,
-                                fontSize: 12,
+                                color: colors.foreground,
+                                fontSize: 14,
+                                fontWeight: "600",
                               }}
                             >
-                              {t("laneModal.cannotDeleteLast")}
+                              {lane.title}
                             </Text>
+                          </View>
+                          {action(
+                            t("laneManagement.rename", { title: lane.title }),
+                            () => {
+                              setEditing({ kind: "rename", id: lane.id });
+                              setTitle(lane.title);
+                              setError(null);
+                            },
+                            dirty || reorder.active || editing !== null,
+                            undefined,
+                            "secondary",
+                            "Pencil",
                           )}
                         </>
                       )}
-                    </Animated.View>
-                  );
-                })}
-              </View>
+                    </View>
+                    {/* Always reserve this row: confirming/cancelling names must
+                        never displace the lane's movement/delete controls. */}
+                    <View pointerEvents="box-none" style={styles.editActions}>
+                      {editingThis && editorActions}
+                    </View>
+                    <View pointerEvents="box-none" style={styles.laneActions}>
+                      {lane.isCompletionLane ? (
+                        <Text
+                          style={{
+                            color: colors.foregroundMuted,
+                            fontSize: 12,
+                          }}
+                        >
+                          {t("laneManagement.completion")}
+                        </Text>
+                      ) : (
+                        <>
+                          {action(
+                            t("laneManagement.left", { title: lane.title }),
+                            () => move(index, -1),
+                            index === 0 || editing !== null || reorder.active,
+                            undefined,
+                            "secondary",
+                            "ArrowLeft",
+                          )}
+                          {action(
+                            t("laneManagement.right", { title: lane.title }),
+                            () => move(index, 1),
+                            index === order.length - 2 ||
+                              editing !== null ||
+                              reorder.active,
+                            undefined,
+                            "secondary",
+                            "ArrowRight",
+                          )}
+                          {action(
+                            t("laneManagement.delete", { title: lane.title }),
+                            () => remove(lane.id),
+                            dirty ||
+                              lanes.length <= 2 ||
+                              reorder.active ||
+                              editing !== null,
+                            undefined,
+                            "danger",
+                            "Trash2",
+                          )}
+                        </>
+                      )}
+                    </View>
+                  </Animated.View>
+                );
+              })}
+            </View>
+            {adding && (
               <View
                 style={[
                   styles.lane,
                   {
                     width,
                     height,
-                    borderColor: colors.border,
+                    borderColor: colors.accent,
                     backgroundColor: colors.surface1,
                   },
                 ]}
               >
-                {editing?.kind === "add"
-                  ? editor
-                  : action(
-                      t("laneManagement.add"),
-                      () => {
-                        setEditing({ kind: "add" });
-                        setTitle("");
-                        setError(null);
-                      },
-                      dirty || reorder.active,
-                    )}
+                <View style={styles.grip}>
+                  <Text style={{ color: colors.foregroundMuted, fontSize: 12 }}>
+                    {t("laneModal.titleCreate")}
+                  </Text>
+                </View>
+                <View style={styles.nameRow}>{editor}</View>
+                <View style={styles.editActions}>{editorActions}</View>
+                <View style={styles.laneActions} />
               </View>
+            )}
+          </View>
+        </ScrollView>
+        {lanes.length <= 2 && (
+          <Text style={{ color: colors.foregroundMuted, fontSize: 12 }}>
+            {t("laneModal.cannotDeleteLast")}
+          </Text>
+        )}
+        {dirty && (
+          <>
+            <Text style={{ color: colors.foregroundMuted }}>
+              {t("laneManagement.orderPending")}
+            </Text>
+            <View style={styles.controls}>
+              {action(
+                t("laneManagement.saveOrder"),
+                saveOrder,
+                reorder.active,
+                undefined,
+                "primary",
+              )}
+              {action(
+                t("laneManagement.restoreOrder"),
+                () => setOrder(lanes.map((lane) => lane.id)),
+                reorder.active,
+              )}
             </View>
-          </ScrollView>
-          {dirty && (
-            <>
-              <Text style={{ color: colors.foregroundMuted }}>
-                {t("laneManagement.orderPending")}
-              </Text>
-              <View style={styles.controls}>
-                {action(
-                  t("laneManagement.saveOrder"),
-                  saveOrder,
-                  reorder.active,
-                  undefined,
-                  "primary",
-                )}
-                {action(
-                  t("laneManagement.restoreOrder"),
-                  () => setOrder(lanes.map((lane) => lane.id)),
-                  reorder.active,
-                )}
-              </View>
-            </>
-          )}
-        </Modal.Content>
-      </Modal>
+          </>
+        )}
+      </LaneManagementDialog>
       {deleteId && (
-        <Modal
+        <LaneManagementDialog
+          {...dialogProps}
           title={t("laneManagement.deleteTitle")}
-          open
           onOpenChange={(open) => {
             if (!open && !busy.current) setDeleteId(null);
           }}
         >
-          <Modal.Content
-            style={{ backgroundColor: colors.surface0 }}
-            contentContainerStyle={{
-              padding: props.compact ? 12 : 20,
-              gap: 12,
-            }}
-          >
-            <Text style={{ color: colors.foreground }}>
-              {t("laneManagement.deletePrompt")}
-            </Text>
-            {errorPanel}
-            <View style={styles.footer}>
-              {action(t("laneModal.cancel"), () => setDeleteId(null))}
-              {action(
-                t("laneManagement.confirmDelete"),
-                () => remove(deleteId, true),
-                false,
-                undefined,
-                "destructive",
-              )}
-            </View>
-          </Modal.Content>
-        </Modal>
+          <Text style={{ color: colors.foreground }}>
+            {t("laneManagement.deletePrompt")}
+          </Text>
+          {errorPanel}
+          <View style={styles.footer}>
+            {action(t("laneModal.cancel"), () => setDeleteId(null))}
+            {action(
+              t("laneManagement.confirmDelete"),
+              () => remove(deleteId, true),
+              false,
+              undefined,
+              "destructive",
+            )}
+          </View>
+        </LaneManagementDialog>
       )}
     </>
   );
@@ -585,7 +630,32 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 10,
     padding: 10,
-    gap: 10,
+    gap: 6,
+  },
+  grip: { height: 24, alignItems: "center", justifyContent: "center" },
+  nameRow: { height: 36, flexDirection: "row", alignItems: "center", gap: 6 },
+  nameDisplay: { flex: 1, minWidth: 0, height: 36, justifyContent: "center" },
+  nameInput: {
+    flex: 1,
+    minWidth: 0,
+    height: 36,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    fontSize: 14,
+  },
+  editActions: {
+    height: 32,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 6,
+  },
+  laneActions: {
+    height: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   controls: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   footer: {
@@ -608,11 +678,5 @@ const styles = StyleSheet.create({
     height: 32,
     paddingHorizontal: 0,
     paddingVertical: 0,
-  },
-  titleButton: {
-    alignItems: "flex-start",
-    borderWidth: 0,
-    paddingHorizontal: 0,
-    backgroundColor: "transparent",
   },
 });

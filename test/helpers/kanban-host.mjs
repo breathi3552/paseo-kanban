@@ -34,8 +34,10 @@ export function text(node) {
 export async function press(root, label) {
   const button = root
     .findAllByType("Pressable")
-    .find((node) =>
-      node.findAllByType("Text").some((child) => text(child) === label),
+    .find(
+      (node) =>
+        node.props.accessibilityLabel === label ||
+        node.findAllByType("Text").some((child) => text(child) === label),
     );
   assert.ok(button, `button ${label} exists`);
   await act(async () => button.props.onPress({ stopPropagation() {} }));
@@ -160,6 +162,10 @@ export function createHost({
     addWorkspacePanel: (panel) => register(panels, panel),
   };
   const { default: contribute } = loadClientModule("../index.client", {
+    "./web": {
+      WebDialogPortal: ({ children }) =>
+        React.createElement("WebDialogPortal", {}, children),
+    },
     "@getpaseo/plugin/client": sdk,
     "@getpaseo/plugin/client/react-native": {
       Modal,

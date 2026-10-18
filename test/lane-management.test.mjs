@@ -12,8 +12,14 @@ const lanes = [
   { id: "doing", title: "Doing", isCompletionLane: false },
   { id: "done", title: "Finished", isCompletionLane: true },
 ];
-const dialog = (renderer) => renderer.root.findAllByType("Modal")[0];
-const confirmation = (renderer) => renderer.root.findAllByType("Modal")[1];
+const dialogs = (renderer) =>
+  renderer.root.findAll(
+    (node) =>
+      node.type === "Modal" ||
+      (node.type === "View" && node.props.role === "dialog"),
+  );
+const dialog = (renderer) => dialogs(renderer)[0];
+const confirmation = (renderer) => dialogs(renderer)[1];
 const displayedLanes = (renderer) =>
   dialog(renderer)
     .findAllByType("Pressable")
@@ -65,7 +71,7 @@ test("管理入口就地添加：确认才保存，新泳道插在完成泳道�
     host.board.lanes.map((l) => l.title),
     ["Todo", "Doing", "Review", "Finished"],
   );
-  assert.equal(dialog(renderer).props.title, "Manage lanes");
+  assert.equal(dialog(renderer).props.accessibilityLabel, "Manage lanes");
   assert.deepEqual(host.notifications, ["Lane created"]);
 });
 
@@ -228,7 +234,7 @@ test("删除按未完成状态跨项目清理，确认无数量，保留完成�
       .some((n) => n.props.accessibilityLabel === "Delete Finished"),
     false,
   );
-  await act(async () => dialog(renderer).props.onOpenChange(false));
+  await click(dialog(renderer), "Close");
   await click(renderer.root, "Mark Archive incomplete");
   assert.equal(
     host.board.tasks.find((task) => task.id === "c").laneId,
@@ -398,8 +404,8 @@ test("工具栏统一管理，右上角关闭丢弃排序和未确认名称，�
   await enter(renderer, "Ready");
   await press(dialog(renderer), "Confirm");
   await click(dialog(renderer), "Move Doing left");
-  await act(async () => dialog(renderer).props.onOpenChange(false));
-  assert.equal(renderer.root.findAllByType("Modal").length, 0);
+  await click(dialog(renderer), "Close");
+  assert.equal(dialog(renderer), undefined);
   await press(renderer.root, "Manage lanes");
   assert.deepEqual(displayedLanes(renderer), [
     "Rename Ready",
@@ -408,8 +414,8 @@ test("工具栏统一管理，右上角关闭丢弃排序和未确认名称，�
   ]);
   await click(dialog(renderer), "Rename Ready");
   await enter(renderer, "Unconfirmed");
-  await act(async () => dialog(renderer).props.onOpenChange(false));
-  assert.equal(renderer.root.findAllByType("Modal").length, 0);
+  await click(dialog(renderer), "Close");
+  assert.equal(dialog(renderer), undefined);
   assert.equal(host.board.lanes[0].title, "Ready");
   assert.deepEqual(host.notifications, ["Lane renamed"]);
 });
@@ -432,7 +438,7 @@ test("中文窄屏就地添加同样判重，完成泳道原名确认不产生�
   await press(dialog(renderer), "确认");
   assert.deepEqual(host.notifications, []);
   await act(async () => dialog(renderer).props.onOpenChange(false));
-  assert.equal(renderer.root.findAllByType("Modal").length, 0);
+  assert.equal(dialog(renderer), undefined);
 });
 
 test("鼠标从名称区域拖动生成排序草稿，落位不改名且点击保存才持久化", async (t) => {
