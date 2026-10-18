@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { act } from "./helpers/react-host-env.mjs";
 import { createHost, mount, press, text } from "./helpers/kanban-host.mjs";
+import { KanbanBoardSchema } from "../shared/kanban.ts";
 
 let language = "en";
 let windowEvents = new EventTarget();
@@ -297,7 +298,15 @@ test("读取失败与空列表有明确状态，重试恢复，迟到的项目�
       return page(31, 1, 1);
     },
   });
-  assert.match(texts(modal(renderer)), /GitHub|sign in/i);
+  assert.ok(
+    modal(renderer)
+      .findAllByType("Text")
+      .some(
+        (node) =>
+          text(node) ===
+          "Sign in to GitHub using gh on the Paseo daemon machine.",
+      ),
+  );
   await press(modal(renderer), "Retry");
   await choose(renderer, "Project", "project-b");
   assert.match(texts(modal(renderer)), /Issue 31/);
@@ -338,7 +347,7 @@ test("卡片外链与详情完整网址打开同一网页，详情锁定项目�
     /https:\/\/github.com\/example\/repo\/issues\/1/,
   );
   await press(modal(renderer), issue(1).url);
-  assert.equal(host.externalUrls.length, 2);
+  assert.deepEqual(host.externalUrls, [issue(1).url, issue(1).url]);
   const input = modal(renderer)
     .findAllByType("TextInput")
     .find((n) => n.props.value === "Issue 1");
@@ -346,21 +355,35 @@ test("卡片外链与详情完整网址打开同一网页，详情锁定项目�
   await press(modal(renderer), "Save Changes");
   assert.equal(host.board.tasks[0].title, "Edited title");
   assert.equal(host.board.tasks[0].source, "github_issue");
+  assert.equal(host.board.tasks[0].issueNumber, 1);
+  assert.equal(host.board.tasks[0].externalUrl, issue(1).url);
+  assert.equal(host.board.tasks[0].projectId, "project-a");
 });
 
 test("上游语言切换更新导入界面且保留页码、勾选；保存摘录不随语言重写", async (t) => {
   const { host, renderer } = await setup(t, {
     compact: true,
-    rpc: async () => page(1, 1, 1),
+    rpc: async (query) =>
+      query.page === 2 ? page(26, 1, 26) : page(1, 25, 26),
   });
-  await click(modal(renderer), "Select Issue #1");
+  await click(modal(renderer), "Next page");
+  await click(modal(renderer), "Select Issue #26");
+  assert.match(texts(modal(renderer)), /Page 2 of 2/);
   await act(async () => {
     language = "zh-CN";
     windowEvents.dispatchEvent(new Event("focus"));
   });
   assert.match(texts(modal(renderer)), /已选择 1 项/);
-  assert.match(texts(modal(renderer)), /前/);
+  assert.match(texts(modal(renderer)), /第 2 页，共 2 页/);
+  assert.equal(
+    control(modal(renderer), "选择 Issue #26").props.accessibilityState.checked,
+    true,
+  );
   await press(modal(renderer), "导入");
+  assert.deepEqual(
+    host.board.tasks.map((task) => task.issueNumber),
+    [26],
+  );
   const description = host.board.tasks[0].description;
   assert.match(description, /创建于/);
   await act(async () => {
@@ -370,7 +393,7 @@ test("上游语言切换更新导入界面且保留页码、勾选；保存摘�
   assert.equal(host.board.tasks[0].description, description);
 });
 
-test("全部视图不擅自选择项目，导入其他项目后切换筛选使新任务可见", async (t) => {
+test("全部视图不擅自选择项目，显式选择后才读取仓库", async (t) => {
   let reads = 0;
   const { renderer } = await setup(
     t,
@@ -382,18 +405,57 @@ test("全部视图不擅自选择项目，导入其他项目后切换筛选使�
     },
     undefined,
   );
-  // setup defaults to a workspace; switch the actual board to All and reopen.
   await press(modal(renderer), "Cancel");
   await press(renderer.root, "All");
-  await press(renderer.root, "Import from GitHub");
   const initialReads = reads;
+  await press(renderer.root, "Import from GitHub");
   assert.equal(modal(renderer).findAllByType("Select")[0].props.value, "");
   assert.match(texts(modal(renderer)), /Select a project/);
   assert.equal(reads, initialReads);
   await choose(renderer, "Project", "project-b");
+  assert.equal(reads, initialReads + 1);
+  assert.match(texts(modal(renderer)), /Issue 1/);
+});
+
+test("Project A 筛选下导入 Project B 后自动切换筛选，新任务可见而 A 任务隐藏", async (t) => {
+  const { host, renderer } = await setup(t, {
+    board: KanbanBoardSchema.parse({
+      lanes,
+      tasks: [
+        {
+          id: "a",
+          title: "Only Project A",
+          laneId: "todo",
+          projectId: "project-a",
+        },
+        {
+          id: "b",
+          title: "Only Project B",
+          laneId: "todo",
+          projectId: "project-b",
+        },
+      ],
+    }),
+    rpc: async () => page(1, 1, 1),
+  });
+  await press(modal(renderer), "Cancel");
+  assert.match(texts(renderer.root), /Only Project A/);
+  assert.doesNotMatch(texts(renderer.root), /Only Project B/);
+  await press(renderer.root, "Import from GitHub");
+  assert.equal(
+    modal(renderer).findAllByType("Select")[0].props.value,
+    "project-a",
+  );
+  await choose(renderer, "Project", "project-b");
   await click(modal(renderer), "Select Issue #1");
   await press(modal(renderer), "Import");
+  assert.equal(
+    host.board.tasks.find((task) => task.issueNumber === 1).projectId,
+    "project-b",
+  );
   assert.match(texts(renderer.root), /Issue 1/);
+  assert.match(texts(renderer.root), /Only Project B/);
+  assert.doesNotMatch(texts(renderer.root), /Only Project A/);
 });
 
 test("Open Issues减少导致末页失效时，重试返回第一页并恢复可选列表", async (t) => {

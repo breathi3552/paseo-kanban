@@ -270,17 +270,37 @@ export const kanbanSettings = defineSettings({
 // Pure State Transition Functions
 // ---------------------------------------------------------------------------
 
+export class LaneTitleError extends Error {
+  readonly reason: "empty" | "duplicate";
+  constructor(reason: "empty" | "duplicate") {
+    super(
+      reason === "empty"
+        ? "Lane title cannot be empty"
+        : "Lane title already exists",
+    );
+    this.reason = reason;
+  }
+}
+
+function requireLaneTitle(board: KanbanBoard, title: string, laneId?: string) {
+  const trimmed = title.trim();
+  if (!trimmed) throw new LaneTitleError("empty");
+  if (
+    board.lanes.some((lane) => lane.id !== laneId && lane.title === trimmed)
+  ) {
+    throw new LaneTitleError("duplicate");
+  }
+  return trimmed;
+}
+
 export function addLane(
   board: KanbanBoard,
   lane: { id: string; title: string },
 ): KanbanBoard {
   const trimmedId = lane.id.trim();
-  const trimmedTitle = lane.title.trim();
+  const trimmedTitle = requireLaneTitle(board, lane.title);
   if (!trimmedId) {
     throw new Error("Lane ID cannot be empty");
-  }
-  if (!trimmedTitle) {
-    throw new Error("Lane title cannot be empty");
   }
   if (board.lanes.some((l) => l.id === trimmedId)) {
     throw new Error(`Lane with ID "${trimmedId}" already exists`);
@@ -302,10 +322,7 @@ export function updateLane(
   laneId: string,
   patch: { title: string },
 ): KanbanBoard {
-  const trimmedTitle = patch.title.trim();
-  if (!trimmedTitle) {
-    throw new Error("Lane title cannot be empty");
-  }
+  const trimmedTitle = requireLaneTitle(board, patch.title, laneId);
 
   let found = false;
   const nextLanes = board.lanes.map((lane) => {
@@ -326,6 +343,27 @@ export function updateLane(
   });
 }
 
+export function reorderLanes(
+  board: KanbanBoard,
+  ordinaryLaneIds: string[],
+): KanbanBoard {
+  const ordinary = board.lanes.filter((lane) => !lane.isCompletionLane);
+  if (
+    ordinaryLaneIds.length !== ordinary.length ||
+    new Set(ordinaryLaneIds).size !== ordinary.length ||
+    ordinaryLaneIds.some((id) => !ordinary.some((lane) => lane.id === id))
+  ) {
+    throw new Error("Order must contain every ordinary lane exactly once");
+  }
+  return KanbanBoardSchema.parse({
+    lanes: [
+      ...ordinaryLaneIds.map((id) => ordinary.find((lane) => lane.id === id)!),
+      board.lanes.at(-1)!,
+    ],
+    tasks: board.tasks,
+  });
+}
+
 export function deleteLane(board: KanbanBoard, laneId: string): KanbanBoard {
   const laneIndex = board.lanes.findIndex((l) => l.id === laneId);
   if (laneIndex === -1) {
@@ -339,17 +377,12 @@ export function deleteLane(board: KanbanBoard, laneId: string): KanbanBoard {
     throw new Error("Cannot delete the last remaining ordinary lane");
   }
 
-  const hasTasks = board.tasks.some((t) => !t.completed && t.laneId === laneId);
-  if (hasTasks) {
-    throw new Error(
-      `Cannot delete lane "${laneId}" because it contains tasks. Move or delete tasks first.`,
-    );
-  }
-
   const nextLanes = board.lanes.filter((l) => l.id !== laneId);
   return KanbanBoardSchema.parse({
     lanes: nextLanes,
-    tasks: board.tasks,
+    tasks: board.tasks.filter(
+      (task) => task.completed || task.laneId !== laneId,
+    ),
   });
 }
 

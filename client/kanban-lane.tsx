@@ -24,7 +24,6 @@ export interface KanbanLaneViewProps {
   layout: { compact: boolean; platform: "ios" | "android" | "web" };
   dragBinding: LaneDragBinding;
   onAddTask: (laneId: string) => void;
-  onManageLane: (laneId: string) => void;
   onSelectTask: (task: KanbanTask) => void;
   onSetCompleted?: (taskId: string, completed: boolean) => void;
   completionPending?: boolean;
@@ -39,7 +38,6 @@ function KanbanLaneViewInner({
   layout,
   dragBinding,
   onAddTask,
-  onManageLane,
   onSelectTask,
   onSetCompleted,
   completionPending = false,
@@ -265,15 +263,6 @@ function KanbanLaneViewInner({
               <Text style={styles.laneHeaderBtnText}>{t("lane.add")}</Text>
             </Pressable>
           )}
-
-          <Pressable
-            onPress={() => onManageLane(lane.id)}
-            disabled={completionPending}
-            style={styles.laneHeaderBtn}
-            hitSlop={6}
-          >
-            <Text style={styles.laneHeaderBtnText}>{t("lane.manage")}</Text>
-          </Pressable>
         </View>
       </View>
 

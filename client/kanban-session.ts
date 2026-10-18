@@ -6,9 +6,6 @@ import {
   addTask,
   updateTask,
   deleteTask,
-  addLane,
-  updateLane,
-  deleteLane,
   reorderTask,
   setTaskCompleted,
   importGitHubTasks,
@@ -55,7 +52,6 @@ export async function executeIssueImport(input: {
 
 export const sessionMessages = {
   zh: {
-    importedProjectLocked: "GitHub 导入任务的关联项目不可更改。",
     subtaskEmpty: "新增子步骤内容不能为空",
     savingInProgress: "正在保存中，请勿重复提交",
     taskTitleEmpty: "任务标题不能为空",
@@ -67,19 +63,11 @@ export const sessionMessages = {
     savingActionInProgress: "正在保存中，请勿重复操作",
     taskDeleteOnlyInEdit: "仅在编辑模式下可删除任务",
     taskDeleteFailed: "删除失败：数据可能已被其他会话修改或删除未生效。",
-    laneTitleEmpty: "泳道名称不能为空",
-    laneNotFound: (id: string) => `泳道 "${id}" 不存在或已被删除`,
-    laneSaveConflict:
-      "保存失败：数据可能已被其他会话修改或保存未生效。草稿已保留。",
-    laneDeleteOnlyInEdit: "仅在编辑模式下可删除泳道",
-    laneDeleteFailed: "删除失败：数据可能已被其他会话修改或删除未生效。",
     reorderConflict: "保存失败或版本冲突，未修改数据。请刷新最新数据后重试。",
     completionConflict:
       "完成状态保存失败或版本冲突，未修改数据。请核实最新状态后重试。",
   },
   en: {
-    importedProjectLocked:
-      "The project of an imported GitHub task cannot be changed.",
     subtaskEmpty: "Subtask content cannot be empty",
     savingInProgress: "Saving in progress, please do not submit repeatedly",
     taskTitleEmpty: "Task title cannot be empty",
@@ -93,14 +81,6 @@ export const sessionMessages = {
       "Operation in progress, please do not submit repeatedly",
     taskDeleteOnlyInEdit: "Tasks can only be deleted in edit mode",
     taskDeleteFailed:
-      "Delete failed: Data may have been modified by another session or delete was not applied.",
-    laneTitleEmpty: "Lane name cannot be empty",
-    laneNotFound: (id: string) =>
-      `Lane "${id}" does not exist or has been deleted`,
-    laneSaveConflict:
-      "Save failed: Data may have been modified by another session or save was not applied. Draft preserved.",
-    laneDeleteOnlyInEdit: "Lanes can only be deleted in edit mode",
-    laneDeleteFailed:
       "Delete failed: Data may have been modified by another session or delete was not applied.",
     reorderConflict:
       "Save failed or version conflict, data was not modified. Please refresh and try again.",
@@ -162,45 +142,6 @@ export interface TaskEditSession {
   save(draft?: TaskDraft): Promise<SessionResult>;
   saveDraft(draft?: TaskDraft): Promise<SessionResult>;
   deleteTask(): Promise<SessionResult>;
-}
-
-export interface LaneDraft {
-  id?: string;
-  title: string;
-}
-
-export interface LaneSessionInitialValues {
-  id?: string;
-  title: string;
-}
-
-export interface LaneSessionSnapshot {
-  readonly id?: string;
-  readonly title: string;
-  readonly lanesCount: number;
-  readonly ordinaryLanesCount: number;
-  readonly isCompletionLane: boolean;
-  readonly tasksInLaneCount: number;
-  readonly canDelete: boolean;
-  readonly isSaving: boolean;
-  readonly error: string | null;
-}
-
-export interface LaneEditSession {
-  readonly mode: "create" | "edit";
-  readonly baseBoard: KanbanBoard;
-  readonly baseRevision: string;
-  readonly initialValues: LaneSessionInitialValues;
-  readonly lanesCount: number;
-  readonly tasksInLaneCount: number;
-  readonly canDelete: boolean;
-  getSnapshot(): LaneSessionSnapshot;
-  subscribe(listener: () => void): () => void;
-  setTitle(title: string): void;
-  clearError(): void;
-  save(draft?: LaneDraft): Promise<SessionResult>;
-  saveDraft(draft?: LaneDraft): Promise<SessionResult>;
-  deleteLane(): Promise<SessionResult>;
 }
 
 export interface OpenTaskSessionOptions {
@@ -386,15 +327,6 @@ export function openTaskSession(
     }
 
     if (draft) {
-      if (
-        task?.source === "github_issue" &&
-        draft.projectId !== undefined &&
-        draft.projectId !== task.projectId
-      ) {
-        error = msgs.importedProjectLocked;
-        notify();
-        return { success: false, kind: "validation", error };
-      }
       if (draft.title !== undefined) title = draft.title;
       if (draft.description !== undefined)
         description = draft.description ?? "";
@@ -560,226 +492,6 @@ export function openTaskSession(
     save,
     saveDraft: save,
     deleteTask: deleteTaskAction,
-  };
-}
-
-export interface OpenLaneSessionOptions {
-  mode: "create" | "edit";
-  baseBoard: KanbanBoard;
-  baseRevision: string;
-  save: SaveFn;
-  laneId?: string;
-  language?: SessionLanguage;
-}
-
-export function openLaneSession(
-  options: OpenLaneSessionOptions,
-): LaneEditSession {
-  const {
-    mode,
-    baseBoard,
-    baseRevision,
-    save: saveFn,
-    laneId,
-    language = "zh",
-  } = options;
-  const msgs = sessionMessages[language] ?? sessionMessages.zh;
-
-  const lane =
-    mode === "edit" && laneId
-      ? (baseBoard.lanes.find((l) => l.id === laneId) ?? null)
-      : null;
-  const lanesCount = baseBoard.lanes.length;
-  const ordinaryLanesCount = baseBoard.lanes.filter(
-    (lane) => !lane.isCompletionLane,
-  ).length;
-  const tasksInLaneCount = lane
-    ? baseBoard.tasks.filter((t) => !t.completed && t.laneId === lane.id).length
-    : 0;
-  const canDelete = Boolean(
-    lane &&
-    !lane.isCompletionLane &&
-    ordinaryLanesCount > 1 &&
-    tasksInLaneCount === 0,
-  );
-
-  const initialValues: LaneSessionInitialValues = {
-    id: lane?.id,
-    title: lane?.title ?? "",
-  };
-
-  let title = initialValues.title;
-  let isSaving = false;
-  let error: string | null = null;
-
-  const listeners = new Set<() => void>();
-  let cachedSnapshot: LaneSessionSnapshot | null = null;
-
-  function buildSnapshot(): LaneSessionSnapshot {
-    if (!cachedSnapshot) {
-      cachedSnapshot = {
-        id: initialValues.id,
-        title,
-        lanesCount,
-        ordinaryLanesCount,
-        isCompletionLane: lane?.isCompletionLane ?? false,
-        tasksInLaneCount,
-        canDelete,
-        isSaving,
-        error,
-      };
-    }
-    return cachedSnapshot;
-  }
-
-  function notify() {
-    cachedSnapshot = null;
-    buildSnapshot();
-    for (const listener of listeners) {
-      listener();
-    }
-  }
-
-  function setTitle(newTitle: string) {
-    if (isSaving || newTitle === title) return;
-    title = newTitle;
-    if (error) error = null;
-    notify();
-  }
-
-  function clearError() {
-    if (error) {
-      error = null;
-      notify();
-    }
-  }
-
-  async function save(draft?: LaneDraft): Promise<SessionResult> {
-    if (isSaving) {
-      return { success: false, kind: "busy", error: msgs.savingInProgress };
-    }
-
-    if (draft && draft.title !== undefined) {
-      title = draft.title;
-    }
-
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
-      error = msgs.laneTitleEmpty;
-      notify();
-      return { success: false, kind: "validation", error };
-    }
-
-    isSaving = true;
-    error = null;
-    notify();
-
-    try {
-      let nextBoard: KanbanBoard;
-      if (mode === "create") {
-        const generatedId =
-          draft?.id?.trim() ||
-          `lane_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-        nextBoard = addLane(baseBoard, {
-          id: generatedId,
-          title: trimmedTitle,
-        });
-      } else {
-        if (!laneId || !baseBoard.lanes.some((l) => l.id === laneId)) {
-          isSaving = false;
-          error = msgs.laneNotFound(laneId ?? "");
-          notify();
-          return { success: false, kind: "operation", error };
-        }
-        nextBoard = updateLane(baseBoard, laneId, {
-          title: trimmedTitle,
-        });
-      }
-
-      const saved = await saveFn(nextBoard, baseRevision);
-      isSaving = false;
-      if (!saved) {
-        error = msgs.laneSaveConflict;
-        notify();
-        return { success: false, kind: "operation", error };
-      }
-      const unchanged = mode === "edit" && trimmedTitle === initialValues.title;
-      notify();
-      return unchanged ? { success: true, unchanged: true } : { success: true };
-    } catch (err) {
-      isSaving = false;
-      error = err instanceof Error ? err.message : String(err);
-      notify();
-      return { success: false, kind: "operation", error };
-    }
-  }
-
-  async function deleteLaneAction(): Promise<SessionResult> {
-    if (isSaving) {
-      return {
-        success: false,
-        kind: "busy",
-        error: msgs.savingActionInProgress,
-      };
-    }
-    if (mode !== "edit" || !laneId) {
-      return {
-        success: false,
-        kind: "operation",
-        error: msgs.laneDeleteOnlyInEdit,
-      };
-    }
-    if (!baseBoard.lanes.some((l) => l.id === laneId)) {
-      return {
-        success: false,
-        kind: "operation",
-        error: msgs.laneNotFound(laneId),
-      };
-    }
-
-    isSaving = true;
-    error = null;
-    notify();
-
-    try {
-      const nextBoard = deleteLane(baseBoard, laneId);
-      const saved = await saveFn(nextBoard, baseRevision);
-      isSaving = false;
-      if (!saved) {
-        error = msgs.laneDeleteFailed;
-        notify();
-        return { success: false, kind: "operation", error };
-      }
-      notify();
-      return { success: true };
-    } catch (err) {
-      isSaving = false;
-      error = err instanceof Error ? err.message : String(err);
-      notify();
-      return { success: false, kind: "operation", error };
-    }
-  }
-
-  return {
-    mode,
-    baseBoard,
-    baseRevision,
-    initialValues,
-    lanesCount,
-    tasksInLaneCount,
-    canDelete,
-    getSnapshot: buildSnapshot,
-    subscribe(listener: () => void) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-    setTitle,
-    clearError,
-    save,
-    saveDraft: save,
-    deleteLane: deleteLaneAction,
   };
 }
 

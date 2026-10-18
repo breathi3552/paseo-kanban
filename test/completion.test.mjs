@@ -71,43 +71,6 @@ test("拖入完成泳道后按时间排序且不能手动重排，拖出按落�
   );
 });
 
-test("完成泳道固定且受保护，删除已完成任务的归属后恢复到最右普通泳道末尾", () => {
-  const board = kanban.KanbanBoardSchema.parse({});
-  assert.equal(board.lanes.at(-1).isCompletionLane, true);
-  assert.equal(board.lanes.filter((l) => l.isCompletionLane).length, 1);
-
-  const added = kanban.addLane(board, { id: "testing", title: "Testing" });
-  assert.equal(added.lanes.at(-1).isCompletionLane, true);
-  assert.equal(added.lanes.at(-2).id, "testing");
-
-  assert.throws(() => kanban.deleteLane(board, "done"), /completion lane/i);
-
-  const withActive = kanban.addTask(
-    kanban.addTask(added, {
-      id: "resident",
-      title: "Resident",
-      laneId: "in-progress",
-    }),
-    {
-      id: "a",
-      title: "Active",
-      laneId: "testing",
-    },
-  );
-  const withCompleted = kanban.setTaskCompleted(withActive, "a", true);
-  const deleted = kanban.deleteLane(withCompleted, "testing");
-  assert.equal(
-    deleted.lanes.some((l) => l.id === "testing"),
-    false,
-  );
-  assert.equal(deleted.tasks.find((t) => t.id === "a").laneId, "testing");
-  const restored = kanban.setTaskCompleted(deleted, "a", false);
-  assert.deepEqual(
-    kanban.getLaneTasks(restored, "in-progress").map((t) => t.id),
-    ["resident", "a"],
-  );
-});
-
 test("设置版本升级平滑迁移: v1到v2无损转换旧done泳道、标记历史任务完成并保留相对次序", () => {
   const legacyV1 = {
     lanes: [

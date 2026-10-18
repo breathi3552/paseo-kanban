@@ -10,7 +10,7 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 
 ## Highlights
 
-- **Swimlane Management**: Freely add, rename, and delete custom swimlanes to organize tasks according to your team's workflow stages.
+- **Swimlane Management**: Manage lanes in one horizontal dialog. Add, rename, and delete immediately; preview ordering with left/right controls or dragging, then save the order. Deleting a lane with unfinished tasks requires confirmation and removes those tasks across all projects; completed tasks are kept.
 - **Drag-and-Drop Interaction**: Fluid intra-lane reordering and cross-lane movement with animated drop-slot displacement, viewport edge auto-scrolling, and smooth drop-in feedback.
 - **GitHub Issue Import**: One-way import of open issues from the project repository's GitHub origin into a chosen lane, featuring pagination, repository-wide creation-time sorting, automatic deduplication, and source links.
 
@@ -113,7 +113,7 @@ npm ci
 npm run check
 ```
 
-Individual commands (`npm test`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run check:package`) are defined in [`package.json`](./package.json). For tag-based publishing, release sources of truth, recovery, and host acceptance, see the [development guide](./docs/development.md#21-标签发布github-actions).
+Individual commands (`npm test`, `npm run check:portal`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run check:package`) are defined in [`package.json`](./package.json). For tag-based publishing, release sources of truth, recovery, and host acceptance, see the [development guide](./docs/development.md#21-标签发布github-actions).
 
 ---
 

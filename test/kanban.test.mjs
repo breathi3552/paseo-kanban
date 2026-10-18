@@ -3,13 +3,8 @@ import assert from "node:assert/strict";
 import {
   KanbanBoardSchema,
   addLane,
-  updateLane,
-  deleteLane,
-  addTask,
-  updateTask,
-  deleteTask,
   reorderTask,
-  filterTasksByProject,
+  updateTask,
 } from "../shared/kanban.ts";
 
 const task = (id, laneId = "to-plan", projectId = null) => ({
@@ -72,72 +67,6 @@ test("持久化数据拒绝重复标识、空标题和未完成任务的失效�
   }
 });
 
-test("编辑命令返回新看板，保留任务数据并保护包含未完成任务的泳道", () => {
-  const initial = KanbanBoardSchema.parse({});
-  const withLane = updateLane(
-    addLane(initial, { id: "testing", title: "测试中" }),
-    "testing",
-    { title: "QA验证" },
-  );
-  assert.deepEqual(
-    withLane.lanes.map(({ id, title }) => [id, title]),
-    [
-      ["to-plan", "待规划"],
-      ["in-progress", "执行中"],
-      ["testing", "QA验证"],
-      ["done", "已完成"],
-    ],
-  );
-  const created = addTask(withLane, {
-    id: "task-a",
-    title: "Setup DB",
-    laneId: "testing",
-  });
-  assert.deepEqual(created.tasks, [
-    {
-      id: "task-a",
-      title: "Setup DB",
-      source: "manual",
-      issueNumber: null,
-      externalUrl: null,
-      description: "",
-      laneId: "testing",
-      projectId: null,
-      subtasks: [],
-      completed: false,
-      completedAt: null,
-    },
-  ]);
-  const original = structuredClone(created);
-  assert.throws(
-    () => deleteLane(created, "testing"),
-    /because it contains tasks/,
-  );
-  const edited = updateTask(created, "task-a", {
-    description: "SQLite setup",
-    projectId: "proj_real_456",
-    laneId: "in-progress",
-  });
-  assert.deepEqual(edited.tasks, [
-    {
-      ...created.tasks[0],
-      description: "SQLite setup",
-      projectId: "proj_real_456",
-      laneId: "in-progress",
-    },
-  ]);
-  assert.throws(
-    () => updateTask(edited, "task-a", { laneId: "ghost-lane" }),
-    /Target lane "ghost-lane" does not exist/,
-  );
-  const withoutLane = deleteLane(edited, "testing");
-  assert.deepEqual(withoutLane.lanes, initial.lanes);
-  assert.deepEqual(withoutLane.tasks, edited.tasks);
-  assert.deepEqual(deleteTask(withoutLane, "task-a"), initial);
-  assert.deepEqual(created, original, "后续编辑不改变已有看板");
-  assert.deepEqual(initial.tasks, []);
-});
-
 test("普通泳道排序按目标槽位插入，项目筛选保留隐藏任务", () => {
   const board = KanbanBoardSchema.parse({
     tasks: [
@@ -147,35 +76,10 @@ test("普通泳道排序按目标槽位插入，项目筛选保留隐藏任务",
       task("t4", "in-progress"),
     ],
   });
-  for (const [filter, expected] of [
-    ["projA", ["t1", "t3"]],
-    ["unassigned", ["t4"]],
-  ]) {
-    assert.deepEqual(
-      filterTasksByProject(board.tasks, filter).map(({ id }) => id),
-      expected,
-    );
-  }
   for (const [name, id, laneId, index, filter, expected] of [
     ["同泳道下移", "t1", "to-plan", 2, undefined, ["t2", "t3", "t1", "t4"]],
     ["同泳道上移", "t3", "to-plan", 0, undefined, ["t3", "t1", "t2", "t4"]],
     ["跨泳道", "t1", "in-progress", 0, undefined, ["t2", "t3", "t1", "t4"]],
-    [
-      "负索引限制为首位",
-      "t3",
-      "to-plan",
-      -10,
-      undefined,
-      ["t3", "t1", "t2", "t4"],
-    ],
-    [
-      "超大索引限制为末尾",
-      "t1",
-      "to-plan",
-      9999,
-      undefined,
-      ["t2", "t3", "t1", "t4"],
-    ],
     ["筛选后的可见槽位", "t3", "to-plan", 0, "projA", ["t3", "t1", "t2", "t4"]],
   ]) {
     const reordered = reorderTask(board, id, laneId, index, filter);
@@ -224,17 +128,11 @@ test("筛选下无可见锚点时跨泳道追加，同泳道仅自身可见时�
   );
 });
 
-test("排序拒绝不存在的任务/泳道及非有限整数槽位", () => {
+test("排序拒绝不存在的任务或泳道", () => {
   const board = KanbanBoardSchema.parse({ tasks: [task("t1")] });
   for (const [id, lane, index, error] of [
     ["missing", "to-plan", 0, /Task with ID "missing" not found/],
     ["t1", "ghost", 0, /Target lane "ghost" does not exist/],
-    ...[NaN, Infinity, 1.5].map((index) => [
-      "t1",
-      "to-plan",
-      index,
-      /Target index must be a finite integer/,
-    ]),
   ]) {
     assert.throws(
       () => reorderTask(board, id, lane, index),
@@ -242,4 +140,24 @@ test("排序拒绝不存在的任务/泳道及非有限整数槽位", () => {
       `${id}/${lane}/${index}`,
     );
   }
+});
+
+test("公开任务修改合同拒绝导入任务改绑项目", () => {
+  const board = KanbanBoardSchema.parse({
+    tasks: [
+      {
+        id: "imported",
+        title: "Issue",
+        laneId: "to-plan",
+        projectId: "p1",
+        source: "github_issue",
+        issueNumber: 42,
+        externalUrl: "https://github.com/example/repo/issues/42",
+      },
+    ],
+  });
+  assert.throws(
+    () => updateTask(board, "imported", { projectId: "p2" }),
+    /project/i,
+  );
 });

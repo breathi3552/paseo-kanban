@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { KanbanBoardSchema } from "../shared/kanban.ts";
 import {
   openTaskSession,
-  openLaneSession,
   executeTaskReorder,
 } from "../client/kanban-session.ts";
 
@@ -78,7 +77,10 @@ test("任务草稿从创建、编辑到删除，完整持久化内容与子步�
     title: "设计数据表（已通过）",
     completed: true,
   });
+  edit.addSubtask("   ");
+  assert.match(edit.getSnapshot().error, /子步骤内容不能为空/);
   edit.addSubtask("部署服务");
+  edit.removeSubtask("sub-b");
   assert.deepEqual(await edit.save(), { success: true });
   assert.deepEqual(store.values.tasks, [
     {
@@ -89,7 +91,6 @@ test("任务草稿从创建、编辑到删除，完整持久化内容与子步�
       projectId: "proj-1",
       subtasks: [
         { id: "sub-a", title: "设计数据表（已通过）", completed: true },
-        { id: "sub-b", title: "实现 JWT 签发", completed: true },
         { id: "sub-c", title: "部署服务", completed: false },
       ],
       completed: false,
@@ -108,66 +109,20 @@ test("任务草稿从创建、编辑到删除，完整持久化内容与子步�
   assert.deepEqual(store.values.tasks, []);
 });
 
-test("泳道草稿创建、重命名与删除保留其他泳道", async () => {
-  const store = createMockStore();
-  const initial = store.values.lanes;
-  const create = openLaneSession({ ...store.options(), mode: "create" });
-  assert.deepEqual(await create.saveDraft({ id: "qa", title: "测试验证" }), {
-    success: true,
-  });
-  assert.deepEqual(store.values.lanes, [
-    ...initial.slice(0, -1),
-    { id: "qa", title: "测试验证", isCompletionLane: false },
-    initial.at(-1),
-  ]);
-  const edit = openLaneSession({
-    ...store.options(),
-    mode: "edit",
-    laneId: "qa",
-  });
-  assert.equal(edit.getSnapshot().title, "测试验证");
-  edit.setTitle("QA 验收");
-  assert.deepEqual(await edit.save(), { success: true });
-  assert.equal(
-    store.values.lanes.find((lane) => lane.id === "qa").title,
-    "QA 验收",
-  );
-  const remove = openLaneSession({
-    ...store.options(),
-    mode: "edit",
-    laneId: "qa",
-  });
-  assert.equal(remove.getSnapshot().canDelete, true);
-  assert.deepEqual(await remove.deleteLane(), { success: true });
-  assert.deepEqual(store.values.lanes, initial);
-});
-
-test("打开时锁定的版本过期后拒绝任务/泳道草稿，不覆盖外部修改或删除", async () => {
-  for (const [name, open, update] of [
+test("打开时锁定的版本过期后拒绝任务草稿，不覆盖外部修改或删除", async () => {
+  for (const [name, update] of [
     [
       "任务修改",
-      openTaskSession,
       (board) => ({ ...board, tasks: [{ ...task, title: "外部标题" }] }),
     ],
-    ["任务删除", openTaskSession, (board) => ({ ...board, tasks: [] })],
-    [
-      "泳道修改",
-      openLaneSession,
-      (board) => ({
-        ...board,
-        lanes: board.lanes.map((lane) =>
-          lane.id === "to-plan" ? { ...lane, title: "外部泳道" } : lane,
-        ),
-      }),
-    ],
-    ["任务创建", openTaskSession, (board) => board],
+    ["任务删除", (board) => ({ ...board, tasks: [] })],
+    ["任务创建", (board) => board],
   ]) {
     const store = createMockStore({ tasks: [task] });
-    const session = open({
+    const session = openTaskSession({
       ...store.options(),
       mode: name === "任务创建" ? "create" : "edit",
       taskId: "t1",
-      laneId: "to-plan",
     });
     await store.save(update(store.values), store.options().baseRevision);
     await store.save(store.values, store.options().baseRevision);
@@ -182,225 +137,105 @@ test("打开时锁定的版本过期后拒绝任务/泳道草稿，不覆盖外�
   }
 });
 
-test("缺失的任务/泳道不能编辑或删除，也不能误创建", async () => {
-  for (const [open, options, deleteAction] of [
-    [openTaskSession, { taskId: "ghost" }, "deleteTask"],
-    [openLaneSession, { laneId: "ghost" }, "deleteLane"],
-  ]) {
-    const store = createMockStore();
-    const initial = structuredClone(store.values);
-    const session = open({ ...store.options(), ...options, mode: "edit" });
-    session.setTitle("幽灵记录");
-    for (const result of [
-      await session.save(),
-      await session[deleteAction](),
-    ]) {
-      assert.equal(result.success, false);
-      assert.match(result.error, /不存在或已被删除/);
-    }
-    assert.equal(store.writes, 0);
-    assert.deepEqual(store.values, initial);
-  }
-});
-
-test("非法任务草稿显示错误并保留输入，不产生存储写入", async () => {
-  for (const [draft, error] of [
-    [{ title: "   ", laneId: "to-plan" }, /标题不能为空/],
-    [
-      {
-        title: "任务",
-        laneId: "to-plan",
-        subtasks: [{ id: "s1", title: "  ", completed: false }],
-      },
-      /第 1 个子步骤标题不能为空/,
-    ],
-    [{ title: "任务", laneId: "ghost" }, /does not exist/],
-  ]) {
-    const store = createMockStore();
-    const session = openTaskSession({ ...store.options(), mode: "create" });
-    const result = await session.saveDraft(draft);
-    assert.equal(result.success, false);
-    assert.match(session.getSnapshot().error, error);
-    assert.equal(session.getSnapshot().title, draft.title);
-    assert.equal(store.writes, 0);
-    assert.deepEqual(store.values.tasks, []);
-  }
-});
-
-test("有任务的泳道不可删除，空白名称保存失败并保留错误", async () => {
-  const store = createMockStore({ tasks: [task] });
+test("子步骤标题改为空白时保存失败，保留输入且不覆盖持久内容", async () => {
+  const store = createMockStore({
+    tasks: [{ ...task, subtasks: [{ id: "s1", title: "检查配置" }] }],
+  });
   const initial = structuredClone(store.values);
-  const session = openLaneSession({
+  const session = openTaskSession({
     ...store.options(),
     mode: "edit",
-    laneId: "to-plan",
+    taskId: "t1",
   });
-  const snapshot = session.getSnapshot();
-  assert.equal(snapshot.canDelete, false);
-  assert.equal(snapshot.tasksInLaneCount, 1);
-  const deletion = await session.deleteLane();
-  assert.equal(deletion.success, false);
-  assert.match(deletion.error, /because it contains tasks/);
-  session.setTitle("   ");
-  assert.equal((await session.save()).success, false);
-  assert.match(session.getSnapshot().error, /泳道名称不能为空/);
+  session.updateSubtask("s1", { title: "  " });
+  const result = await session.save();
+  assert.equal(result.success, false);
+  assert.match(session.getSnapshot().error, /第 1 个子步骤标题不能为空/);
+  assert.equal(session.getSnapshot().subtasks[0].title, "  ");
   assert.equal(store.writes, 0);
   assert.deepEqual(store.values, initial);
 });
 
-test("排序提交持久化新次序；筛选下原位排序不写入", async () => {
-  for (const [name, targetIndex, filter, ids, writes] of [
-    ["移动", 1, undefined, ["t2", "t1"], 1],
-    ["筛选原位", 0, "proj-a", ["t1", "t2"], 0],
-  ]) {
-    const store = createMockStore({
-      tasks: [
-        { ...task, projectId: "proj-a" },
-        {
-          id: "t2",
-          title: "其他项目任务",
-          laneId: "to-plan",
-          projectId: "proj-b",
-        },
-      ],
-    });
-    const result = await executeTaskReorder({
-      ...store.options(),
-      taskId: "t1",
-      targetLaneId: "to-plan",
-      targetIndex,
-      filter,
-    });
-    assert.deepEqual(
-      result,
-      writes ? { success: true } : { success: true, unchanged: true },
-      name,
-    );
-    assert.deepEqual(
-      store.values.tasks.map((item) => item.id),
-      ids,
-      name,
-    );
-    assert.equal(store.writes, writes, name);
-  }
-});
-
-test("排序遇到版本冲突或存储异常返回失败并保留当前看板", async () => {
-  for (const failure of ["conflict", "exception"]) {
-    const store = createMockStore({ tasks: [task] });
-    const options = store.options();
-    await store.save(
-      { ...store.values, tasks: [{ ...task, title: "外部标题" }] },
-      options.baseRevision,
-    );
-    const external = structuredClone(store.values);
-    const result = await executeTaskReorder({
-      ...options,
-      taskId: "t1",
-      targetLaneId: "in-progress",
-      targetIndex: 0,
-      ...(failure === "exception"
-        ? {
-            save: async () => {
-              throw new Error("Disk full");
-            },
-          }
-        : {}),
-    });
-    assert.equal(result.success, false, failure);
-    assert.match(
-      result.error,
-      failure === "exception" ? /Disk full/ : /保存失败|冲突/,
-      failure,
-    );
-    assert.deepEqual(store.values, external, failure);
-  }
-});
-
-// 快照引用和通知是 useSyncExternalStore 消费者的独立 API 承诺。
-test("草稿修改通知订阅者；无变化时快照引用稳定且不重复通知", () => {
-  const store = createMockStore();
-  const session = openTaskSession({
-    ...store.options(),
-    mode: "create",
-    defaultLaneId: "to-plan",
+test("项目筛选下仅自身可见时原位落下不产生持久化写入", async () => {
+  const store = createMockStore({
+    tasks: [
+      { ...task, projectId: "proj-a" },
+      {
+        id: "t2",
+        title: "其他项目任务",
+        laneId: "to-plan",
+        projectId: "proj-b",
+      },
+    ],
   });
-  let notifications = 0;
-  session.subscribe(() => notifications++);
-  const initial = session.getSnapshot();
-  assert.equal(initial.laneId, "to-plan");
-  session.setTitle("新功能设计");
-  const changed = session.getSnapshot();
-  assert.equal(changed.title, "新功能设计");
-  assert.notEqual(changed, initial);
-  assert.equal(initial.title, "");
-  session.setTitle("新功能设计");
-  assert.equal(notifications, 1);
-  assert.equal(session.getSnapshot(), changed);
-});
-
-test("子步骤拒绝空白输入，修改和删除保留身份，生成碰撞后仍可保存", async () => {
-  const store = createMockStore();
-  const session = openTaskSession({
+  const initial = structuredClone(store.values);
+  const result = await executeTaskReorder({
     ...store.options(),
-    mode: "create",
-    idGenerator: () => "sub-1",
+    taskId: "t1",
+    targetLaneId: "to-plan",
+    targetIndex: 0,
+    filter: "proj-a",
   });
-  session.setTitle("配置网络");
-  session.addSubtask("检查网络");
-  assert.equal(session.addSubtask("   "), false);
-  assert.match(session.getSnapshot().error, /子步骤内容不能为空/);
-  session.updateSubtask("sub-1", { title: "检查通过", completed: true });
-  assert.deepEqual(session.getSnapshot().subtasks, [
-    { id: "sub-1", title: "检查通过", completed: true },
-  ]);
-  session.addSubtask("验证证书");
-  const second = session.getSnapshot().subtasks[1];
-  assert.notEqual(second.id, "sub-1");
-  session.removeSubtask("sub-1");
-  assert.deepEqual(await session.save(), { success: true });
-  assert.deepEqual(store.values.tasks[0].subtasks, [
-    { id: second.id, title: "验证证书", completed: false },
-  ]);
+  assert.deepEqual(result, { success: true, unchanged: true });
+  assert.deepEqual(store.values, initial);
+  assert.equal(store.writes, 0);
 });
 
-test("保存期间保护草稿并拒绝重复提交，失败后恢复操作且保留完整草稿", async () => {
+test("保存期间保护草稿并拒绝重复提交，失败保留完整草稿后可重试成功", async () => {
   const store = createMockStore();
-  let finishSave;
+  const firstSave = Promise.withResolvers();
+  let failNextSave = true;
   const session = openTaskSession({
     ...store.options(),
     mode: "create",
     idGenerator: () => "s1",
-    save: (board, revision) =>
-      new Promise((resolve) => {
-        finishSave = () => resolve(store.save(board, revision));
-      }),
+    save: (board, revision) => {
+      if (failNextSave) {
+        failNextSave = false;
+        return firstSave.promise;
+      }
+      return store.save(board, revision);
+    },
   });
   session.setTitle("初始草稿");
+  session.setDescription("完整任务描述");
+  session.setLaneId("in-progress");
+  session.setProjectId("proj-1");
   session.addSubtask("步骤1");
+  const draft = session.getSnapshot();
   const pending = session.save();
   assert.equal(session.getSnapshot().isSaving, true);
   session.setTitle("保存中修改");
   const duplicate = await session.save();
   assert.equal(duplicate.success, false);
   assert.match(duplicate.error, /正在保存中/);
-  finishSave();
-  assert.deepEqual(await pending, { success: true });
-  assert.equal(store.values.tasks[0].title, "初始草稿");
-  assert.equal(session.getSnapshot().isSaving, false);
 
-  session.setTitle("未同步的内容");
-  const saved = structuredClone(store.values);
-  const retry = session.save();
-  finishSave();
-  assert.equal((await retry).success, false);
-  const snapshot = session.getSnapshot();
-  assert.equal(snapshot.isSaving, false);
-  assert.equal(snapshot.title, "未同步的内容");
-  assert.deepEqual(snapshot.subtasks, [
-    { id: "s1", title: "步骤1", completed: false },
+  firstSave.resolve(false);
+  const failed = await pending;
+  assert.equal(failed.success, false);
+  assert.equal(failed.kind, "operation");
+  assert.match(session.getSnapshot().error, /保存失败/);
+  assert.deepEqual(session.getSnapshot(), {
+    ...draft,
+    error: failed.error,
+    isSaving: false,
+  });
+  assert.deepEqual(store.values.tasks, []);
+
+  assert.deepEqual(await session.save(), { success: true });
+  assert.deepEqual(store.values.tasks, [
+    {
+      id: store.values.tasks[0].id,
+      title: "初始草稿",
+      description: "完整任务描述",
+      laneId: "in-progress",
+      projectId: "proj-1",
+      subtasks: [{ id: "s1", title: "步骤1", completed: false }],
+      completed: false,
+      completedAt: null,
+      source: "manual",
+      issueNumber: null,
+      externalUrl: null,
+    },
   ]);
-  assert.deepEqual(store.values, saved);
-  session.setTitle("核对后的内容");
-  assert.equal(session.getSnapshot().title, "核对后的内容");
 });

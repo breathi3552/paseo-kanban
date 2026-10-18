@@ -34,8 +34,10 @@ export function text(node) {
 export async function press(root, label) {
   const button = root
     .findAllByType("Pressable")
-    .find((node) =>
-      node.findAllByType("Text").some((child) => text(child) === label),
+    .find(
+      (node) =>
+        node.props.accessibilityLabel === label ||
+        node.findAllByType("Text").some((child) => text(child) === label),
     );
   assert.ok(button, `button ${label} exists`);
   await act(async () => button.props.onPress({ stopPropagation() {} }));
@@ -128,7 +130,9 @@ export function createHost({
         save: async (next, expectedRevision) => {
           if (pendingSave) await pendingSave;
           if (failSave) {
+            const failure = failSave;
             failSave = false;
+            if (failure instanceof Error) throw failure;
             return false;
           }
           if (expectedRevision !== String(revision)) return false;
@@ -160,6 +164,10 @@ export function createHost({
     addWorkspacePanel: (panel) => register(panels, panel),
   };
   const { default: contribute } = loadClientModule("../index.client", {
+    "./web": {
+      WebDialogPortal: ({ children }) =>
+        React.createElement("WebDialogPortal", {}, children),
+    },
     "@getpaseo/plugin/client": sdk,
     "@getpaseo/plugin/client/react-native": {
       Modal,
@@ -186,8 +194,8 @@ export function createHost({
     },
     notifications,
     externalUrls,
-    failNextSave() {
-      failSave = true;
+    failNextSave(error) {
+      failSave = error ?? true;
     },
     failNextReload() {
       failReload = true;
@@ -217,10 +225,10 @@ export function createHost({
   };
 }
 
-export async function mount(t, host, workspaceId) {
+export async function mount(t, host, workspaceId, options) {
   let renderer;
   await act(async () => {
-    renderer = TestRenderer.create(host.open(workspaceId));
+    renderer = TestRenderer.create(host.open(workspaceId), options);
   });
   t.after(async () => {
     await act(async () => renderer.unmount());

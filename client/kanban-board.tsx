@@ -19,17 +19,15 @@ import {
 import { useProjects } from "./use-projects";
 import { TaskModal } from "./task-modal";
 import { GitHubImportModal } from "./github-import-modal";
-import { LaneModal } from "./lane-modal";
+import { LaneManagementModal } from "./lane-management-modal";
 import { useKanbanDrag } from "./kanban-drag";
 import { KanbanLaneView } from "./kanban-lane";
 import { KanbanDragOverlay } from "./kanban-overlay";
 import {
   openTaskSession,
-  openLaneSession,
   executeTaskReorder,
   executeTaskCompletion,
   type TaskEditSession,
-  type LaneEditSession,
 } from "./kanban-session";
 import { useI18n, I18nLanguageContext } from "./i18n";
 
@@ -74,8 +72,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   const [importOpen, setImportOpen] = useState(false);
   const [activeTaskSession, setActiveTaskSession] =
     useState<TaskEditSession | null>(null);
-  const [activeLaneSession, setActiveLaneSession] =
-    useState<LaneEditSession | null>(null);
+  const [laneManagement, setLaneManagement] = useState(false);
   const [taskOperationError, setTaskOperationError] = useState<string | null>(
     null,
   );
@@ -104,10 +101,10 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   );
   if (isReady)
     lastReady.current = { board: settings.values, revision: settings.revision };
-  const retained = importOpen ? lastReady.current : null;
+  const retained = importOpen || laneManagement ? lastReady.current : null;
   const board = isReady ? settings.values : (retained?.board ?? null);
   const revision = isReady ? settings.revision : (retained?.revision ?? "");
-  const preserveImport = importOpen && board !== null;
+  const preserveImport = (importOpen || laneManagement) && board !== null;
 
   const handleReorderTask = async (
     taskId: string,
@@ -201,31 +198,9 @@ function KanbanBoardContent(props: KanbanBoardProps) {
     );
   };
 
-  const openNewLane = () => {
+  const openLaneManagement = () => {
     if (completionPendingRef.current || drag.isDragLocked() || !board) return;
-    setActiveLaneSession(
-      openLaneSession({
-        mode: "create",
-        baseBoard: board,
-        baseRevision: revision,
-        save: (b, r) => settings.save(b, r),
-        language,
-      }),
-    );
-  };
-
-  const openEditLane = (laneId: string) => {
-    if (completionPendingRef.current || drag.isDragLocked() || !board) return;
-    setActiveLaneSession(
-      openLaneSession({
-        mode: "edit",
-        laneId,
-        baseBoard: board,
-        baseRevision: revision,
-        save: (b, r) => settings.save(b, r),
-        language,
-      }),
-    );
+    setLaneManagement(true);
   };
 
   const styles = useMemo(
@@ -487,9 +462,12 @@ function KanbanBoardContent(props: KanbanBoardProps) {
           </View>
 
           <View style={styles.headerActions}>
-            <Pressable onPress={openNewLane} style={styles.secondaryButton}>
+            <Pressable
+              onPress={() => openLaneManagement()}
+              style={styles.secondaryButton}
+            >
               <Text style={styles.secondaryButtonText}>
-                {t("kanban.addLane")}
+                {t("laneManagement.title")}
               </Text>
             </Pressable>
 
@@ -639,7 +617,6 @@ function KanbanBoardContent(props: KanbanBoardProps) {
                 layout={layout}
                 dragBinding={drag.bindLane(lane.id)}
                 onAddTask={(laneId) => openNewTask(laneId)}
-                onManageLane={(laneId) => openEditLane(laneId)}
                 onSelectTask={(task) => openEditTask(task.id)}
                 onSetCompleted={handleSetCompleted}
                 completionPending={completionPending}
@@ -681,13 +658,16 @@ function KanbanBoardContent(props: KanbanBoardProps) {
         />
       )}
 
-      {activeLaneSession && (
-        <LaneModal
-          open={activeLaneSession !== null}
-          onClose={() => setActiveLaneSession(null)}
-          session={activeLaneSession}
+      {laneManagement && (
+        <LaneManagementModal
+          board={board}
+          revision={revision}
+          settingsReady={isReady}
+          save={(next, expected) => settings.save(next, expected)}
+          reload={() => settings.reload()}
+          onClose={() => setLaneManagement(false)}
           theme={theme}
-          layout={layout}
+          compact={compact}
         />
       )}
     </View>
