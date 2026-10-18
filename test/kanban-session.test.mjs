@@ -227,7 +227,7 @@ test("非法任务草稿显示错误并保留输入，不产生存储写入", as
   }
 });
 
-test("有任务的泳道不可删除，空白名称保存失败并保留错误", async () => {
+test("空白名称保存失败保留草稿，有任务的泳道可连同未完成任务删除", async () => {
   const store = createMockStore({ tasks: [task] });
   const initial = structuredClone(store.values);
   const session = openLaneSession({
@@ -236,16 +236,19 @@ test("有任务的泳道不可删除，空白名称保存失败并保留错误",
     laneId: "to-plan",
   });
   const snapshot = session.getSnapshot();
-  assert.equal(snapshot.canDelete, false);
+  assert.equal(snapshot.canDelete, true);
   assert.equal(snapshot.tasksInLaneCount, 1);
-  const deletion = await session.deleteLane();
-  assert.equal(deletion.success, false);
-  assert.match(deletion.error, /because it contains tasks/);
   session.setTitle("   ");
   assert.equal((await session.save()).success, false);
   assert.match(session.getSnapshot().error, /泳道名称不能为空/);
   assert.equal(store.writes, 0);
   assert.deepEqual(store.values, initial);
+  assert.equal((await session.deleteLane()).success, true);
+  assert.deepEqual(store.values.tasks, []);
+  assert.equal(
+    store.values.lanes.some((lane) => lane.id === "to-plan"),
+    false,
+  );
 });
 
 test("排序提交持久化新次序；筛选下原位排序不写入", async () => {

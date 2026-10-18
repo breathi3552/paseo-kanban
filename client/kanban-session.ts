@@ -597,10 +597,7 @@ export function openLaneSession(
     ? baseBoard.tasks.filter((t) => !t.completed && t.laneId === lane.id).length
     : 0;
   const canDelete = Boolean(
-    lane &&
-    !lane.isCompletionLane &&
-    ordinaryLanesCount > 1 &&
-    tasksInLaneCount === 0,
+    lane && !lane.isCompletionLane && ordinaryLanesCount > 1,
   );
 
   const initialValues: LaneSessionInitialValues = {

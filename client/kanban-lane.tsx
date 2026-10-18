@@ -267,6 +267,7 @@ function KanbanLaneViewInner({
           )}
 
           <Pressable
+            accessibilityLabel={t("lane.manageSpecific", { title: lane.title })}
             onPress={() => onManageLane(lane.id)}
             disabled={completionPending}
             style={styles.laneHeaderBtn}

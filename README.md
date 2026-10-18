@@ -10,7 +10,7 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 
 ## Highlights
 
-- **Swimlane Management**: Freely add, rename, and delete custom swimlanes to organize tasks according to your team's workflow stages.
+- **Swimlane Management**: Manage lanes in one horizontal dialog. Add, rename, and delete immediately; preview ordering with left/right controls or dragging, then save the order. Deleting a lane with unfinished tasks requires confirmation and removes those tasks across all projects; completed tasks are kept.
 - **Drag-and-Drop Interaction**: Fluid intra-lane reordering and cross-lane movement with animated drop-slot displacement, viewport edge auto-scrolling, and smooth drop-in feedback.
 - **GitHub Issue Import**: One-way import of open issues from the project repository's GitHub origin into a chosen lane, featuring pagination, repository-wide creation-time sorting, automatic deduplication, and source links.
 

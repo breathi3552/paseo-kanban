@@ -72,7 +72,7 @@ test("持久化数据拒绝重复标识、空标题和未完成任务的失效�
   }
 });
 
-test("编辑命令返回新看板，保留任务数据并保护包含未完成任务的泳道", () => {
+test("编辑命令返回新看板，删除泳道同时删除其未完成任务", () => {
   const initial = KanbanBoardSchema.parse({});
   const withLane = updateLane(
     addLane(initial, { id: "testing", title: "测试中" }),
@@ -109,9 +109,11 @@ test("编辑命令返回新看板，保留任务数据并保护包含未完成�
     },
   ]);
   const original = structuredClone(created);
-  assert.throws(
-    () => deleteLane(created, "testing"),
-    /because it contains tasks/,
+  const deleted = deleteLane(created, "testing");
+  assert.deepEqual(deleted.tasks, []);
+  assert.deepEqual(
+    deleted.lanes.map((lane) => lane.id),
+    ["to-plan", "in-progress", "done"],
   );
   const edited = updateTask(created, "task-a", {
     description: "SQLite setup",

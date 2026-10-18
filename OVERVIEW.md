@@ -5,7 +5,7 @@ A lightweight, responsive Kanban board plugin for Paseo workspaces.
 ## Features
 
 - **GitHub issue import**: Import up to 25 open issues from the project’s GitHub.com origin into a chosen lane. Tasks remain independent and link back to their source. Requires Git and an authenticated `gh` on the daemon machine.
-- **Flexible swimlanes**: Add, delete, and rename lanes.
+- **Flexible swimlanes**: Add, rename, and delete in one horizontal dialog. Preview lane order with left/right controls or dragging, then save. Deleting a populated lane requires confirmation and removes unfinished tasks across all projects; completed tasks are kept.
 - **Rich task cards**: Edit task titles and multi-line descriptions, manage subtask checklists, and link tasks to Paseo projects.
 - **Task completion**: Check a card or drag it into the completion lane to finish; uncheck or drag out to restore.
 - **Workspace tabs and splits**: Open the board beside an agent or terminal with Paseo's native split controls, initially filtered to the workspace's project, or use the sidebar entry.
@@ -25,7 +25,7 @@ A lightweight, responsive Kanban board plugin for Paseo workspaces.
 ## 核心功能
 
 - **GitHub Issue 导入**：从项目的 GitHub.com origin 选择 Open Issues，每次最多导入 25 项到指定泳道；任务独立管理并保留外链。需要在 daemon 所在机器安装 Git 并登录 `gh`。
-- **灵活的泳道管理**：支持泳道增删与改名。
+- **灵活的泳道管理**：在横向弹窗中增删改，通过左右按钮或拖动预览排列，再保存顺序。含任务的泳道经确认后连同所有项目中的未完成任务删除，已完成任务保留。
 - **丰富的任务卡片**：支持任务标题与多行描述编辑、子步骤清单管理，以及关联 Paseo 项目。
 - **任务完成与恢复**：通过卡片勾选或拖入完成泳道标记完成；取消勾选或拖出即可恢复。
 - **工作区标签页与分屏**：支持通过 Paseo 原生分屏控件与 Agent、Terminal 并排打开，默认筛选工作区所属项目，或使用侧边栏入口。
