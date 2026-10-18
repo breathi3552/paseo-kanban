@@ -5,8 +5,16 @@ import { createHost, mount, press, text } from "./helpers/kanban-host.mjs";
 import { KanbanBoardSchema } from "../shared/kanban.ts";
 
 let language = "en";
+let windowEvents;
 globalThis.localStorage = { getItem: () => JSON.stringify({ language }) };
-test.after(() => delete globalThis.localStorage);
+test.beforeEach(() => {
+  windowEvents = new EventTarget();
+  globalThis.window = windowEvents;
+});
+test.after(() => {
+  delete globalThis.window;
+  delete globalThis.localStorage;
+});
 const lanes = [
   { id: "todo", title: "Todo", isCompletionLane: false },
   { id: "doing", title: "Doing", isCompletionLane: false },
@@ -324,6 +332,80 @@ test("改名保存途中仅任务更新时自动续存，不覆盖新任务且�
   assert.equal(host.board.lanes[0].title, "Ready");
   assert.equal(host.board.tasks[0].title, "Concurrent");
   assert.deepEqual(host.notifications, ["Lane renamed"]);
+});
+
+test("保存期间卸载看板，仍按最终持久化结果通知一次", async (t) => {
+  for (const outcome of ["success", "failure", "error"]) {
+    await t.test(outcome, async (t) => {
+      const { host, renderer } = await setup(t);
+      await click(dialog(renderer), "Rename Todo");
+      await enter(renderer, "Ready");
+      let settle;
+      host.holdSave(
+        new Promise((resolve, reject) => {
+          settle = () =>
+            outcome === "error"
+              ? reject(new Error("Settings write failed"))
+              : resolve();
+        }),
+      );
+      if (outcome === "failure") host.failNextSave();
+      await press(dialog(renderer), "Confirm");
+      await act(async () => renderer.unmount());
+      assert.deepEqual(host.notifications, []);
+      await act(async () => settle());
+      assert.equal(
+        host.board.lanes[0].title,
+        outcome === "success" ? "Ready" : "Todo",
+      );
+      assert.deepEqual(host.notifications, [
+        outcome === "success"
+          ? "Lane renamed"
+          : "Lane save failed. Draft preserved; check the latest data.",
+      ]);
+    });
+  }
+});
+
+test("保存期间切换界面语言，最终成功或失败通知使用新语言", async (t) => {
+  for (const outcome of ["success", "failure"]) {
+    await t.test(outcome, async (t) => {
+      const { host, renderer } = await setup(t);
+      await click(dialog(renderer), "Rename Todo");
+      await enter(renderer, "Ready");
+      let settle;
+      host.holdSave(
+        new Promise((resolve, reject) => {
+          settle = () =>
+            outcome === "success"
+              ? resolve()
+              : reject(new Error("Settings write failed"));
+        }),
+      );
+      await press(dialog(renderer), "Confirm");
+      await act(async () => {
+        language = "zh";
+        windowEvents.dispatchEvent(new Event("focus"));
+      });
+      assert.equal(dialog(renderer).props.accessibilityLabel, "管理泳道");
+      assert.deepEqual(host.notifications, []);
+      await act(async () => settle());
+      assert.equal(
+        host.board.lanes[0].title,
+        outcome === "success" ? "Ready" : "Todo",
+      );
+      assert.deepEqual(host.notifications, [
+        outcome === "success"
+          ? "泳道已重命名"
+          : "泳道保存失败，草稿已保留，请核实最新数据。",
+      ]);
+      if (outcome === "failure")
+        assert.equal(
+          dialog(renderer).findByType("TextInput").props.value,
+          "Ready",
+        );
+    });
+  }
 });
 
 test("外部泳道变化拒绝自动合并并保留名称或排序草稿，加载最新后恢复", async (t) => {

@@ -147,15 +147,11 @@ export function LaneManagementModal(props: Props) {
     let active = true;
     const finish = () => {
       busy.current = false;
-      setRequest(null);
+      if (active) setRequest(null);
     };
+    const translate: typeof t = (...args) => current.current.t(...args);
     const run = async () => {
-      const {
-        props: latest,
-        lanes: baseline,
-        t: translate,
-        toast: notify,
-      } = current.current;
+      const { props: latest, lanes: baseline } = current.current;
       const { command } = request;
       try {
         if (command.kind === "reload" && request.attempt === 0) {
@@ -203,26 +199,20 @@ export function LaneManagementModal(props: Props) {
           latest.board.lanes.find((lane) => lane.id === command.id)?.title ===
             command.title.trim();
         if (!unchanged && !(await latest.save(next, latest.revision))) {
-          if (request.attempt >= 2)
+          if (!active || request.attempt >= 2)
             throw new Error(translate("notification.laneSaveFailed"));
           await latest.reload();
-          if (active)
-            setRequest({
-              command,
-              attempt: request.attempt + 1,
-              failedRevision: latest.revision,
-            });
+          if (!active)
+            throw new Error(translate("notification.laneSaveFailed"));
+          setRequest({
+            command,
+            attempt: request.attempt + 1,
+            failedRevision: latest.revision,
+          });
           return;
         }
-        if (!active) return;
-        setLanes(next.lanes);
-        setOrder(next.lanes.map((lane) => lane.id));
-        setEditing(null);
-        setTitle("");
-        setDeleteId(null);
-        setError(null);
         if (!unchanged)
-          notify.show(
+          current.current.toast.show(
             translate(
               command.kind === "add"
                 ? "notification.laneCreated"
@@ -234,24 +224,33 @@ export function LaneManagementModal(props: Props) {
             ),
             { variant: "success" },
           );
+        if (active) {
+          setLanes(next.lanes);
+          setOrder(next.lanes.map((lane) => lane.id));
+          setEditing(null);
+          setTitle("");
+          setDeleteId(null);
+          setError(null);
+        }
         finish();
       } catch (reason) {
-        if (!active) return;
         if (reason instanceof LaneTitleError) {
-          setError(
-            translate(
-              reason.reason === "empty"
-                ? "laneManagement.empty"
-                : "laneManagement.duplicate",
-            ),
-          );
+          if (active)
+            setError(
+              translate(
+                reason.reason === "empty"
+                  ? "laneManagement.empty"
+                  : "laneManagement.duplicate",
+              ),
+            );
         } else {
-          setError(
-            reason instanceof Error
-              ? reason.message
-              : translate("notification.laneSaveFailed"),
-          );
-          notify.error(
+          if (active)
+            setError(
+              reason instanceof Error
+                ? reason.message
+                : translate("notification.laneSaveFailed"),
+            );
+          current.current.toast.error(
             translate(
               command.kind === "delete"
                 ? "notification.laneDeleteFailed"
