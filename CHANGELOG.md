@@ -4,7 +4,7 @@ All notable changes to Paseo Kanban are documented here in bilingual format (Eng
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), adapted for strictly mirrored bilingual release notes.
 
-## [Unreleased]
+## [0.2.1] - 2026-10-18
 
 ### Features
 
