@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { KanbanBoardSchema, addLane, reorderTask } from "../shared/kanban.ts";
+import {
+  KanbanBoardSchema,
+  addLane,
+  reorderTask,
+  updateTask,
+} from "../shared/kanban.ts";
 
 const task = (id, laneId = "to-plan", projectId = null) => ({
   id,
@@ -135,4 +140,24 @@ test("排序拒绝不存在的任务或泳道", () => {
       `${id}/${lane}/${index}`,
     );
   }
+});
+
+test("公开任务修改合同拒绝导入任务改绑项目", () => {
+  const board = KanbanBoardSchema.parse({
+    tasks: [
+      {
+        id: "imported",
+        title: "Issue",
+        laneId: "to-plan",
+        projectId: "p1",
+        source: "github_issue",
+        issueNumber: 42,
+        externalUrl: "https://github.com/example/repo/issues/42",
+      },
+    ],
+  });
+  assert.throws(
+    () => updateTask(board, "imported", { projectId: "p2" }),
+    /project/i,
+  );
 });
