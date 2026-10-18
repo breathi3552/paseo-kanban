@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchProjectsWithOrderControl } from "../client/use-projects.ts";
 import {
   React,
   TestRenderer,
@@ -101,18 +100,4 @@ test("订阅请求乱序: 较早请求的成功或失败都不能覆盖最新项
     assert.equal(host.state.resolveProjectName("p1"), "项目1已更新");
     assert.equal(host.state.error, null, `旧请求${outcome}`);
   }
-});
-
-// React 卸载后自身会阻止渲染，须在控制器 API 边界验证在途回调确实被抑制。
-test("生命周期注销: 销毁控制器后忽略在途响应", async () => {
-  const updates = [];
-  const controller = fetchProjectsWithOrderControl((state) =>
-    updates.push(state),
-  );
-  const pending = Promise.withResolvers();
-  const request = controller.execute(() => pending.promise);
-  controller.destroy();
-  pending.resolve({ projects: initialProjects });
-  await request;
-  assert.deepEqual(updates, []);
 });

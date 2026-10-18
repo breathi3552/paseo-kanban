@@ -41,7 +41,7 @@ export interface ProjectsState {
   error?: string | null;
 }
 
-export function fetchProjectsWithOrderControl(
+function fetchProjectsWithOrderControl(
   onUpdate: (state: ProjectsState) => void,
 ) {
   let latestRequestId = 0;

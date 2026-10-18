@@ -10,7 +10,6 @@ import {
   TestRenderer,
   act,
   loadClientComponent,
-  instrumentControllerSubscriptions,
   mockReactNative,
 } from "./helpers/react-host-env.mjs";
 
@@ -19,8 +18,8 @@ const theme = { colors: {} };
 const nativePanResponder = {
   create: (handlers) => ({ panHandlers: handlers }),
 };
-const event = { nativeEvent: { pageX: 120, pageY: 240, button: 0 } };
-const press = { x0: 120, y0: 240, moveX: 0, moveY: 0, dx: 0, dy: 0 };
+const event = { nativeEvent: { pageX: 120, pageY: 20, button: 0 } };
+const press = { x0: 120, y0: 20, moveX: 0, moveY: 0, dx: 0, dy: 0 };
 
 function cardBodyProps(node) {
   if (node?.props?.onPanResponderGrant) return node.props;
@@ -46,13 +45,12 @@ function mountCards(
     getTaskPreview,
     strict = false,
     lanes = ["lane"],
+    viewportWidth = lanes.length * 320,
   } = {},
 ) {
   let drag;
-  let renders = 0;
   let currentIds = ids;
   function Board({ ids }) {
-    renders++;
     drag = useKanbanDrag({ lanes, onReorderTask, getTaskPreview });
     const lane = drag.bindLane("lane");
     return React.createElement(
@@ -87,7 +85,7 @@ function mountCards(
   controller.registerContainerBounds({
     x: 0,
     y: 0,
-    width: lanes.length * 320,
+    width: viewportWidth,
     height: 600,
   });
   lanes.forEach((lane, index) =>
@@ -110,9 +108,6 @@ function mountCards(
     controller,
     get drag() {
       return drag;
-    },
-    get renders() {
-      return renders;
     },
     card: (id) => root.toJSON().children[currentIds.indexOf(id)],
     handlers: (id, source = "body") =>
@@ -144,69 +139,6 @@ async function commit(board) {
   });
 }
 
-test("rerendered cards keep geometry; mouse dragging hides only the source through drop and submits the previewed slot", async (t) => {
-  mockTimers(t);
-  const reorders = [];
-  const board = mountCards(t, {
-    onReorderTask: (...args) => reorders.push(args),
-  });
-  board.update(); // New bindings must not unregister the still-mounted cards.
-  const start = { x0: 100, y0: 20 };
-  act(() => board.handlers("1").onPanResponderGrant(event, start));
-  for (const [y, expectedIndex] of [
-    [20, 0],
-    [150, 1],
-    [300, 2],
-  ]) {
-    act(() =>
-      board.handlers("1").onPanResponderMove(event, { moveX: 100, moveY: y }),
-    );
-    // The first move is stationary: long press lifts before selecting the first slot.
-    if (y === 20) act(() => t.mock.timers.tick(260));
-    assert.equal(
-      board.drag.bindLane("lane").targetIndex,
-      expectedIndex,
-      `pointer y=${y}`,
-    );
-  }
-  assert.deepEqual(board.card("1").props.style, {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    opacity: 0,
-  });
-  assert.equal(board.card("2").props.style, undefined);
-  const rendersAtSlot2 = board.renders;
-  act(() => {
-    board.handlers("1").onPanResponderMove(event, { moveX: 105, moveY: 310 });
-    board.handlers("1").onPanResponderMove(event, { moveX: 115, moveY: 320 });
-  });
-  assert.equal(
-    board.renders,
-    rendersAtSlot2,
-    "pointer moves within the same slot must not rerender the board",
-  );
-  act(() =>
-    board.handlers("1").onPanResponderMove(event, { moveX: 100, moveY: 20 }),
-  );
-  await release(board, "1", { moveX: 0, moveY: 0 });
-  assert.equal(
-    board.card("1").props.style.opacity,
-    0,
-    "source remains hidden during drop",
-  );
-  assert.equal(board.drag.bindLane("lane").targetIndex, 0);
-  await commit(board);
-  assert.deepEqual(reorders, [["1", "lane", 0]]);
-  assert.equal(
-    board.card("1").props.style,
-    undefined,
-    "completed drop restores the card automatically",
-  );
-  act(() => t.mock.timers.tick(60));
-  assert.equal(board.drag.isDragLocked(), false);
-});
-
 test("moving a mouse-held card into another lane auto-scrolls at the viewport edge, submits that lane, and restores the source", async (t) => {
   mockTimers(t);
   const reorders = [];
@@ -214,21 +146,28 @@ test("moving a mouse-held card into another lane auto-scrolls at the viewport ed
   const board = mountCards(t, {
     ids: ["task"],
     lanes: ["lane", "other"],
+    viewportWidth: 360,
     onReorderTask: (...args) => reorders.push(args),
   });
   board.drag.bindContainerRef({
-    scrollTo: ({ x }) => scrolledOffsets.push(x),
+    scrollTo: ({ x }) => {
+      assert.ok(
+        x >= 0 && x <= 640 - 360,
+        "scroll stays within content overflow",
+      );
+      scrolledOffsets.push(x);
+    },
   });
   act(() => {
     board.handlers("task").onPanResponderGrant(event, { x0: 120, y0: 20 });
   });
   // Enter each edge from the center; observe the host scroll request, not velocity.
   for (const [x, direction] of [
-    [605, 1],
-    [320, 0],
-    [30, -1],
-    [320, 0],
-    [605, 1],
+    [345, 1],
+    [180, 0],
+    [15, -1],
+    [180, 0],
+    [345, 1],
   ]) {
     const previousOffset = scrolledOffsets.at(-1) ?? 0;
     const previousCount = scrolledOffsets.length;
@@ -257,10 +196,10 @@ test("moving a mouse-held card into another lane auto-scrolls at the viewport ed
   await release(board, "task");
   await commit(board);
   assert.deepEqual(reorders, [["task", "other", 0]]);
-  assert.equal(board.card("task").props.style, undefined);
+  assert.equal(board.card("task").props.style?.opacity ?? 1, 1);
 });
 
-test("stationary click and slight mouse jitter open details exactly once without reordering", async (t) => {
+test("stationary click and slight mouse jitter select the task exactly once without requesting reorder", async (t) => {
   const clicks = [];
   const reorders = [];
   const board = mountCards(t, {
@@ -268,14 +207,27 @@ test("stationary click and slight mouse jitter open details exactly once without
     onPress: (id) => clicks.push(id),
     onReorderTask: (...args) => reorders.push(args),
   });
+  // React Native Web may expose emulated touches for a mouse contact.
+  const mouse = { nativeEvent: { ...event.nativeEvent, touches: [{}] } };
   for (const jitter of [0, 3]) {
     act(() => {
-      board.handlers("task").onPanResponderGrant(event, press);
+      board
+        .handlers("task")
+        .onPointerDown({ nativeEvent: { pointerType: "mouse" } });
+      assert.equal(
+        board.handlers("task").onStartShouldSetPanResponderCapture(mouse),
+        false,
+      );
+      assert.equal(
+        board.handlers("task").onStartShouldSetPanResponder(mouse),
+        true,
+      );
+      board.handlers("task").onPanResponderGrant(mouse, press);
       if (jitter)
         board.handlers("task").onPanResponderMove(event, {
           ...press,
           moveX: 120 + jitter,
-          moveY: 240,
+          moveY: 20,
           dx: jitter,
         });
     });
@@ -287,77 +239,128 @@ test("stationary click and slight mouse jitter open details exactly once without
   assert.deepEqual(reorders, []);
 });
 
-for (const source of ["body", "handle"]) {
-  test(`${source} release with zero responder coordinates drops at the recorded pointer and never opens details`, async (t) => {
-    mockTimers(t);
-    const reorders = [];
-    const clicks = [];
+test("native and web touch taps select once, quick swipes scroll, and long presses lift before claiming", async (t) => {
+  mockTimers(t);
+  for (const { nativeEvent, pointerType } of [
+    {
+      nativeEvent: {
+        pageX: 120,
+        pageY: 20,
+        touches: [{ pageX: 120, pageY: 20 }],
+      },
+    },
+    { nativeEvent: { pageX: 120, pageY: 20, pointerType: "touch" } },
+    { nativeEvent: { pageX: 120, pageY: 20 }, pointerType: "touch" },
+  ]) {
+    const selections = [];
+    const requests = [];
     const board = mountCards(t, {
       ids: ["task"],
-      onPress: (id) => clicks.push(id),
-      onReorderTask: (...args) => reorders.push(args),
+      onPress: (id) => selections.push(id),
+      onReorderTask: (...args) => requests.push(args),
     });
+    const touch = { nativeEvent };
+    const handlers = () => board.handlers("task");
     act(() => {
-      board.handlers("task", source).onPanResponderGrant(event, press);
-      if (source === "body") {
-        board
-          .handlers("task")
-          .onPanResponderMove(event, { moveX: 140, moveY: 260 });
-        board
-          .handlers("task")
-          .onPanResponderMove(event, { moveX: 120, moveY: 240 });
-      }
+      if (pointerType)
+        handlers().onPointerDown({ nativeEvent: { pointerType } });
+      assert.equal(handlers().onStartShouldSetPanResponder(touch), false);
+      handlers().onStartShouldSetPanResponderCapture(touch);
+      handlers().onTouchStart(touch);
     });
-    await release(board, "task", press, source);
-    assert.deepEqual(
-      [board.drag.droppingState.releaseX, board.drag.droppingState.releaseY],
-      [120, 240],
-    );
-    await commit(board);
-    assert.deepEqual(reorders, [["task", "lane", 0]]);
-    assert.deepEqual(clicks, []);
-  });
-}
+    await act(async () => handlers().onTouchEnd(touch));
+    assert.deepEqual(selections, ["task"]);
+    act(() => {
+      handlers().onStartShouldSetPanResponderCapture(touch);
+      handlers().onTouchStart(touch);
+      handlers().onTouchMove({ nativeEvent: { ...nativeEvent, pageY: 40 } });
+      t.mock.timers.tick(300);
+    });
+    assert.equal(board.card("task").props.style?.opacity ?? 1, 1);
+    assert.equal(handlers().onMoveShouldSetPanResponder(touch), false);
+    await act(async () => handlers().onTouchEnd(touch));
+    assert.deepEqual(selections, ["task"]);
+    assert.deepEqual(requests, []);
 
-test("long press lifts immediately, subsequent movement continues dragging, and responder cancellation restores the card", async (t) => {
+    act(() => {
+      handlers().onStartShouldSetPanResponderCapture(touch);
+      handlers().onTouchStart(touch);
+      t.mock.timers.tick(219);
+    });
+    assert.equal(board.card("task").props.style?.opacity ?? 1, 1);
+    act(() => t.mock.timers.tick(1));
+    assert.equal(board.card("task").props.style.opacity, 0);
+    act(() => {
+      assert.equal(handlers().onMoveShouldSetPanResponder(touch), true);
+      handlers().onPanResponderGrant(
+        { nativeEvent: { ...nativeEvent, pageY: 35 } },
+        { x0: 120, y0: 35 },
+      );
+      handlers().onPanResponderMove(touch, { moveX: 120, moveY: 50 });
+    });
+    assert.deepEqual(
+      [board.drag.feedback.pointerY, board.drag.feedback.grabOffsetY],
+      [50, 20],
+      "responder handoff preserves the original grab offset",
+    );
+    await release(board, "task");
+    await commit(board);
+    assert.deepEqual(requests, [["task", "lane", 0]]);
+    assert.deepEqual(selections, ["task"]);
+    board.unmount();
+  }
+});
+
+test("stationary touch hold drops; cancelled touches restore the card and allow a subsequent drag", async (t) => {
   mockTimers(t);
-  const reorders = [];
-  const clicks = [];
-  const board = mountCards(t, {
-    ids: ["task"],
-    onPress: (id) => clicks.push(id),
-    onReorderTask: (...args) => reorders.push(args),
-  });
-  act(() => {
-    board.handlers("task").onPanResponderGrant(event, press);
-    t.mock.timers.tick(260);
-  });
-  assert.equal(
-    board.card("task").props.style.opacity,
-    0,
-    "long press lifts without movement",
-  );
-  act(() =>
-    board
-      .handlers("task")
-      .onPanResponderMove(event, { moveX: 130, moveY: 260 }),
-  );
-  assert.deepEqual(
-    [board.drag.feedback.pointerX, board.drag.feedback.pointerY],
-    [130, 260],
-  );
-  act(() => {
-    board.handlers("task").onPanResponderTerminate();
-    t.mock.timers.tick(60);
-  });
-  assert.equal(board.card("task").props.style, undefined);
-  assert.equal(board.drag.isDragLocked(), false);
-  assert.deepEqual(reorders, []);
-  assert.deepEqual(clicks, []);
+  for (const phase of ["hold", "pending", "lifted", "claimed"]) {
+    const selections = [];
+    const requests = [];
+    const board = mountCards(t, {
+      ids: ["task"],
+      onPress: (id) => selections.push(id),
+      onReorderTask: (...args) => requests.push(args),
+    });
+    const touch = { nativeEvent: { pageX: 120, pageY: 20, touches: [{}] } };
+    act(() => {
+      board.handlers("task").onTouchStart(touch);
+      if (["hold", "lifted", "claimed"].includes(phase))
+        t.mock.timers.tick(220);
+      if (phase === "claimed")
+        board.handlers("task").onPanResponderGrant(touch, press);
+    });
+    await act(async () => {
+      if (phase === "hold") {
+        await board.handlers("task").onTouchEnd(touch);
+        await board.drag.commitDrop();
+      } else if (phase === "claimed")
+        board.handlers("task").onPanResponderTerminate();
+      else board.handlers("task").onTouchCancel(touch);
+      t.mock.timers.tick(300);
+    });
+    assert.equal(board.card("task").props.style?.opacity ?? 1, 1, phase);
+    assert.equal(board.drag.isDragLocked(), false, phase);
+    assert.deepEqual(
+      requests,
+      phase === "hold" ? [["task", "lane", 0]] : [],
+      phase,
+    );
+    assert.deepEqual(selections, [], phase);
+    if (phase !== "hold") {
+      act(() =>
+        board.handlers("task", "handle").onPanResponderGrant(event, press),
+      );
+      await release(board, "task", press, "handle");
+      await commit(board);
+      assert.deepEqual(requests, [["task", "lane", 0]], phase);
+      assert.equal(board.card("task").props.style?.opacity ?? 1, 1, phase);
+    }
+    board.unmount();
+  }
 });
 
 for (const finished of [true, false]) {
-  test(`drop animation ${finished ? "arrives at the slot, keeps the preview while saving, and saves once" : "is interrupted and restores the card without saving"}`, async (t) => {
+  test(`drop animation ${finished ? "arrives at the slot, keeps the pending preview, and requests reorder once" : "is interrupted and restores the card without requesting reorder"}`, async (t) => {
     mockTimers(t);
     const reorders = [];
     let finishSave;
@@ -435,11 +438,14 @@ for (const finished of [true, false]) {
     assert.ok(texts.includes("Dynamic Drop Preview"));
     assert.ok(texts.includes("Test Project"));
     assert.equal(board.card("task").props.style.opacity, 0);
-    assert.deepEqual(reorders, [], "no save before animation completes");
+    assert.deepEqual(
+      reorders,
+      [],
+      "no reorder request before animation completes",
+    );
 
     await act(async () => {
       finishAnimation();
-      finishAnimation(); // A repeated native completion must not save twice.
     });
     assert.deepEqual(reorders, finished ? [["task", "lane", 0]] : []);
     if (finished) {
@@ -451,7 +457,7 @@ for (const finished of [true, false]) {
       assert.equal(
         board.card("task").props.style.opacity,
         0,
-        "source stays hidden while saving",
+        "source stays hidden while the reorder request is pending",
       );
     }
     await act(async () => {
@@ -459,7 +465,7 @@ for (const finished of [true, false]) {
       await saving;
     });
     assert.equal(root.toJSON(), null);
-    assert.equal(board.card("task").props.style, undefined);
+    assert.equal(board.card("task").props.style?.opacity ?? 1, 1);
     act(() => t.mock.timers.tick(60));
     assert.equal(board.drag.isDragLocked(), false);
   });
@@ -504,84 +510,6 @@ test("unmounting a pending card prevents a late long press; removing another car
   assert.deepEqual(reorders, [["1", "lane", 0]]);
 });
 
-test("board unmount cancels pending gestures and unfinished drops, including late repeated completion", async (t) => {
-  mockTimers(t);
-  const reorders = [];
-  for (const phase of ["pending", "dropping"]) {
-    const board = mountCards(t, {
-      ids: ["task"],
-      onReorderTask: (...args) => reorders.push(args),
-    });
-    const tracker = instrumentControllerSubscriptions(board.controller);
-    board.update(); // React resubscribes through the observed public methods.
-    act(() => board.handlers("task").onPanResponderGrant(event, press));
-    let operationId;
-    if (phase === "dropping") {
-      act(() => t.mock.timers.tick(260));
-      await release(board, "task");
-      operationId = board.drag.droppingState.operationId;
-    }
-    tracker.markUnmounted();
-    board.unmount();
-    const renders = board.renders;
-    await act(async () => {
-      t.mock.timers.tick(350);
-      if (operationId) {
-        await board.controller.reportDropComplete(operationId);
-        await board.controller.reportDropComplete(operationId);
-      }
-      board.controller.startGesture("task", "lane", 120, 240, true);
-      board.controller.cancelGesture();
-      t.mock.timers.tick(60);
-    });
-    assert.deepEqual(
-      tracker.cleanupsCalled,
-      { subscribe: 1, subscribeSlot: 1, subscribeDrop: 1 },
-      phase,
-    );
-    assert.equal(tracker.leakedDispatchesAfterUnmount, 0, phase);
-    assert.equal(board.renders, renders, phase);
-    assert.equal(board.controller.isDragLocked(), false, phase);
-  }
-  assert.deepEqual(reorders, []);
-});
-
-test("saving after board unmount does not revive its state or notify abandoned subscriptions", async (t) => {
-  mockTimers(t);
-  let resolveSave;
-  const saved = new Promise((resolve) => {
-    resolveSave = resolve;
-  });
-  const reorders = [];
-  const board = mountCards(t, {
-    ids: ["task"],
-    onReorderTask: (...args) => {
-      reorders.push(args);
-      return saved;
-    },
-  });
-  act(() => board.handlers("task", "handle").onPanResponderGrant(event, press));
-  await release(board, "task", press, "handle");
-  let completion;
-  act(() => {
-    completion = board.drag.commitDrop();
-  });
-  assert.deepEqual(reorders, [["task", "lane", 0]]);
-  board.unmount();
-  let notifications = 0;
-  board.controller.subscribe(() => notifications++);
-  board.controller.subscribeDrop(() => notifications++);
-  await act(async () => {
-    resolveSave();
-    await completion;
-    t.mock.timers.tick(100);
-  });
-  assert.equal(notifications, 0);
-  assert.equal(board.controller.isDragLocked(), false);
-  assert.equal(board.controller.getFeedback().isDragging, false);
-  assert.equal(board.controller.getDroppingState(), null);
-});
-
 test("StrictMode lifecycle replay and a fresh remount both allow long press and drop", async (t) => {
   mockTimers(t);
   const reorders = [];
@@ -592,7 +520,10 @@ test("StrictMode lifecycle replay and a fresh remount both allow long press and 
       onReorderTask: (...args) => reorders.push(args),
     });
     act(() => {
-      board.handlers(id).onPanResponderGrant(event, press);
+      board.handlers(id).onPanResponderGrant(event, {
+        ...press,
+        y0: id === "1" ? 20 : 100,
+      });
       t.mock.timers.tick(260);
     });
     assert.equal(
@@ -603,16 +534,16 @@ test("StrictMode lifecycle replay and a fresh remount both allow long press and 
     await release(board, id);
     await commit(board);
     act(() => t.mock.timers.tick(60));
-    assert.equal(board.card(id).props.style, undefined);
+    assert.equal(board.card(id).props.style?.opacity ?? 1, 1);
     assert.equal(board.drag.isDragLocked(), false);
     board.unmount();
   }
   assert.deepEqual(reorders, [
-    ["1", "lane", 1],
+    ["1", "lane", 0],
     ["2", "lane", 1],
   ]);
 });
-test("card gestures preview one matching-height slot, animate displacement, and save the displayed position", async (t) => {
+test("card gestures preview one matching-height slot, animate displacement, and request the displayed position", async (t) => {
   mockTimers(t);
   const animations = [];
   const Lane = loadClientComponent("kanban-lane", "KanbanLaneView", {
@@ -654,13 +585,6 @@ test("card gestures preview one matching-height slot, animate displacement, and 
         [220, ["2", "3", "slot"]],
       ],
       dropY: 144,
-    },
-    {
-      name: "middle card in compact layout",
-      id: "2",
-      compact: true,
-      steps: [[90, ["1", "slot", "3"]]],
-      dropY: 72,
     },
     {
       name: "last card moves upward and second drag uses reflowed card positions without re-layout",

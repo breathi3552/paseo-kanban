@@ -21,10 +21,48 @@ function server({
             failure.message,
           );
         if (command === "git") return callback(null, remote + "\n", "");
-        const after = args.find((arg) => arg.startsWith("after="))?.slice(6);
-        const offset = after ? Number(after) : 0;
-        const ascending = args.some((arg) => arg === "direction=ASC");
-        const count = Math.min(25, totalCount - offset);
+        // Enforce the outgoing GitHub API contract, not just a canned response:
+        // the page size and cursor actually determine what this process returns.
+        assert.equal(command, "gh");
+        assert.equal(args[args.indexOf("--hostname") + 1], "github.com");
+        assert.equal(options.cwd, "/projects/a");
+        const fields = Object.fromEntries(
+          args
+            .filter((arg) => arg.includes("="))
+            .map((arg) => {
+              const separator = arg.indexOf("=");
+              return [arg.slice(0, separator), arg.slice(separator + 1)];
+            }),
+        );
+        const argument = (source, name) => {
+          const token = source.match(
+            new RegExp(
+              `\\b${name}\\s*:\\s*(\\$\\w+|"[^"]*"|\\[\\s*\\w+\\s*\\]|\\w+)`,
+            ),
+          )?.[1];
+          if (token?.startsWith("$")) return fields[token.slice(1)];
+          if (token?.startsWith('"')) return JSON.parse(token);
+          return token?.replace(/[[\]\s]/g, "");
+        };
+        const repository = fields.query.match(
+          /\brepository\s*\(([^)]*)\)/,
+        )?.[1];
+        assert.ok(repository, "read the project's repository");
+        assert.equal(argument(repository, "owner"), "example");
+        assert.equal(argument(repository, "name"), "repo");
+        const connection = fields.query.match(/\bissues\s*\(([\s\S]*?)\)\s*\{/);
+        assert.ok(
+          connection,
+          "read the repository Issue connection, not PR search",
+        );
+        assert.equal(argument(connection[1], "states"), "OPEN");
+        assert.equal(argument(connection[1], "field"), "CREATED_AT");
+        const pageSize = Number(argument(connection[1], "first"));
+        assert.ok(Number.isInteger(pageSize) && pageSize > 0);
+        const cursor = argument(connection[1], "after");
+        const offset = cursor ? Number(cursor) : 0;
+        const ascending = argument(connection[1], "direction") === "ASC";
+        const count = Math.min(pageSize, totalCount - offset);
         const nodes = Array.from({ length: count }, (_, i) => {
           const number = ascending ? offset + i + 1 : totalCount - offset - i;
           return {
@@ -33,7 +71,9 @@ function server({
             body: "Body",
             url: `https://github.com/example/repo/issues/${number}`,
             author: { login: "alice" },
-            createdAt: "2026-10-14T02:30:00Z",
+            createdAt: new Date(
+              Date.UTC(2026, 0, 1, 0, 0, number),
+            ).toISOString(),
           };
         });
         callback(
@@ -105,15 +145,18 @@ test("注册RPC从宿主项目的origin读取25个真正Issue并提供完整分�
       Array.from({ length: 25 }, (_, i) => 51 - i),
     );
     const second = await host.query({ projectId: "p1", page: 2, sort: "desc" });
-    assert.equal(second.issues.length, 25);
-    assert.equal(second.issues[0].number, 26);
+    assert.deepEqual(
+      second.issues.map((issue) => issue.number),
+      Array.from({ length: 25 }, (_, index) => 26 - index),
+    );
+    const last = await host.query({ projectId: "p1", page: 3, sort: "desc" });
+    assert.deepEqual(
+      last.issues.map((issue) => issue.number),
+      [1],
+    );
     const oldest = await host.query({ projectId: "p1", page: 1, sort: "asc" });
     assert.equal(oldest.issues[0].number, 1);
     assert.equal(oldest.issues[0].author, "alice");
-    const query = host.commands.find((c) => c.command === "gh").args.join(" ");
-    assert.match(query, /issues\(/);
-    assert.match(query, /OPEN/);
-    assert.doesNotMatch(query, /search\(/);
     assert.ok(
       host.commands
         .filter((c) => c.command === "git")

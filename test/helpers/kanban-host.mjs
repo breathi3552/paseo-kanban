@@ -130,7 +130,9 @@ export function createHost({
         save: async (next, expectedRevision) => {
           if (pendingSave) await pendingSave;
           if (failSave) {
+            const failure = failSave;
             failSave = false;
+            if (failure instanceof Error) throw failure;
             return false;
           }
           if (expectedRevision !== String(revision)) return false;
@@ -192,8 +194,8 @@ export function createHost({
     },
     notifications,
     externalUrls,
-    failNextSave() {
-      failSave = true;
+    failNextSave(error) {
+      failSave = error ?? true;
     },
     failNextReload() {
       failReload = true;

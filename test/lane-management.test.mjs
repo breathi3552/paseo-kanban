@@ -48,9 +48,13 @@ async function click(root, label) {
 }
 function dragBody(renderer, title) {
   const node = dialog(renderer)
-    .findAllByType("View")
-    .find((n) => n.props.accessibilityLabel === `Reorder ${title}`);
-  assert.ok(node, `reachable drag area: ${title}`);
+    .findAllByType("Text")
+    .find((n) => text(n) === title)?.parent;
+  assert.equal(
+    node?.props.accessibilityLabel,
+    `Reorder ${title}`,
+    `reachable name drag area: ${title}`,
+  );
   return node;
 }
 async function enter(renderer, value) {
@@ -158,49 +162,117 @@ test("左右排序仅预览，先保存或还原才能增删改，完成泳道�
   assert.deepEqual(host.notifications, ["Lane order saved"]);
 });
 
-test("触屏滑动让渡滚动且不改名，长按抓起后可落位，取消手势不改变排序", async (t) => {
+test("触屏滑动让渡滚动且不改名，长按抓起后可落位保存，取消手势不改变排序", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { host, renderer } = await setup(t);
-  const event = { nativeEvent: { pointerType: "touch" } };
+  const touch = (pageX, pageY) => ({
+    nativeEvent: { pointerType: "touch", pageX, pageY },
+  });
+  const start = touch(50, 50);
   const gesture = { x0: 50, y0: 50, moveX: 50, moveY: 50, dx: 0, dy: 0 };
-  let source = dragBody(renderer, "Todo").props;
-  await act(async () => source.onPanResponderGrant(event, gesture));
-  await act(async () =>
-    source.onPanResponderMove(event, { ...gesture, moveX: 70, dx: 20 }),
+  const strip = () =>
+    dialog(renderer)
+      .findAllByType("ScrollView")
+      .find((node) => node.props.horizontal);
+  const original = ["Rename Todo", "Rename Doing", "Rename Finished"];
+  const contact = async () => {
+    const source = dragBody(renderer, "Todo").props;
+    await act(async () => {
+      source.onPointerDown(start);
+      assert.equal(
+        source.onStartShouldSetPanResponderCapture(start, gesture),
+        false,
+      );
+      assert.equal(source.onStartShouldSetPanResponder(start, gesture), false);
+      source.onTouchStart(start);
+    });
+    return source;
+  };
+
+  let source = await contact();
+  const swipe = touch(70, 60);
+  const swipeGesture = { ...gesture, moveX: 70, moveY: 60, dx: 20, dy: 10 };
+  assert.equal(
+    source.onMoveShouldSetPanResponderCapture(swipe, swipeGesture),
+    false,
   );
-  assert.equal(source.onPanResponderTerminationRequest(), true);
-  await act(async () => source.onPanResponderRelease(event, gesture));
+  assert.equal(source.onMoveShouldSetPanResponder(swipe, swipeGesture), false);
+  // No responder grant: native touch observation must cancel the pending hold.
+  await act(async () => source.onTouchMove(swipe));
+  await act(async () => t.mock.timers.tick(220));
+  assert.equal(
+    source.onMoveShouldSetPanResponderCapture(swipe, swipeGesture),
+    false,
+  );
+  assert.equal(strip().props.scrollEnabled, true);
+  await act(async () => source.onTouchEnd(swipe));
   assert.equal(dialog(renderer).findAllByType("TextInput").length, 0);
-  assert.deepEqual(displayedLanes(renderer), [
-    "Rename Todo",
-    "Rename Doing",
-    "Rename Finished",
-  ]);
-  source = dragBody(renderer, "Todo").props;
-  await act(async () => source.onPanResponderGrant(event, gesture));
-  await act(async () => t.mock.timers.tick(220));
-  assert.equal(source.onPanResponderTerminationRequest(), false);
-  await act(async () =>
-    source.onPanResponderMove(event, { ...gesture, moveX: 290, dx: 240 }),
-  );
-  await act(async () => source.onPanResponderTerminate());
-  assert.deepEqual(displayedLanes(renderer), [
-    "Rename Todo",
-    "Rename Doing",
-    "Rename Finished",
-  ]);
-  await act(async () => source.onPanResponderGrant(event, gesture));
-  await act(async () => t.mock.timers.tick(220));
-  await act(async () =>
-    source.onPanResponderMove(event, { ...gesture, moveX: 290, dx: 240 }),
-  );
-  await act(async () => source.onPanResponderRelease(event, gesture));
-  assert.deepEqual(displayedLanes(renderer), [
-    "Rename Doing",
-    "Rename Todo",
-    "Rename Finished",
-  ]);
+  assert.deepEqual(displayedLanes(renderer), original);
   assert.deepEqual(host.board.lanes, lanes);
+
+  for (const outcome of ["cancel", "release"]) {
+    source = await contact();
+    await act(async () => t.mock.timers.tick(220));
+    assert.equal(strip().props.scrollEnabled, false);
+    const claim = touch(150, 70);
+    assert.equal(
+      source.onMoveShouldSetPanResponderCapture(claim, {
+        ...gesture,
+        moveX: 150,
+        moveY: 70,
+        dx: 100,
+        dy: 20,
+      }),
+      true,
+    );
+    // PanResponder resets dx/dy when the long-pressed touch is first claimed.
+    await act(async () =>
+      source.onPanResponderGrant(claim, {
+        x0: 150,
+        y0: 70,
+        moveX: 150,
+        moveY: 70,
+        dx: 0,
+        dy: 0,
+      }),
+    );
+    assert.equal(source.onPanResponderTerminationRequest(), false);
+    const end = touch(190, 90);
+    const claimedGesture = {
+      x0: 150,
+      y0: 70,
+      moveX: 190,
+      moveY: 90,
+      dx: 40,
+      dy: 20,
+    };
+    await act(async () => source.onPanResponderMove(end, claimedGesture));
+    await act(async () => {
+      if (outcome === "cancel") {
+        source.onPanResponderTerminate(end, claimedGesture);
+        source.onTouchCancel(end);
+      } else {
+        source.onPanResponderRelease(end, claimedGesture);
+        source.onTouchEnd(end);
+      }
+    });
+    assert.equal(strip().props.scrollEnabled, true);
+    assert.equal(dialog(renderer).findAllByType("TextInput").length, 0);
+    assert.deepEqual(
+      displayedLanes(renderer),
+      outcome === "cancel"
+        ? original
+        : ["Rename Doing", "Rename Todo", "Rename Finished"],
+    );
+    assert.deepEqual(host.board.lanes, lanes);
+    assert.deepEqual(host.notifications, []);
+  }
+  await press(dialog(renderer), "Save order");
+  assert.deepEqual(
+    host.board.lanes.map((lane) => lane.id),
+    ["doing", "todo", "done"],
+  );
+  assert.deepEqual(host.notifications, ["Lane order saved"]);
 });
 
 test("删除按未完成状态跨项目清理，确认无数量，保留完成任务及其恢复能力", async (t) => {

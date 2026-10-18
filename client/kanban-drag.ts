@@ -5,9 +5,11 @@ import {
   useLayoutEffect,
 } from "react";
 import type {
+  GestureResponderEvent,
   GestureResponderHandlers,
   PanResponderCallbacks,
   PanResponderInstance,
+  ViewProps,
 } from "react-native";
 import type { KanbanTask } from "../shared/kanban";
 
@@ -610,26 +612,108 @@ export class KanbanDragController {
     const factory = panResponderFactory ?? this.panResponderFactory;
     let responders = this.cardResponders.get(key);
     if (!responders && factory) {
+      let pointerTouch: boolean | undefined;
+      let observedTouch: ActiveDragSession | null = null;
+      let claimed = false;
+      const isTouch = (event: GestureResponderEvent) => {
+        const native = event.nativeEvent as typeof event.nativeEvent & {
+          pointerType?: string;
+        };
+        return native.pointerType
+          ? native.pointerType !== "mouse"
+          : (pointerTouch ?? native.touches?.length > 0);
+      };
+      const observeTouch = (event: GestureResponderEvent) => {
+        if (!isTouch(event) || this.activeSession) return;
+        this.handlePointerDown(
+          { taskId, laneId, onPress: this.cardCallbacks.get(key) },
+          { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY },
+          "body",
+          "touch",
+        );
+        observedTouch = this.activeSession;
+        claimed = false;
+      };
+      const ownsTouch = () =>
+        observedTouch !== null && observedTouch === this.activeSession;
+      const shouldClaimMove = () =>
+        ownsTouch() && Boolean(observedTouch?.isActivated);
+      const release = () => {
+        observedTouch = null;
+        return this.handlePointerUp();
+      };
       const body = factory.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (_e, gs) => {
-          const cb = this.cardCallbacks.get(key);
-          this.handlePointerDown(
-            { taskId, laneId, onPress: cb },
-            { x: gs.x0, y: gs.y0 },
-            "body",
-          );
+        // Observe touch without stealing quick swipes from the ScrollView.
+        // Keep PanResponder's capture handlers intact for native bookkeeping.
+        onStartShouldSetPanResponderCapture: (event) => {
+          observeTouch(event);
+          return false;
+        },
+        onStartShouldSetPanResponder: (event) => !isTouch(event),
+        onMoveShouldSetPanResponderCapture: shouldClaimMove,
+        onMoveShouldSetPanResponder: (event) =>
+          !isTouch(event) || shouldClaimMove(),
+        onPanResponderGrant: (event, gs) => {
+          if (ownsTouch()) {
+            claimed = true;
+            // Grant follows the long press on the next move: retain the
+            // original grab offset rather than starting a second gesture.
+            this.handlePointerMove({
+              x: event.nativeEvent.pageX,
+              y: event.nativeEvent.pageY,
+            });
+          } else {
+            this.handlePointerDown(
+              { taskId, laneId, onPress: this.cardCallbacks.get(key) },
+              { x: gs.x0, y: gs.y0 },
+              "body",
+              isTouch(event) ? "touch" : "mouse",
+            );
+          }
         },
         onPanResponderMove: (_e, gs) => {
           this.handlePointerMove({ x: gs.moveX, y: gs.moveY });
         },
-        onPanResponderRelease: () => this.handlePointerUp(),
+        onPanResponderRelease: release,
         onPanResponderTerminate: () => {
+          observedTouch = null;
           this.handlePointerCancel();
         },
         onPanResponderTerminationRequest: () => !this.isTaskDragging(taskId),
+        onShouldBlockNativeResponder: (event) =>
+          !isTouch(event) || this.isTaskDragging(taskId),
       });
+      const touchHandlers: Pick<
+        ViewProps,
+        | "onPointerDown"
+        | "onTouchStart"
+        | "onTouchMove"
+        | "onTouchEnd"
+        | "onTouchCancel"
+      > = {
+        onPointerDown: (event) => {
+          pointerTouch = event.nativeEvent.pointerType !== "mouse";
+        },
+        onTouchStart: observeTouch,
+        onTouchMove: (event) => {
+          if (ownsTouch() && !claimed)
+            this.handlePointerMove({
+              x: event.nativeEvent.pageX,
+              y: event.nativeEvent.pageY,
+            });
+        },
+        onTouchEnd: () => {
+          if (ownsTouch() && !claimed) return release();
+        },
+        onTouchCancel: () => {
+          if (ownsTouch()) {
+            observedTouch = null;
+            this.handlePointerCancel();
+          }
+        },
+      };
+
+      body.panHandlers = { ...body.panHandlers, ...touchHandlers };
 
       const handle = factory.create({
         onStartShouldSetPanResponder: () => true,
