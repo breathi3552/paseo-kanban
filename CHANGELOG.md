@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), adapted 
 
 ## [Unreleased]
 
+### Features
+
+- **Unified lane management**: Manage swimlanes in a horizontal modal with in-place creation, renaming, deletion, left/right ordering controls, and drag-and-drop reordering with edge auto-scrolling.
+- **Cascading lane deletion**: Deleting a swimlane containing unfinished tasks prompts for confirmation and deletes those tasks across all projects while keeping completed tasks intact.
+- **Safe concurrent lane saves**: Automatically retry saving lane changes against the latest revision if only tasks were modified concurrently; preserve drafts and provide a reload action if lane structures changed.
+
+### Fixes & Improvements
+
+- **Desktop portal rendering**: Render the wide lane manager using an isolated React DOM portal on desktop to bypass the 520px host dialog width limit without obstructing host toast notifications.
+- **Lane title uniqueness**: Enforce uniqueness across all swimlane titles (including the completion lane) after trimming leading and trailing whitespace.
+
+### Compatibility & Migration
+
+- Requires Paseo `>= 0.11.4`.
+- No board data migration or dependency changes required.
+
+---
+
+### 新增特性
+
+- **统一泳道管理**：在横向弹窗中集中管理泳道，支持就地新增、重命名与删除，提供左右移动按钮以及支持边缘自动滚动的把手拖拽排序与预览。
+- **级联删除未完成任务**：删除包含未完成任务的泳道时进行二次确认，确认后同步删除各项目中归属于该泳道的未完成任务，已完成任务继续保留。
+- **泳道并发安全保存**：泳道保存遇到版本冲突时，若仅任务数据更新则自动重试保存；若泳道结构被修改则保留本地草稿并提供重新加载最新数据的入口。
+
+### 修复与优化
+
+- **桌面端 Portal 弹窗渲染**：桌面端使用独立打包的 React DOM Portal 容器渲染 1120px 宽屏管理弹窗，突破宿主 520px 宽度限制，同时保持宿主 Toast 通知正常显示。
+- **泳道名称唯一性校验**：新增与重命名泳道时自动去除首尾空格，并在全板范围内校验唯一性（包含完成泳道）。
+
+### 兼容性与迁移
+
+- 依赖 Paseo `>= 0.11.4`。
+- 无需看板数据迁移或依赖项变更。
+
 ## [0.2.0] - 2026-10-17
 
 ### Features

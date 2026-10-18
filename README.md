@@ -113,7 +113,7 @@ npm ci
 npm run check
 ```
 
-Individual commands (`npm test`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run check:package`) are defined in [`package.json`](./package.json). For tag-based publishing, release sources of truth, recovery, and host acceptance, see the [development guide](./docs/development.md#21-标签发布github-actions).
+Individual commands (`npm test`, `npm run check:portal`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run check:package`) are defined in [`package.json`](./package.json). For tag-based publishing, release sources of truth, recovery, and host acceptance, see the [development guide](./docs/development.md#21-标签发布github-actions).
 
 ---
 
