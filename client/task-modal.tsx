@@ -20,6 +20,7 @@ import type { ProjectItem } from "./use-projects";
 import type { TaskEditSession } from "./kanban-session";
 import { useI18n } from "./i18n";
 import { IssueLink } from "./issue-link";
+import { SettingsSelect } from "@getpaseo/plugin/client/ui";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 
@@ -42,12 +43,26 @@ export function TaskModal({
   theme,
   layout,
 }: TaskModalProps) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const snapshot = useSyncExternalStore(
     session.subscribe,
     session.getSnapshot,
     session.getSnapshot,
   );
+
+  const projectOptions = useMemo(() => {
+    const available = projects.map((project) => ({
+      value: project.projectId,
+      label: project.projectDisplayName,
+    }));
+    if (
+      snapshot.projectId &&
+      !available.some((option) => option.value === snapshot.projectId)
+    ) {
+      available.push({ value: snapshot.projectId, label: snapshot.projectId });
+    }
+    return available.sort((a, b) => a.label.localeCompare(b.label, language));
+  }, [projects, snapshot.projectId, language]);
 
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -548,58 +563,16 @@ export function TaskModal({
             </View>
           </View>
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>{t("taskModal.projectLabel")}</Text>
-            {snapshot.source === "github_issue" ? (
-              <Text style={{ color: theme.colors.foreground }}>
-                {projects.find(
-                  (project) => project.projectId === snapshot.projectId,
-                )?.projectDisplayName ?? snapshot.projectId}
-              </Text>
-            ) : (
-              <View style={styles.selectorRow}>
-                <Pressable
-                  onPress={() => session.setProjectId(null)}
-                  style={[
-                    styles.optionChip,
-                    snapshot.projectId === null && styles.optionChipSelected,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.optionChipText,
-                      snapshot.projectId === null &&
-                        styles.optionChipTextSelected,
-                    ]}
-                  >
-                    {t("taskModal.noProject")}
-                  </Text>
-                </Pressable>
-                {projects.map((proj) => {
-                  const isSelected = proj.projectId === snapshot.projectId;
-                  return (
-                    <Pressable
-                      key={proj.projectId}
-                      onPress={() => session.setProjectId(proj.projectId)}
-                      style={[
-                        styles.optionChip,
-                        isSelected && styles.optionChipSelected,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.optionChipText,
-                          isSelected && styles.optionChipTextSelected,
-                        ]}
-                      >
-                        {proj.projectDisplayName}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
-          </View>
+          <SettingsSelect
+            label={t("taskModal.projectLabel")}
+            value={snapshot.projectId ?? ""}
+            options={[
+              { value: "", label: t("taskModal.noProject") },
+              ...projectOptions,
+            ]}
+            onValueChange={(id) => session.setProjectId(id || null)}
+            disabled={isSaving || snapshot.source === "github_issue"}
+          />
 
           {snapshot.source === "github_issue" && snapshot.externalUrl && (
             <IssueLink url={snapshot.externalUrl} theme={theme} />

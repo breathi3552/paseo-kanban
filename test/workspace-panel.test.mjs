@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { act } from "./helpers/react-host-env.mjs";
-import { createHost, mount, press, text } from "./helpers/kanban-host.mjs";
+import {
+  createHost,
+  mount,
+  press,
+  text,
+  chooseProject,
+} from "./helpers/kanban-host.mjs";
 
 globalThis.localStorage = {
   getItem: () => JSON.stringify({ language: "en" }),
@@ -40,8 +46,8 @@ test("各入口筛选独立，重渲染保留手动选择，关闭重开恢复�
   const sidebar = await mount(t, host);
   assert.deepEqual(visibleTasks(a.root), ["Task A"]);
   assert.deepEqual(visibleTasks(b.root), ["Task B"]);
-  await press(a.root, "Project B");
-  await press(b.root, "No Project");
+  await chooseProject(a.root, "Project B");
+  await chooseProject(b.root, "No Project");
   assert.deepEqual(visibleTasks(a.root), ["Task B"]);
   assert.deepEqual(visibleTasks(b.root), ["Task unassigned"]);
   assert.deepEqual(visibleTasks(sidebar.root), [
@@ -78,7 +84,7 @@ test("缺失工作区上下文时静默展示全部，迟到的上下文不切�
     "Task B",
     "Task unassigned",
   ]);
-  await press(panel.root, "Project B");
+  await chooseProject(panel.root, "Project B");
   await act(async () =>
     host.updateWorkspace("workspace-a", {
       projectId: "project-a",
@@ -95,22 +101,22 @@ test("项目名称读取失败仍按已知 ID 筛选，默认项目可通过 ID 
   const host = createHost({ projectsAvailable: false });
   const panel = await mount(t, host, "workspace-a");
   assert.deepEqual(visibleTasks(panel.root), ["Task A"]);
-  await press(panel.root, "All");
-  await press(panel.root, "project-a");
+  await chooseProject(panel.root, "All Projects");
+  await chooseProject(panel.root, "project-a");
   assert.deepEqual(visibleTasks(panel.root), ["Task A"]);
 });
 
-test("新任务关联跟随项目筛选，All 和 No Project 默认不关联，并同步其他入口", async (t) => {
+test("新任务关联跟随项目筛选，All Projects 和 No Project 默认不关联，并同步其他入口", async (t) => {
   const host = createHost();
   const panel = await mount(t, host, "workspace-a");
   const peer = await mount(t, host, "workspace-b");
   const sidebar = await mount(t, host);
   for (const [filter, title, association, visibleInPeer] of [
     ["Project B", "Task new-B", "Project B", true],
-    ["All", "Task new-all", "No Project", false],
+    ["All Projects", "Task new-all", "No Project", false],
     ["No Project", "Task new-unassigned", "No Project", false],
   ]) {
-    await press(panel.root, filter);
+    await chooseProject(panel.root, filter);
     await press(panel.root, "+ Add");
     const modal = panel.root.findByType("Modal");
     await act(async () =>
@@ -128,9 +134,9 @@ test("新任务关联跟随项目筛选，All 和 No Project 默认不关联，�
       visibleInPeer,
       `${filter}: 同步且遵循另一工作区的筛选`,
     );
-    await press(panel.root, association);
+    await chooseProject(panel.root, association);
     assert.ok(visibleTasks(panel.root).includes(title), `${filter}: 项目关联`);
   }
-  await press(panel.root, "Project A");
+  await chooseProject(panel.root, "Project A");
   assert.deepEqual(visibleTasks(panel.root), ["Task A"]);
 });

@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), adapted 
 
 - **Send to Agent**: Send a task card's title, markdown description, subtask checklist, and source link directly to a new Agent session. Choose an existing workspace, create a new regular workspace, or create a new worktree with branch name validation.
 - **Persistent dispatch prompt**: Customize and persist the dispatch prompt across tasks and boards without polluting individual task content; includes sending status feedback, duplicate submission guards, and staged error reporting.
+- **Host select for project filtering and assignment**: Replace horizontal chips with Paseo's native `SettingsSelect` for board project filtering and task modal project assignment; options adapt to host styling and themes, sort alphabetically by localized display name, and fallback safely for missing project IDs.
+- **Simplified task modal field labels**: Streamline task form field labels to "Title *", "Lane", and "Project" in strict sequence; lock imported GitHub issue project assignment in a disabled select control while keeping descriptions editable.
 
 ### Compatibility & Migration
 
@@ -22,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), adapted 
 
 - **发送到 Agent**：将任务卡片的标题、Markdown 描述、子步骤清单及来源链接作为初始消息直接发送至新建 Agent 会话。支持选择已有工作区、新建普通工作区或通过 Git 分支名校验新建 worktree。
 - **持久化协作指令与即时反馈**：支持自定义并跨任务沿用协作 prompt，不污染任务本身内容；提供发送中状态反馈与防重复提交保护，分阶段反馈异常且不自动隐式重试。
+- **宿主下拉框项目筛选与关联**：看板顶部项目筛选与任务弹窗项目选择复用 Paseo 原生 `SettingsSelect` 控件，自适应宿主风格与深浅主题，按当前语言本地化名称排序，并对缺失项目 ID 进行回退显示。
+- **任务弹窗字段精简与锁定**：将任务弹窗表单字段按“标题 *”“泳道”“项目”顺序呈现；GitHub 导入任务的项目关联以禁用下拉框形式锁定，其余字段与描述保持可编辑。
 
 ### 兼容性与迁移
 
