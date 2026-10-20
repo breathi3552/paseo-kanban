@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from "react";
 export interface ProjectItem {
   projectId: string;
   projectDisplayName: string;
+  projectRootPath?: string;
+  projectKind?: "git" | "directory" | "non_git";
 }
 
 export type ProjectNameResolver = (

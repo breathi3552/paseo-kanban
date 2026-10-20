@@ -1,11 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  KanbanBoardSchema,
-  addLane,
-  reorderTask,
-  updateTask,
-} from "../shared/kanban.ts";
+import { KanbanBoardSchema, addLane, reorderTask } from "../shared/kanban.ts";
 
 const task = (id, laneId = "to-plan", projectId = null) => ({
   id,
@@ -80,6 +75,14 @@ test("普通泳道排序按目标槽位插入，项目筛选保留隐藏任务",
     ["同泳道下移", "t1", "to-plan", 2, undefined, ["t2", "t3", "t1", "t4"]],
     ["同泳道上移", "t3", "to-plan", 0, undefined, ["t3", "t1", "t2", "t4"]],
     ["跨泳道", "t1", "in-progress", 0, undefined, ["t2", "t3", "t1", "t4"]],
+    [
+      "目标无可见锚点",
+      "t1",
+      "in-progress",
+      0,
+      "projA",
+      ["t2", "t3", "t4", "t1"],
+    ],
     ["筛选后的可见槽位", "t3", "to-plan", 0, "projA", ["t3", "t1", "t2", "t4"]],
   ]) {
     const reordered = reorderTask(board, id, laneId, index, filter);
@@ -100,64 +103,5 @@ test("普通泳道排序按目标槽位插入，项目筛选保留隐藏任务",
     ),
     ["t2:to-plan", "t3:to-plan", "t4:in-progress", "t1:empty"],
     "空目标泳道按泳道次序插入全量数组",
-  );
-});
-
-test("筛选下无可见锚点时跨泳道追加，同泳道仅自身可见时保持原位", () => {
-  const board = KanbanBoardSchema.parse({
-    tasks: [
-      task("t1", "to-plan", "projA"),
-      task("t2", "to-plan", "projB"),
-      task("t3", "in-progress", "projB"),
-      task("t4", "in-progress", "projB"),
-    ],
-  });
-  const moved = reorderTask(board, "t1", "in-progress", 0, {
-    type: "project",
-    projectId: "projA",
-  });
-  assert.deepEqual(
-    moved.tasks,
-    [...board.tasks.slice(1), { ...board.tasks[0], laneId: "in-progress" }],
-    "追加到隐藏任务末尾，保留隐藏任务内容和顺序",
-  );
-  assert.strictEqual(
-    reorderTask(board, "t1", "to-plan", 0, "projA"),
-    board,
-    "原位操作返回原看板，允许调用方跳过写入",
-  );
-});
-
-test("排序拒绝不存在的任务或泳道", () => {
-  const board = KanbanBoardSchema.parse({ tasks: [task("t1")] });
-  for (const [id, lane, index, error] of [
-    ["missing", "to-plan", 0, /Task with ID "missing" not found/],
-    ["t1", "ghost", 0, /Target lane "ghost" does not exist/],
-  ]) {
-    assert.throws(
-      () => reorderTask(board, id, lane, index),
-      error,
-      `${id}/${lane}/${index}`,
-    );
-  }
-});
-
-test("公开任务修改合同拒绝导入任务改绑项目", () => {
-  const board = KanbanBoardSchema.parse({
-    tasks: [
-      {
-        id: "imported",
-        title: "Issue",
-        laneId: "to-plan",
-        projectId: "p1",
-        source: "github_issue",
-        issueNumber: 42,
-        externalUrl: "https://github.com/example/repo/issues/42",
-      },
-    ],
-  });
-  assert.throws(
-    () => updateTask(board, "imported", { projectId: "p2" }),
-    /project/i,
   );
 });

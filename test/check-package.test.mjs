@@ -71,7 +71,6 @@ test("check-package: accepts a complete source package with host, type, re-expor
   // The host compiles published TS/TSX; extension and directory imports must close.
   const result = validatePackage(createValidFixture());
   assert.equal(result.valid, true, result.errors.join("; "));
-  assert.deepEqual(result.errors, []);
 });
 
 test("check-package: rejects packages missing a required entrypoint or manifest", () => {

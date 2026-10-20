@@ -45,15 +45,19 @@ export async function press(root, label) {
 
 export function createHost({
   projectsAvailable = true,
+  projectItems,
+  paseo: paseoOverrides = {},
+  navigation,
   board,
   rpc = async () => ({ repository: "example/repo", issues: [], totalCount: 0 }),
   compact = false,
+  settingsValues = {},
   workspaces = {
     "workspace-a": { projectId: "project-a" },
     "workspace-b": { projectId: "project-b" },
   },
 } = {}) {
-  const projects = [
+  const projects = projectItems ?? [
     { projectId: "project-a", projectDisplayName: "Project A" },
     { projectId: "project-b", projectDisplayName: "Project B" },
   ];
@@ -82,6 +86,7 @@ export function createHost({
   const notifications = [];
   const externalUrls = [];
   let settings = { status: "ready", values, revision: String(revision) };
+  const extraSettings = new Map();
   const paseo = {
     projects: {
       list: async () => {
@@ -90,13 +95,16 @@ export function createHost({
       },
       subscribe: () => () => {},
     },
+    ...paseoOverrides,
   };
   const sdk = {
     usePaseo: () => paseo,
     useRpc: (contract) =>
       React.useCallback(
         async (input) =>
-          contract.output.parse(await rpc(contract.input.parse(input))),
+          contract.output.parse(
+            await rpc(contract.input.parse(input), contract.name),
+          ),
         [contract],
       ),
     openExternalUrl: async (url) => externalUrls.push(url),
@@ -111,13 +119,20 @@ export function createHost({
       return snapshot[id] ? selector(snapshot[id]) : null;
     },
     useSettings: (contract) => {
-      const snapshot = React.useSyncExternalStore(
-        (listener) => {
-          settingsListeners.add(listener);
-          return () => settingsListeners.delete(listener);
-        },
-        () => settings,
-      );
+      const isBoard = contract.id === "kanban";
+      if (!isBoard && !extraSettings.has(contract.id)) {
+        extraSettings.set(contract.id, {
+          status: "ready",
+          values: contract.schema.parse(settingsValues[contract.id] ?? {}),
+          revision: "1",
+        });
+      }
+      const current = () =>
+        isBoard ? settings : extraSettings.get(contract.id);
+      const snapshot = React.useSyncExternalStore((listener) => {
+        settingsListeners.add(listener);
+        return () => settingsListeners.delete(listener);
+      }, current);
       return {
         ...snapshot,
         reload: async () => {
@@ -135,9 +150,22 @@ export function createHost({
             if (failure instanceof Error) throw failure;
             return false;
           }
-          if (expectedRevision !== String(revision)) return false;
-          values = contract.schema.parse(next);
-          settings = { status: "ready", values, revision: String(++revision) };
+          if (expectedRevision !== current().revision) return false;
+          const parsed = contract.schema.parse(next);
+          if (isBoard) {
+            values = parsed;
+            settings = {
+              status: "ready",
+              values,
+              revision: String(++revision),
+            };
+          } else {
+            extraSettings.set(contract.id, {
+              status: "ready",
+              values: parsed,
+              revision: String(Number(current().revision) + 1),
+            });
+          }
           settingsListeners.forEach((listener) => listener());
           return true;
         },
@@ -194,6 +222,11 @@ export function createHost({
     },
     notifications,
     externalUrls,
+    get settingsValues() {
+      return Object.fromEntries(
+        [...extraSettings].map(([id, settings]) => [id, settings.values]),
+      );
+    },
     failNextSave(error) {
       failSave = error ?? true;
     },
@@ -214,6 +247,7 @@ export function createHost({
         : surfaces.get("kanban").Component;
       return React.createElement(Component, {
         ...hostProps,
+        ...(navigation ? { navigation } : {}),
         layout: { ...hostProps.layout, compact },
         ...(workspaceId ? { context: "workspace", workspaceId } : {}),
       });

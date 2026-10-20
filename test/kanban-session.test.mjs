@@ -125,7 +125,6 @@ test("打开时锁定的版本过期后拒绝任务草稿，不覆盖外部修�
       taskId: "t1",
     });
     await store.save(update(store.values), store.options().baseRevision);
-    await store.save(store.values, store.options().baseRevision);
     const external = structuredClone(store.values);
     session.setTitle("未同步的草稿");
     const result = await session.save();

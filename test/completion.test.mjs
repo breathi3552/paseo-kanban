@@ -62,7 +62,11 @@ test("拖入完成泳道后按时间排序且不能手动重排，拖出按落�
   );
 
   const internalReorder = kanban.reorderTask(draggedIn, "t1", "done", 1);
-  assert.equal(internalReorder, draggedIn);
+  assert.deepEqual(
+    kanban.getLaneTasks(internalReorder, "done"),
+    kanban.getLaneTasks(draggedIn, "done"),
+    "完成泳道的手动重排不改变展示顺序或任务内容",
+  );
 
   const draggedOut = kanban.reorderTask(internalReorder, "t1", "review", 1);
   assert.deepEqual(

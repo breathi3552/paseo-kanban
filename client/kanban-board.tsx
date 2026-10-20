@@ -14,11 +14,14 @@ import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import {
   kanbanSettings,
   getLaneTasks,
+  updateTask,
   type KanbanBoard,
+  type KanbanTask,
 } from "../shared/kanban";
 import { useProjects } from "./use-projects";
 import { TaskModal } from "./task-modal";
 import { GitHubImportModal } from "./github-import-modal";
+import { AgentDispatchModal } from "./agent-dispatch-modal";
 import { LaneManagementModal } from "./lane-management-modal";
 import { useKanbanDrag } from "./kanban-drag";
 import { KanbanLaneView } from "./kanban-lane";
@@ -70,6 +73,11 @@ function KanbanBoardContent(props: KanbanBoardProps) {
     props.initialProjectId || "all",
   );
   const [importOpen, setImportOpen] = useState(false);
+  const [dispatchDraft, setDispatchDraft] = useState<{
+    task: KanbanTask;
+    board: KanbanBoard;
+    revision: string;
+  } | null>(null);
   const [activeTaskSession, setActiveTaskSession] =
     useState<TaskEditSession | null>(null);
   const [laneManagement, setLaneManagement] = useState(false);
@@ -101,10 +109,12 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   );
   if (isReady)
     lastReady.current = { board: settings.values, revision: settings.revision };
-  const retained = importOpen || laneManagement ? lastReady.current : null;
+  const retained =
+    importOpen || laneManagement || dispatchDraft ? lastReady.current : null;
   const board = isReady ? settings.values : (retained?.board ?? null);
   const revision = isReady ? settings.revision : (retained?.revision ?? "");
-  const preserveImport = (importOpen || laneManagement) && board !== null;
+  const preserveImport =
+    (importOpen || laneManagement || dispatchDraft !== null) && board !== null;
 
   const handleReorderTask = async (
     taskId: string,
@@ -619,6 +629,17 @@ function KanbanBoardContent(props: KanbanBoardProps) {
                 onAddTask={(laneId) => openNewTask(laneId)}
                 onSelectTask={(task) => openEditTask(task.id)}
                 onSetCompleted={handleSetCompleted}
+                onSendToAgent={
+                  props.navigation
+                    ? (task) => {
+                        if (
+                          !completionPendingRef.current &&
+                          !drag.isDragLocked()
+                        )
+                          setDispatchDraft({ task, board, revision });
+                      }
+                    : undefined
+                }
                 completionPending={completionPending}
               />
             );
@@ -629,6 +650,23 @@ function KanbanBoardContent(props: KanbanBoardProps) {
       </View>
 
       {/* Modals with Session Baseline Locking */}
+      {dispatchDraft && props.navigation && (
+        <AgentDispatchModal
+          task={dispatchDraft.task}
+          projects={projects}
+          theme={theme}
+          navigation={props.navigation}
+          saveProject={(projectId) =>
+            settings.save(
+              updateTask(dispatchDraft.board, dispatchDraft.task.id, {
+                projectId,
+              }),
+              dispatchDraft.revision,
+            )
+          }
+          onClose={() => setDispatchDraft(null)}
+        />
+      )}
       {importOpen && (
         <GitHubImportModal
           board={board}
