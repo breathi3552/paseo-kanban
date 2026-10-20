@@ -17,6 +17,7 @@ export interface KanbanCardProps {
   binding: CardDragBinding;
   slideAnimation?: { seq: number; fromY: number };
   onSetCompleted?: (taskId: string, completed: boolean) => void;
+  onSendToAgent?: (task: KanbanTask) => void;
   completionDisabled?: boolean;
   interactionDisabled?: boolean;
 }
@@ -58,6 +59,7 @@ export function KanbanCard({
   binding,
   slideAnimation,
   onSetCompleted,
+  onSendToAgent,
   completionDisabled = false,
   interactionDisabled = false,
 }: KanbanCardProps) {
@@ -279,6 +281,25 @@ export function KanbanCard({
             </View>
           )}
         </View>
+        {onSendToAgent && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("dispatch.title")}
+            disabled={interactionDisabled || completionDisabled}
+            style={{
+              minWidth: 36,
+              minHeight: 36,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            onPress={(event) => {
+              event.stopPropagation();
+              onSendToAgent(task);
+            }}
+          >
+            <Icon name="Send" size={16} color={theme.colors.accent} />
+          </Pressable>
+        )}
         {task.source === "github_issue" && task.externalUrl && (
           <IssueLink
             url={task.externalUrl}

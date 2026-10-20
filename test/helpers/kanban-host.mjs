@@ -45,6 +45,9 @@ export async function press(root, label) {
 
 export function createHost({
   projectsAvailable = true,
+  projectItems,
+  paseo: paseoOverrides = {},
+  navigation,
   board,
   rpc = async () => ({ repository: "example/repo", issues: [], totalCount: 0 }),
   compact = false,
@@ -53,7 +56,7 @@ export function createHost({
     "workspace-b": { projectId: "project-b" },
   },
 } = {}) {
-  const projects = [
+  const projects = projectItems ?? [
     { projectId: "project-a", projectDisplayName: "Project A" },
     { projectId: "project-b", projectDisplayName: "Project B" },
   ];
@@ -90,13 +93,16 @@ export function createHost({
       },
       subscribe: () => () => {},
     },
+    ...paseoOverrides,
   };
   const sdk = {
     usePaseo: () => paseo,
     useRpc: (contract) =>
       React.useCallback(
         async (input) =>
-          contract.output.parse(await rpc(contract.input.parse(input))),
+          contract.output.parse(
+            await rpc(contract.input.parse(input), contract.name),
+          ),
         [contract],
       ),
     openExternalUrl: async (url) => externalUrls.push(url),
@@ -214,6 +220,7 @@ export function createHost({
         : surfaces.get("kanban").Component;
       return React.createElement(Component, {
         ...hostProps,
+        ...(navigation ? { navigation } : {}),
         layout: { ...hostProps.layout, compact },
         ...(workspaceId ? { context: "workspace", workspaceId } : {}),
       });

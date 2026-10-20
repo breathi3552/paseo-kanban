@@ -25,6 +25,7 @@ export interface KanbanLaneViewProps {
   dragBinding: LaneDragBinding;
   onAddTask: (laneId: string) => void;
   onSelectTask: (task: KanbanTask) => void;
+  onSendToAgent?: (task: KanbanTask) => void;
   onSetCompleted?: (taskId: string, completed: boolean) => void;
   completionPending?: boolean;
   resolveProjectName?: (projectId: string | null) => string | null;
@@ -39,6 +40,7 @@ function KanbanLaneViewInner({
   dragBinding,
   onAddTask,
   onSelectTask,
+  onSendToAgent,
   onSetCompleted,
   completionPending = false,
   resolveProjectName,
@@ -302,6 +304,7 @@ function KanbanLaneViewInner({
                 )}
                 slideAnimation={displacedTasksRef.current.get(task.id)}
                 onSetCompleted={onSetCompleted}
+                onSendToAgent={onSendToAgent}
                 completionDisabled={
                   completionPending || (dragBinding.isDragLocked?.() ?? false)
                 }

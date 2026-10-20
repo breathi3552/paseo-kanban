@@ -2,7 +2,7 @@
 
 ## 状态
 
-已接受当前交付边界。2026-10-20，需求提出者已明确直接发送、单个宿主 Agent 预设下拉框、新建工作区自动使用任务标题命名，以及提交顺序和限定的异常处理，并要求通过 `to-spec` 发布规格，现已写入 [Issue #14 评论](https://github.com/breathi3552/paseo-kanban/issues/14#issuecomment-6283668277)。Git 分支名初值和 Agent 聊天标题两项默认值仍保持开放，见 [Issue #14 设计记录](../design/issue-14-solve-with-agent.md)。尚未实施。
+已接受当前交付边界。2026-10-20，需求提出者已明确直接发送、单个宿主 Agent 预设下拉框、新建工作区自动使用任务标题命名，以及提交顺序和限定的异常处理，并要求通过 `to-spec` 发布规格，现已写入 [Issue #14 评论](https://github.com/breathi3552/paseo-kanban/issues/14#issuecomment-6283668277)。Git 分支名初值和 Agent 聊天标题两项默认值仍保持开放，见 [Issue #14 设计记录](../design/issue-14-solve-with-agent.md)。已实现卡片发送入口、弹窗及公开 SDK 提交流程；自动化验证通过，真实宿主验收尚待按开发指南执行。
 
 ## 背景
 
