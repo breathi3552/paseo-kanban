@@ -34,10 +34,14 @@ export async function loadDispatchOptions(paseo: Paseo) {
   return { profiles: config.agentProfiles ?? [], workspaces };
 }
 
-export function taskPrompt(task: KanbanTask, language: SupportedLanguage) {
+export function taskPrompt(
+  task: KanbanTask,
+  language: SupportedLanguage,
+  prompt: string,
+) {
   const zh = language === "zh";
   return [
-    zh ? "请处理以下任务。" : "Please work on the following task.",
+    prompt.trim() ? prompt : null,
     `# ${task.title}`,
     task.description.trim()
       ? `## ${zh ? "描述" : "Description"}\n\n${task.description}`
@@ -59,12 +63,14 @@ export async function sendTaskToAgent({
   profile,
   target,
   language,
+  prompt,
 }: {
   paseo: Paseo;
   task: KanbanTask;
   profile: AgentProfile;
   target: WorkspaceTarget;
   language: SupportedLanguage;
+  prompt: string;
 }) {
   const workspace =
     target.kind === "existing"
@@ -79,6 +85,6 @@ export async function sendTaskToAgent({
       thinkingOptionId: profile.thinkingOptionId,
       featureValues: profile.featureValues,
     },
-    prompt: taskPrompt(task, language),
+    prompt: taskPrompt(task, language, prompt),
   });
 }

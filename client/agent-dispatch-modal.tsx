@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, ActivityIndicator } from "react-native";
 import {
   usePaseo,
   useRpc,
+  useSettings,
   type PluginSurfaceProps,
 } from "@getpaseo/plugin/client";
 import {
@@ -22,7 +23,10 @@ import {
   type WorkspaceItem,
   type WorkspaceTarget,
 } from "./agent-dispatch";
-import { validateGitBranch } from "../shared/agent-dispatch";
+import {
+  agentDispatchSettings,
+  validateGitBranch,
+} from "../shared/agent-dispatch";
 
 interface Props {
   task: KanbanTask;
@@ -45,6 +49,12 @@ export function AgentDispatchModal({
   const validateBranch = useRpc(validateGitBranch);
   const toast = useToast();
   const { t, language } = useI18n();
+  const promptSettings = useSettings(agentDispatchSettings);
+  const [promptDraft, setPromptDraft] = useState<string | null>(null);
+  const prompt =
+    promptDraft ??
+    (promptSettings.status === "ready" ? promptSettings.values.prompt : null) ??
+    t("dispatch.defaultPrompt");
   const [profiles, setProfiles] = useState<AgentProfile[]>([]);
   const [profileId, setProfileId] = useState("");
   const [projectId, setProjectId] = useState(task.projectId ?? "");
@@ -80,7 +90,8 @@ export function AgentDispatchModal({
     };
   }, [paseo]);
 
-  const disabled = sending || profiles.length === 0;
+  const disabled =
+    sending || profiles.length === 0 || promptSettings.status !== "ready";
   const colors = theme.colors;
   const project = projects.find((item) => item.projectId === projectId);
   const projectWorkspaces = workspaces.filter(
@@ -105,7 +116,8 @@ export function AgentDispatchModal({
     if (
       Object.values(nextErrors).some(Boolean) ||
       !profile ||
-      !project?.projectRootPath
+      !project?.projectRootPath ||
+      promptSettings.status !== "ready"
     )
       return;
     sendingRef.current = true;
@@ -116,6 +128,14 @@ export function AgentDispatchModal({
         if (!result.valid) {
           setErrors({ branch: true });
           return;
+        }
+      }
+      const storedPrompt = promptSettings.values.prompt;
+      if (prompt !== storedPrompt) {
+        if (!(await promptSettings.save({ prompt }, promptSettings.revision)))
+          throw new Error("Prompt save failed");
+        if (prompt !== (storedPrompt ?? t("dispatch.defaultPrompt"))) {
+          toast.show(t("dispatch.promptSaved"), { variant: "success" });
         }
       }
       if (
@@ -142,6 +162,7 @@ export function AgentDispatchModal({
         profile,
         target,
         language,
+        prompt,
       });
       navigation.openAgent({ agentId: agent.id });
       onClose();
@@ -167,7 +188,8 @@ export function AgentDispatchModal({
       >
         <ScrollView
           style={{ flexShrink: 1, maxHeight: 440 }}
-          contentContainerStyle={{ gap: 16 }}
+          // Leave room inside the scroll viewport for the input focus outline.
+          contentContainerStyle={{ gap: 16, padding: 4 }}
         >
           <Text
             style={{
@@ -178,6 +200,26 @@ export function AgentDispatchModal({
           >
             {task.title}
           </Text>
+          <View style={{ gap: 6 }}>
+            <Text style={{ color: colors.foreground }}>prompt</Text>
+            <TextInput
+              accessibilityLabel="prompt"
+              multiline
+              value={prompt}
+              editable={!disabled}
+              onChangeText={setPromptDraft}
+              style={{
+                color: colors.foreground,
+                backgroundColor: colors.surface1,
+                borderColor: colors.border,
+                borderWidth: 1,
+                borderRadius: 6,
+                padding: 10,
+                minHeight: 88,
+                textAlignVertical: "top",
+              }}
+            />
+          </View>
           <SettingsSelect
             label={t("dispatch.project")}
             value={projectId}
@@ -220,22 +262,6 @@ export function AgentDispatchModal({
             <Text style={{ color: colors.statusDanger }}>
               {t("dispatch.selectWorkspace")}
             </Text>
-          )}
-          {selectedWorkspace && (
-            <View style={{ gap: 6 }}>
-              <Text style={{ color: colors.foreground }}>
-                {t("dispatch.workspaceName")}
-              </Text>
-              <TextInput
-                accessibilityLabel={t("dispatch.workspaceName")}
-                value={selectedWorkspace.name}
-                editable={false}
-                style={{
-                  color: colors.foregroundMuted,
-                  backgroundColor: colors.surface1,
-                }}
-              />
-            </View>
           )}
           {workspaceId === "new-worktree" && (
             <View style={{ gap: 6 }}>
@@ -282,7 +308,7 @@ export function AgentDispatchModal({
             </Text>
           )}
           <Text style={{ color: colors.foregroundMuted, fontSize: 12 }}>
-            {t("dispatch.managePresets")}
+            {t("dispatch.manageProfiles")}
           </Text>
         </ScrollView>
         <View
@@ -304,11 +330,15 @@ export function AgentDispatchModal({
               padding: 10,
               borderRadius: 6,
               backgroundColor: colors.accent,
-              opacity: disabled ? 0.4 : 1,
+              opacity: disabled && !sending ? 0.4 : 1,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
             }}
           >
+            {sending && <ActivityIndicator color={colors.accentForeground} />}
             <Text style={{ color: colors.accentForeground }}>
-              {t("dispatch.send")}
+              {t(sending ? "dispatch.sending" : "dispatch.send")}
             </Text>
           </Pressable>
         </View>

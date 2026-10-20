@@ -51,6 +51,7 @@ export function createHost({
   board,
   rpc = async () => ({ repository: "example/repo", issues: [], totalCount: 0 }),
   compact = false,
+  settingsValues = {},
   workspaces = {
     "workspace-a": { projectId: "project-a" },
     "workspace-b": { projectId: "project-b" },
@@ -85,6 +86,7 @@ export function createHost({
   const notifications = [];
   const externalUrls = [];
   let settings = { status: "ready", values, revision: String(revision) };
+  const extraSettings = new Map();
   const paseo = {
     projects: {
       list: async () => {
@@ -117,13 +119,20 @@ export function createHost({
       return snapshot[id] ? selector(snapshot[id]) : null;
     },
     useSettings: (contract) => {
-      const snapshot = React.useSyncExternalStore(
-        (listener) => {
-          settingsListeners.add(listener);
-          return () => settingsListeners.delete(listener);
-        },
-        () => settings,
-      );
+      const isBoard = contract.id === "kanban";
+      if (!isBoard && !extraSettings.has(contract.id)) {
+        extraSettings.set(contract.id, {
+          status: "ready",
+          values: contract.schema.parse(settingsValues[contract.id] ?? {}),
+          revision: "1",
+        });
+      }
+      const current = () =>
+        isBoard ? settings : extraSettings.get(contract.id);
+      const snapshot = React.useSyncExternalStore((listener) => {
+        settingsListeners.add(listener);
+        return () => settingsListeners.delete(listener);
+      }, current);
       return {
         ...snapshot,
         reload: async () => {
@@ -141,9 +150,22 @@ export function createHost({
             if (failure instanceof Error) throw failure;
             return false;
           }
-          if (expectedRevision !== String(revision)) return false;
-          values = contract.schema.parse(next);
-          settings = { status: "ready", values, revision: String(++revision) };
+          if (expectedRevision !== current().revision) return false;
+          const parsed = contract.schema.parse(next);
+          if (isBoard) {
+            values = parsed;
+            settings = {
+              status: "ready",
+              values,
+              revision: String(++revision),
+            };
+          } else {
+            extraSettings.set(contract.id, {
+              status: "ready",
+              values: parsed,
+              revision: String(Number(current().revision) + 1),
+            });
+          }
           settingsListeners.forEach((listener) => listener());
           return true;
         },
@@ -200,6 +222,11 @@ export function createHost({
     },
     notifications,
     externalUrls,
+    get settingsValues() {
+      return Object.fromEntries(
+        [...extraSettings].map(([id, settings]) => [id, settings.values]),
+      );
+    },
     failNextSave(error) {
       failSave = error ?? true;
     },

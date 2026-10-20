@@ -58,6 +58,7 @@ function fixture({
   task: taskChanges,
   failAt,
   workspacePages,
+  agentGate,
   ...options
 } = {}) {
   const handlers = new Map();
@@ -73,6 +74,7 @@ function fixture({
     id,
     agents: {
       create: async (request) => {
+        if (agentGate) await agentGate;
         if (failAt === "agent") throw new Error("Agent creation failed");
         createdAgents.push({ workspaceId: id, ...request });
         return { id: `agent-${createdAgents.length}` };
@@ -161,6 +163,39 @@ async function choose(renderer, label, value) {
   await act(async () => control.props.onValueChange(value));
 }
 
+test("等待 Agent 创建时显示发送中反馈，禁止重复提交，完成后打开聊天", async (t) => {
+  const gate = Promise.withResolvers();
+  const { host, createdAgents, opened } = fixture({ agentGate: gate.promise });
+  const renderer = await mount(t, host);
+  await press(renderer.root, "Send to Agent");
+  const send = modal(renderer)
+    .findAllByType("Pressable")
+    .find((node) =>
+      node.findAllByType("Text").some((child) => text(child) === "Send"),
+    );
+  let pending;
+  await act(async () => {
+    pending = send.props.onPress();
+  });
+  assert.ok(
+    modal(renderer).findAllByType("Text").map(text).includes("Sending…"),
+  );
+  assert.equal(modal(renderer).findAllByType("ActivityIndicator").length, 1);
+  assert.equal(send.props.disabled, true);
+  await act(async () => {
+    send.props.onPress();
+    modal(renderer).props.onOpenChange(false);
+  });
+  assert.equal(renderer.root.findAllByType("Modal").length, 1);
+  await act(async () => {
+    gate.resolve();
+    await pending;
+  });
+  assert.equal(createdAgents.length, 1);
+  assert.deepEqual(opened, [{ agentId: "agent-1" }]);
+  assert.equal(renderer.root.findAllByType("Modal").length, 0);
+});
+
 test("卡片发送到新普通工作区：宿主预设、完整任务消息和新聊天贯通", async (t) => {
   const { host, createdWorkspaces, createdAgents, opened } = fixture();
   const before = structuredClone(host.board);
@@ -175,19 +210,21 @@ test("卡片发送到新普通工作区：宿主预设、完整任务消息和�
     ).label,
     "New regular workspace",
   );
-  assert.equal(select(renderer, "Agent preset").props.value, "first");
+  assert.equal(select(renderer, "Agent profile").props.value, "first");
   assert.deepEqual(
-    select(renderer, "Agent preset").props.options.map((o) => o.label),
+    select(renderer, "Agent profile").props.options.map((o) => o.label),
     ["Development", "Review"],
   );
   assert.ok(
     modal(renderer)
       .findAllByType("Text")
       .map(text)
-      .includes("Manage presets on the Agent page in Paseo settings."),
+      .includes("Manage Agent profiles on the Agent page in Paseo settings."),
   );
   assert.equal(
-    modal(renderer).findAllByType("TextInput").length,
+    modal(renderer)
+      .findAllByType("TextInput")
+      .filter((node) => node.props.accessibilityLabel !== "prompt").length,
     0,
     "new workspace name is not an input",
   );
@@ -274,10 +311,14 @@ test("已有工作区仍新建 Agent，空章节省略且不改变工作区名�
     "only selected project's workspaces",
   );
   await choose(renderer, "Workspace", "workspace-a");
-  const name = modal(renderer).findByType("TextInput");
-  assert.equal(name.props.value, "Existing A");
-  assert.equal(name.props.editable, false);
-  await choose(renderer, "Agent preset", "second");
+  assert.equal(
+    modal(renderer)
+      .findAllByType("TextInput")
+      .filter((node) => node.props.accessibilityLabel !== "prompt").length,
+    0,
+    "existing workspace selection does not repeat its name in an input",
+  );
+  await choose(renderer, "Agent profile", "second");
   await press(modal(renderer), "Send");
   assert.deepEqual(createdWorkspaces, []);
   assert.equal(createdAgents.length, 1);
@@ -370,7 +411,7 @@ test("导入任务固定原项目，无预设时表单禁用并保留管理提�
     modal(emptyView)
       .findAllByType("Text")
       .map(text)
-      .includes("Manage presets on the Agent page in Paseo settings."),
+      .includes("Manage Agent profiles on the Agent page in Paseo settings."),
   );
   await press(modal(emptyView), "Cancel");
   assert.equal(emptyView.root.findAllByType("Modal").length, 0);
@@ -449,7 +490,7 @@ test("分阶段失败保留输入与已成功结果，不启动后续 Agent 或�
       const renderer = await mount(t, host);
       await press(renderer.root, "Send to Agent");
       await choose(renderer, "Project", "project-b");
-      await choose(renderer, "Agent preset", "second");
+      await choose(renderer, "Agent profile", "second");
       if (failure === "save") host.failNextSave(new Error("Save failed"));
       if (failure === "conflict")
         await act(async () =>
@@ -465,7 +506,7 @@ test("分阶段失败保留输入与已成功结果，不启动后续 Agent 或�
         "project input retained",
       );
       assert.equal(
-        select(renderer, "Agent preset").props.value,
+        select(renderer, "Agent profile").props.value,
         "second",
         "preset input retained",
       );
@@ -495,16 +536,205 @@ test("中文窄屏从卡片发送原文任务，提示词仅翻译章节名称",
   const renderer = await mount(t, host);
   await press(renderer.root, "发送到 Agent");
   assert.equal(modal(renderer).props.title, "发送到 Agent");
+  assert.equal(select(renderer, "Agent 配置").props.value, "first");
   assert.ok(
     modal(renderer)
       .findAllByType("Text")
       .map(text)
-      .includes("前往 Paseo 设置中的 Agent 页面管理预设。"),
+      .includes("前往 Paseo 设置中的 Agent 页面管理 Agent 配置。"),
   );
   await press(modal(renderer), "发送");
   assert.equal(
     createdAgents[0].prompt,
     "请处理以下任务。\n\n# 修复 登录页\n\n## 描述\n\nOriginal **Markdown**\n\nKeep this paragraph.\n\n## 子步骤\n\n- [ ] Inspect\n- [x] 已完成检查\n\n## 来源\n\nhttps://github.com/example/repo/issues/14",
+  );
+});
+
+test("prompt 跨重开、任务、项目与入口持久保留，不把旧任务正文带到新任务", async (t) => {
+  const first = fixture();
+  const renderer = await mount(t, first.host);
+  await press(renderer.root, "Send to Agent");
+  const input = () =>
+    modal(renderer).findByProps({ accessibilityLabel: "prompt" });
+  assert.equal(input().props.multiline, true);
+  assert.equal(input().props.value, "Please work on the following task.");
+  const instruction = "请先跟我讨论需求。\n不要直接修改代码。";
+  await act(async () => input().props.onChangeText(instruction));
+  await press(modal(renderer), "Send");
+  assert.ok(
+    first.createdAgents[0].prompt.startsWith(
+      `${instruction}\n\n# 修复 登录页\n\n## Description`,
+    ),
+  );
+  assert.ok(first.createdAgents[0].prompt.endsWith(task.externalUrl));
+  assert.equal(
+    first.host.notifications.length,
+    1,
+    "edited prompt has one persisted-save notification",
+  );
+
+  language = "zh";
+  const second = fixture({
+    settingsValues: structuredClone(first.host.settingsValues),
+    compact: true,
+    task: {
+      source: "manual",
+      issueNumber: null,
+      externalUrl: null,
+      projectId: "project-b",
+      title: "另一个任务",
+      description: "新的正文",
+      subtasks: [],
+    },
+  });
+  const next = await mount(t, second.host, "workspace-b");
+  await press(next.root, "发送到 Agent");
+  const nextInput = () =>
+    modal(next).findByProps({ accessibilityLabel: "prompt" });
+  assert.equal(
+    nextInput().props.value,
+    instruction,
+    "saved text survives a fresh client and language change",
+  );
+  await act(async () => nextInput().props.onChangeText("取消时不保存"));
+  await press(modal(next), "取消");
+  await press(next.root, "发送到 Agent");
+  assert.equal(nextInput().props.value, instruction);
+  await press(modal(next), "发送");
+  assert.equal(
+    second.createdAgents[0].prompt,
+    `${instruction}\n\n# 另一个任务\n\n## 描述\n\n新的正文`,
+  );
+});
+
+test("清空或只留空白的 prompt 会持久保存，只发送任务内容而不恢复默认开场句", async (t) => {
+  for (const value of ["", " \n\t"]) {
+    await t.test(JSON.stringify(value), async (t) => {
+      const options = {
+        task: {
+          source: "manual",
+          issueNumber: null,
+          externalUrl: null,
+          description: "",
+          subtasks: [],
+        },
+      };
+      const first = fixture(options);
+      const renderer = await mount(t, first.host);
+      await press(renderer.root, "Send to Agent");
+      await act(async () =>
+        modal(renderer)
+          .findByProps({ accessibilityLabel: "prompt" })
+          .props.onChangeText(value),
+      );
+      await press(modal(renderer), "Send");
+      assert.equal(first.createdAgents[0].prompt, "# 修复 登录页");
+      const second = fixture({
+        ...options,
+        settingsValues: structuredClone(first.host.settingsValues),
+      });
+      const next = await mount(t, second.host);
+      await press(next.root, "Send to Agent");
+      assert.equal(
+        modal(next).findByProps({ accessibilityLabel: "prompt" }).props.value,
+        value,
+      );
+      await press(modal(next), "Send");
+      assert.equal(second.createdAgents[0].prompt, "# 修复 登录页");
+    });
+  }
+});
+
+test("prompt 先通过校验再保存；保存失败保留输入并停止派发，重试后正常发送", async (t) => {
+  language = "zh";
+  const { host, createdWorkspaces, createdAgents, opened } = fixture();
+  const renderer = await mount(t, host);
+  await press(renderer.root, "发送到 Agent");
+  const input = () =>
+    modal(renderer).findByProps({ accessibilityLabel: "prompt" });
+  assert.equal(input().props.value, "请处理以下任务。");
+  const instruction = "先讨论需求，不要开工。";
+  await act(async () => input().props.onChangeText(instruction));
+  await choose(renderer, "工作区", "new-worktree");
+  const branch = () =>
+    modal(renderer).findByProps({ accessibilityLabel: "Git 分支名称" });
+  await act(async () => branch().props.onChangeText("bad branch"));
+  await press(modal(renderer), "发送");
+  assert.equal(host.settingsValues["agent-dispatch"].prompt, null);
+  assert.deepEqual(host.notifications, []);
+
+  await act(async () => branch().props.onChangeText("discuss/requirements"));
+  host.failNextSave();
+  await press(modal(renderer), "发送");
+  assert.equal(host.settingsValues["agent-dispatch"].prompt, null);
+  assert.equal(input().props.value, instruction);
+  assert.equal(input().props.editable, true);
+  assert.equal(modal(renderer).findAllByType("ActivityIndicator").length, 0);
+  assert.equal(host.notifications.length, 1);
+  assert.match(host.notifications[0], /发送失败/);
+  assert.deepEqual(createdWorkspaces, []);
+  assert.deepEqual(createdAgents, []);
+  assert.deepEqual(opened, []);
+
+  await press(modal(renderer), "发送");
+  assert.equal(host.settingsValues["agent-dispatch"].prompt, instruction);
+  assert.equal(createdWorkspaces.length, 1);
+  assert.ok(
+    createdAgents[0].prompt.startsWith(`${instruction}\n\n# 修复 登录页`),
+  );
+  assert.deepEqual(opened, [{ agentId: "agent-1" }]);
+});
+
+test("创建 Agent 失败结束发送中反馈，但已保存的 prompt 在下次发送仍保留", async (t) => {
+  language = "zh";
+  const gate = Promise.withResolvers();
+  const { host, createdAgents, opened } = fixture({ agentGate: gate.promise });
+  const renderer = await mount(t, host);
+  await press(renderer.root, "发送到 Agent");
+  const instruction = "请先和我讨论需求，不要修改代码。";
+  const input = () =>
+    modal(renderer).findByProps({ accessibilityLabel: "prompt" });
+  await act(async () => input().props.onChangeText(instruction));
+  const send = modal(renderer)
+    .findAllByType("Pressable")
+    .find((node) =>
+      node.findAllByType("Text").some((child) => text(child) === "发送"),
+    );
+  let pending;
+  await act(async () => {
+    pending = send.props.onPress();
+  });
+  assert.ok(
+    modal(renderer).findAllByType("Text").map(text).includes("发送中…"),
+  );
+  assert.equal(modal(renderer).findAllByType("ActivityIndicator").length, 1);
+  assert.equal(input().props.editable, false);
+  assert.equal(host.settingsValues["agent-dispatch"].prompt, instruction);
+  await act(async () => {
+    gate.reject(new Error("Agent unavailable"));
+    await pending;
+  });
+  assert.equal(modal(renderer).findAllByType("ActivityIndicator").length, 0);
+  assert.equal(input().props.editable, true);
+  assert.equal(input().props.value, instruction);
+  assert.match(host.notifications.at(-1), /发送失败/);
+  assert.deepEqual(createdAgents, []);
+  assert.deepEqual(opened, []);
+  await press(modal(renderer), "取消");
+
+  language = "en";
+  const next = fixture({
+    settingsValues: structuredClone(host.settingsValues),
+  });
+  const nextView = await mount(t, next.host);
+  await press(nextView.root, "Send to Agent");
+  assert.equal(
+    modal(nextView).findByProps({ accessibilityLabel: "prompt" }).props.value,
+    instruction,
+  );
+  await press(modal(nextView), "Send");
+  assert.ok(
+    next.createdAgents[0].prompt.startsWith(`${instruction}\n\n# 修复 登录页`),
   );
 });
 

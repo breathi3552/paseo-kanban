@@ -125,7 +125,13 @@ export function KanbanCard({
           padding: 2,
           opacity: completionDisabled ? 0.5 : 1,
         },
+        actionRow: {
+          flexDirection: "row",
+          alignItems: "flex-start",
+          gap: 8,
+        },
         cardHeader: {
+          flex: 1,
           flexDirection: "row",
           alignItems: "flex-start",
           gap: 6,
@@ -139,6 +145,7 @@ export function KanbanCard({
         title: {
           flex: 1,
           fontSize: layout.compact ? 13 : 14,
+          lineHeight: layout.compact ? 18 : 20,
           fontWeight: "600",
           color: theme.colors.foreground,
           userSelect: "none",
@@ -159,6 +166,7 @@ export function KanbanCard({
         },
         projectBadgeText: {
           fontSize: 11,
+          lineHeight: 14,
           color: theme.colors.foregroundMuted,
           fontWeight: "500",
         },
@@ -170,6 +178,7 @@ export function KanbanCard({
         },
         subtaskBadgeText: {
           fontSize: 11,
+          lineHeight: 14,
           color:
             task.subtasks.length > 0 &&
             completedSubtasksCount === task.subtasks.length
@@ -236,78 +245,85 @@ export function KanbanCard({
             theme={theme}
           />
         </Pressable>
-        <View
-          style={styles.cardBody}
-          {...(interactionDisabled ? {} : binding.cardPanHandlers)}
-        >
-          <View style={styles.cardHeader}>
+        <View style={styles.cardBody}>
+          <View style={styles.actionRow}>
             <View
-              style={styles.dragHandle}
-              accessibilityRole="button"
-              accessibilityLabel={t("card.dragHandle")}
-              {...(interactionDisabled ? {} : binding.handlePanHandlers)}
+              style={styles.cardHeader}
+              {...(interactionDisabled ? {} : binding.cardPanHandlers)}
             >
-              <Icon
-                name="GripVertical"
-                size={14}
-                color={theme.colors.foregroundMuted}
-              />
+              <View
+                style={styles.dragHandle}
+                accessibilityRole="button"
+                accessibilityLabel={t("card.dragHandle")}
+                {...(interactionDisabled ? {} : binding.handlePanHandlers)}
+              >
+                <Icon
+                  name="GripVertical"
+                  size={14}
+                  color={theme.colors.foregroundMuted}
+                />
+              </View>
+              <Text style={styles.title} numberOfLines={2}>
+                {task.title}
+              </Text>
             </View>
-
-            <Text style={styles.title} numberOfLines={2}>
-              {task.title}
-            </Text>
+            {onSendToAgent && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("dispatch.title")}
+                disabled={interactionDisabled || completionDisabled}
+                style={{
+                  width: 20,
+                  height: layout.compact ? 18 : 20,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  onSendToAgent(task);
+                }}
+              >
+                <Icon name="Send" size={16} color={theme.colors.accent} />
+              </Pressable>
+            )}
           </View>
-
-          {(projectDisplayName || task.subtasks.length > 0) && (
-            <View style={styles.badgeRow}>
-              {projectDisplayName && (
-                <View style={styles.projectBadge}>
-                  <Text style={styles.projectBadgeText} numberOfLines={1}>
-                    {projectDisplayName}
-                  </Text>
-                </View>
-              )}
-              {task.subtasks.length > 0 && (
-                <View style={styles.subtaskBadge}>
-                  <Text style={styles.subtaskBadgeText}>
-                    {t("card.subtasksCount", {
-                      completed: completedSubtasksCount,
-                      total: task.subtasks.length,
-                    })}
-                  </Text>
-                </View>
+          {(projectDisplayName ||
+            task.subtasks.length > 0 ||
+            (task.source === "github_issue" && task.externalUrl)) && (
+            <View style={styles.actionRow}>
+              <View
+                style={[styles.badgeRow, { flex: 1 }]}
+                {...(interactionDisabled ? {} : binding.cardPanHandlers)}
+              >
+                {projectDisplayName && (
+                  <View style={styles.projectBadge}>
+                    <Text style={styles.projectBadgeText} numberOfLines={1}>
+                      {projectDisplayName}
+                    </Text>
+                  </View>
+                )}
+                {task.subtasks.length > 0 && (
+                  <View style={styles.subtaskBadge}>
+                    <Text style={styles.subtaskBadgeText}>
+                      {t("card.subtasksCount", {
+                        completed: completedSubtasksCount,
+                        total: task.subtasks.length,
+                      })}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              {task.source === "github_issue" && task.externalUrl && (
+                <IssueLink
+                  url={task.externalUrl}
+                  theme={theme}
+                  iconOnly
+                  disabled={interactionDisabled}
+                />
               )}
             </View>
           )}
         </View>
-        {onSendToAgent && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t("dispatch.title")}
-            disabled={interactionDisabled || completionDisabled}
-            style={{
-              minWidth: 36,
-              minHeight: 36,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            onPress={(event) => {
-              event.stopPropagation();
-              onSendToAgent(task);
-            }}
-          >
-            <Icon name="Send" size={16} color={theme.colors.accent} />
-          </Pressable>
-        )}
-        {task.source === "github_issue" && task.externalUrl && (
-          <IssueLink
-            url={task.externalUrl}
-            theme={theme}
-            iconOnly
-            disabled={interactionDisabled}
-          />
-        )}
       </CardContainer>
     </View>
   );
@@ -365,7 +381,13 @@ export function KanbanCardPreview({
         completionControl: {
           padding: 2,
         },
+        actionRow: {
+          flexDirection: "row",
+          alignItems: "flex-start",
+          gap: 8,
+        },
         cardHeader: {
+          flex: 1,
           flexDirection: "row",
           alignItems: "flex-start",
           gap: 6,
@@ -379,6 +401,7 @@ export function KanbanCardPreview({
         title: {
           flex: 1,
           fontSize: layout.compact ? 13 : 14,
+          lineHeight: layout.compact ? 18 : 20,
           fontWeight: "600",
           color: theme.colors.foreground,
           userSelect: "none",
@@ -399,6 +422,7 @@ export function KanbanCardPreview({
         },
         projectBadgeText: {
           fontSize: 11,
+          lineHeight: 14,
           color: theme.colors.foregroundMuted,
           fontWeight: "500",
         },
@@ -410,6 +434,7 @@ export function KanbanCardPreview({
         },
         subtaskBadgeText: {
           fontSize: 11,
+          lineHeight: 14,
           color:
             task.subtasks.length > 0 &&
             completedSubtasksCount === task.subtasks.length
@@ -437,40 +462,60 @@ export function KanbanCardPreview({
         />
       </View>
       <View style={styles.cardBody}>
-        <View style={styles.cardHeader}>
-          <View style={styles.dragHandle}>
-            <Icon name="GripVertical" size={14} color={theme.colors.accent} />
+        <View style={styles.actionRow}>
+          <View style={styles.cardHeader}>
+            <View style={styles.dragHandle}>
+              <Icon name="GripVertical" size={14} color={theme.colors.accent} />
+            </View>
+            <Text style={styles.title} numberOfLines={2}>
+              {task.title}
+            </Text>
           </View>
-          <Text style={styles.title} numberOfLines={2}>
-            {task.title}
-          </Text>
+          <View
+            style={{
+              width: 20,
+              height: layout.compact ? 18 : 20,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Icon name="Send" size={16} color={theme.colors.accent} />
+          </View>
         </View>
-
-        {(projectDisplayName || task.subtasks.length > 0) && (
-          <View style={styles.badgeRow}>
-            {projectDisplayName && (
-              <View style={styles.projectBadge}>
-                <Text style={styles.projectBadgeText} numberOfLines={1}>
-                  {projectDisplayName}
-                </Text>
-              </View>
-            )}
-            {task.subtasks.length > 0 && (
-              <View style={styles.subtaskBadge}>
-                <Text style={styles.subtaskBadgeText}>
-                  {t("card.subtasksCount", {
-                    completed: completedSubtasksCount,
-                    total: task.subtasks.length,
-                  })}
-                </Text>
-              </View>
+        {(projectDisplayName ||
+          task.subtasks.length > 0 ||
+          (task.source === "github_issue" && task.externalUrl)) && (
+          <View style={styles.actionRow}>
+            <View style={[styles.badgeRow, { flex: 1 }]}>
+              {projectDisplayName && (
+                <View style={styles.projectBadge}>
+                  <Text style={styles.projectBadgeText} numberOfLines={1}>
+                    {projectDisplayName}
+                  </Text>
+                </View>
+              )}
+              {task.subtasks.length > 0 && (
+                <View style={styles.subtaskBadge}>
+                  <Text style={styles.subtaskBadgeText}>
+                    {t("card.subtasksCount", {
+                      completed: completedSubtasksCount,
+                      total: task.subtasks.length,
+                    })}
+                  </Text>
+                </View>
+              )}
+            </View>
+            {task.source === "github_issue" && task.externalUrl && (
+              <IssueLink
+                url={task.externalUrl}
+                theme={theme}
+                iconOnly
+                disabled
+              />
             )}
           </View>
         )}
       </View>
-      {task.source === "github_issue" && task.externalUrl && (
-        <IssueLink url={task.externalUrl} theme={theme} iconOnly disabled />
-      )}
     </View>
   );
 }

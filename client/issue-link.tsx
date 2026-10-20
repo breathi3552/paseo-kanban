@@ -32,8 +32,8 @@ export function IssueLink({
         style={
           iconOnly
             ? {
-                minWidth: 36,
-                minHeight: 36,
+                width: 20,
+                height: 20,
                 alignItems: "center",
                 justifyContent: "center",
               }
@@ -68,7 +68,7 @@ export function IssueLink({
           style={{
             position: "absolute",
             right: 0,
-            top: 36,
+            top: 20,
             padding: 6,
             backgroundColor: theme.colors.surface2,
             color: theme.colors.foreground,
