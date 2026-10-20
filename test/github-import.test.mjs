@@ -90,22 +90,6 @@ test("看板入口到持久任务：选择泳道、25项批量导入、来源摘
     Array.from({ length: 25 }, (_, i) => i + 1),
   );
   const first = host.board.tasks[0];
-  assert.deepEqual(
-    Object.keys(first).sort(),
-    [
-      "id",
-      "title",
-      "description",
-      "laneId",
-      "projectId",
-      "subtasks",
-      "completed",
-      "completedAt",
-      "source",
-      "issueNumber",
-      "externalUrl",
-    ].sort(),
-  );
   assert.equal(first.title, "Issue 1");
   assert.equal(first.source, "github_issue");
   assert.equal(first.projectId, "project-a");

@@ -130,7 +130,7 @@ function server({
   };
 }
 
-test("注册RPC从宿主项目的origin读取25个真正Issue并提供完整分页与创建时间排序", async () => {
+test("注册RPC识别GitHub origin并提供25项分页与全仓库创建时间排序", async () => {
   for (const remote of [
     "git@github.com:example/repo.git",
     "https://github.com/example/repo.git",
@@ -139,30 +139,34 @@ test("注册RPC从宿主项目的origin读取25个真正Issue并提供完整分�
     const host = server({ remote });
     const first = await host.query({ projectId: "p1", page: 1, sort: "desc" });
     assert.equal(first.repository, "example/repo");
-    assert.equal(first.totalCount, 51);
-    assert.deepEqual(
-      first.issues.map((i) => i.number),
-      Array.from({ length: 25 }, (_, i) => 51 - i),
-    );
-    const second = await host.query({ projectId: "p1", page: 2, sort: "desc" });
-    assert.deepEqual(
-      second.issues.map((issue) => issue.number),
-      Array.from({ length: 25 }, (_, index) => 26 - index),
-    );
-    const last = await host.query({ projectId: "p1", page: 3, sort: "desc" });
-    assert.deepEqual(
-      last.issues.map((issue) => issue.number),
-      [1],
-    );
-    const oldest = await host.query({ projectId: "p1", page: 1, sort: "asc" });
-    assert.equal(oldest.issues[0].number, 1);
-    assert.equal(oldest.issues[0].author, "alice");
+    assert.equal(first.issues[0].number, 51);
     assert.ok(
       host.commands
         .filter((c) => c.command === "git")
         .every((c) => c.cwd === "/projects/a" && c.args.includes("origin")),
     );
   }
+
+  const host = server();
+  const first = await host.query({ projectId: "p1", page: 1, sort: "desc" });
+  assert.equal(first.totalCount, 51);
+  assert.deepEqual(
+    first.issues.map((i) => i.number),
+    Array.from({ length: 25 }, (_, i) => 51 - i),
+  );
+  const second = await host.query({ projectId: "p1", page: 2, sort: "desc" });
+  assert.deepEqual(
+    second.issues.map((issue) => issue.number),
+    Array.from({ length: 25 }, (_, index) => 26 - index),
+  );
+  const last = await host.query({ projectId: "p1", page: 3, sort: "desc" });
+  assert.deepEqual(
+    last.issues.map((issue) => issue.number),
+    [1],
+  );
+  const oldest = await host.query({ projectId: "p1", page: 1, sort: "asc" });
+  assert.equal(oldest.issues[0].number, 1);
+  assert.equal(oldest.issues[0].author, "alice");
 });
 
 test("RPC拒绝无效项目、页码、外部仓库和无法访问GitHub，且不回退upstream", async () => {
@@ -232,7 +236,9 @@ test("空仓库和超出末页的请求不制造假Issue或无限翻页", async 
 });
 
 test("宿主设置迁移为旧任务填三个默认属性并保留完成归属", () => {
-  const settings = server().settings[0];
+  const settings = server().settings.find(
+    (contract) => contract.id === "kanban",
+  );
   const old = {
     lanes: [
       { id: "todo", title: "Todo", isCompletionLane: false },
