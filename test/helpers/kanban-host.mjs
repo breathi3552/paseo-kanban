@@ -43,6 +43,14 @@ export async function press(root, label) {
   await act(async () => button.props.onPress({ stopPropagation() {} }));
 }
 
+export async function chooseProject(root, label) {
+  const select = root.findAllByType("Select")[0];
+  assert.ok(select && !select.props.disabled, "project select is available");
+  const option = select.props.options.find((item) => item.label === label);
+  assert.ok(option, `project option ${label} exists`);
+  await act(async () => select.props.onValueChange(option.value));
+}
+
 export function createHost({
   projectsAvailable = true,
   projectItems,

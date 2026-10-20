@@ -53,6 +53,25 @@ function assertDisplay(renderer, host, expected, scenario) {
   assert.equal(host.panels.get("kanban").title, expected.entry, scenario);
 }
 
+test("任务弹窗中英文字段简化为标题、泳道、项目并保留必填标记", async (t) => {
+  const upstream = configureUpstream(t);
+  for (const [language, add, expected] of [
+    ["zh-CN", "+ 添加", ["标题 *", "泳道", "项目"]],
+    ["en", "+ Add", ["Title *", "Lane", "Project"]],
+  ]) {
+    upstream.select(language);
+    const renderer = await mount(t, createHost());
+    await press(renderer.root, add);
+    const modal = renderer.root.findByType("Modal");
+    const labels = [
+      ...modal.findAllByType("Text").map(text),
+      ...modal.findAllByType("Select").map((node) => node.props.label),
+    ];
+    for (const label of expected)
+      assert.ok(labels.includes(label), `${language}: ${label}`);
+  }
+});
+
 test("上游语言决定插件显示：简繁中文使用中文，其余使用英文，支持跟随系统", async (t) => {
   const upstream = configureUpstream(t);
   for (const [language, systemLocale, display] of [

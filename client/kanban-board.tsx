@@ -20,6 +20,7 @@ import {
 } from "../shared/kanban";
 import { useProjects } from "./use-projects";
 import { TaskModal } from "./task-modal";
+import { SettingsSelect } from "@getpaseo/plugin/client/ui";
 import { GitHubImportModal } from "./github-import-modal";
 import { AgentDispatchModal } from "./agent-dispatch-modal";
 import { LaneManagementModal } from "./lane-management-modal";
@@ -98,8 +99,10 @@ function KanbanBoardContent(props: KanbanBoardProps) {
           !projects.some((project) => project.projectId === id),
       )
       .map((id) => ({ projectId: id, projectDisplayName: id }));
-    return [...projects, ...missingProjects];
-  }, [projects, props.initialProjectId, selectedProjectId]);
+    return [...projects, ...missingProjects].sort((a, b) =>
+      a.projectDisplayName.localeCompare(b.projectDisplayName, language),
+    );
+  }, [projects, props.initialProjectId, selectedProjectId, language]);
 
   const isReady = settings.status === "ready";
   // Keep the open import draft mounted if a conflict refresh fails. The retained
@@ -282,37 +285,6 @@ function KanbanBoardContent(props: KanbanBoardProps) {
           fontSize: 13,
           fontWeight: "500",
         },
-        filterRow: {
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 6,
-        },
-        filterLabel: {
-          fontSize: 12,
-          fontWeight: "600",
-          color: theme.colors.foregroundMuted,
-          marginRight: 4,
-        },
-        filterChip: {
-          paddingHorizontal: 10,
-          paddingVertical: 4,
-          borderRadius: 6,
-          backgroundColor: theme.colors.surface1,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-        },
-        filterChipSelected: {
-          backgroundColor: theme.colors.accent,
-          borderColor: theme.colors.accent,
-        },
-        filterChipText: {
-          fontSize: 12,
-          color: theme.colors.foreground,
-        },
-        filterChipTextSelected: {
-          color: theme.colors.accentForeground,
-          fontWeight: "600",
-        },
         conflictBanner: {
           marginHorizontal: layout.compact ? 12 : 20,
           marginTop: 10,
@@ -494,89 +466,35 @@ function KanbanBoardContent(props: KanbanBoardProps) {
         </View>
 
         {/* Project Filter */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.filterRow}>
-            <Text style={styles.filterLabel}>{t("kanban.filterLabel")}</Text>
-            <Pressable
-              onPress={() => {
-                if (drag.isDragLocked()) return;
-                setSelectedProjectId("all");
+        <View style={{ maxWidth: 360 }}>
+          <SettingsSelect
+            label={t("kanban.filterLabel")}
+            value={selectedProjectId}
+            options={[
+              { value: "all", label: t("kanban.filterAll") },
+              { value: "unassigned", label: t("kanban.filterUnassigned") },
+              ...selectableProjects.map((project) => ({
+                value: project.projectId,
+                label: project.projectDisplayName,
+              })),
+            ]}
+            onValueChange={(projectId) => {
+              if (!drag.isDragLocked()) setSelectedProjectId(projectId);
+            }}
+            disabled={drag.isDragLocked()}
+          />
+          {projectsError && (
+            <Text
+              style={{
+                fontSize: 11,
+                color:
+                  theme.colors.statusWarning ?? theme.colors.foregroundMuted,
               }}
-              style={[
-                styles.filterChip,
-                selectedProjectId === "all" && styles.filterChipSelected,
-              ]}
             >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  selectedProjectId === "all" && styles.filterChipTextSelected,
-                ]}
-              >
-                {t("kanban.filterAll")}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => {
-                if (drag.isDragLocked()) return;
-                setSelectedProjectId("unassigned");
-              }}
-              style={[
-                styles.filterChip,
-                selectedProjectId === "unassigned" && styles.filterChipSelected,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  selectedProjectId === "unassigned" &&
-                    styles.filterChipTextSelected,
-                ]}
-              >
-                {t("kanban.filterUnassigned")}
-              </Text>
-            </Pressable>
-
-            {selectableProjects.map((proj) => {
-              const isSelected = selectedProjectId === proj.projectId;
-              return (
-                <Pressable
-                  key={proj.projectId}
-                  onPress={() => {
-                    if (drag.isDragLocked()) return;
-                    setSelectedProjectId(proj.projectId);
-                  }}
-                  style={[
-                    styles.filterChip,
-                    isSelected && styles.filterChipSelected,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.filterChipText,
-                      isSelected && styles.filterChipTextSelected,
-                    ]}
-                  >
-                    {proj.projectDisplayName}
-                  </Text>
-                </Pressable>
-              );
-            })}
-
-            {projectsError && (
-              <Text
-                style={{
-                  fontSize: 11,
-                  color:
-                    theme.colors.statusWarning ?? theme.colors.foregroundMuted,
-                }}
-              >
-                {t("kanban.projectsError")}
-              </Text>
-            )}
-          </View>
-        </ScrollView>
+              {t("kanban.projectsError")}
+            </Text>
+          )}
+        </View>
       </View>
 
       {/* Conflict / Save Error Notification */}

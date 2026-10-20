@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { act } from "./helpers/react-host-env.mjs";
-import { createHost, mount, press, text } from "./helpers/kanban-host.mjs";
+import {
+  createHost,
+  mount,
+  press,
+  text,
+  chooseProject,
+} from "./helpers/kanban-host.mjs";
 import { KanbanBoardSchema } from "../shared/kanban.ts";
 
 let language = "en";
@@ -318,14 +324,9 @@ test("卡片外链与详情完整网址打开同一网页，详情锁定项目�
     cardBody.props.onPanResponderGrant({ nativeEvent: {} }, { x0: 0, y0: 0 }),
   );
   await act(async () => cardBody.props.onPanResponderRelease());
-  assert.equal(
-    modal(renderer)
-      .findAllByType("Pressable")
-      .some((n) =>
-        n.findAllByType("Text").some((child) => text(child) === "Project B"),
-      ),
-    false,
-  );
+  const project = modal(renderer).findByType("Select");
+  assert.equal(project.props.disabled, true);
+  assert.equal(project.props.value, "project-a");
   assert.match(
     texts(modal(renderer)),
     /https:\/\/github.com\/example\/repo\/issues\/1/,
@@ -390,7 +391,7 @@ test("全部视图不擅自选择项目，显式选择后才读取仓库", async
     undefined,
   );
   await press(modal(renderer), "Cancel");
-  await press(renderer.root, "All");
+  await chooseProject(renderer.root, "All Projects");
   const initialReads = reads;
   await press(renderer.root, "Import from GitHub");
   assert.equal(modal(renderer).findAllByType("Select")[0].props.value, "");
