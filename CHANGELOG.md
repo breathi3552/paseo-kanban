@@ -4,6 +4,30 @@ All notable changes to Paseo Kanban are documented here in bilingual format (Eng
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), adapted for strictly mirrored bilingual release notes.
 
+## [Unreleased]
+
+### Features
+
+- **Send to Agent**: Send a task card's title, markdown description, subtask checklist, and source link directly to a new Agent session. Choose an existing workspace, create a new regular workspace, or create a new worktree with branch name validation.
+- **Persistent dispatch prompt**: Customize and persist the dispatch prompt across tasks and boards without polluting individual task content; includes sending status feedback, duplicate submission guards, and staged error reporting.
+
+### Compatibility & Migration
+
+- Requires Paseo `>= 0.11.4`.
+- No board data migration or dependency changes required.
+
+---
+
+### 新增特性
+
+- **发送到 Agent**：将任务卡片的标题、Markdown 描述、子步骤清单及来源链接作为初始消息直接发送至新建 Agent 会话。支持选择已有工作区、新建普通工作区或通过 Git 分支名校验新建 worktree。
+- **持久化协作指令与即时反馈**：支持自定义并跨任务沿用协作 prompt，不污染任务本身内容；提供发送中状态反馈与防重复提交保护，分阶段反馈异常且不自动隐式重试。
+
+### 兼容性与迁移
+
+- 依赖 Paseo `>= 0.11.4`。
+- 无需看板数据迁移或依赖项变更。
+
 ## [0.2.1] - 2026-10-18
 
 ### Features
