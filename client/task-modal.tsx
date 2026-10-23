@@ -126,6 +126,11 @@ export function TaskModal({
       const created = doc.createElement("style");
       created.id = styleId;
       created.textContent = `
+        ${
+          !layout.compact && session.mode === "edit"
+            ? '[role="dialog"]:has(#task-modal-root) { height: 57vh !important; }'
+            : ""
+        }
         #task-modal-root input:focus,
         #task-modal-root textarea:focus {
           outline: 2px solid ${theme.colors.accent} !important;
@@ -139,7 +144,7 @@ export function TaskModal({
     return () => {
       doc.getElementById?.(styleId)?.remove();
     };
-  }, [theme.colors.accent]);
+  }, [theme.colors.accent, layout.compact, session.mode]);
 
   const startDrag = useCallback(
     (clientY: number) => {
@@ -167,11 +172,13 @@ export function TaskModal({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (evt) => {
+          evt.preventDefault();
           startDrag(evt.nativeEvent.pageY);
         },
         onPanResponderMove: (evt) => {
           moveDrag(evt.nativeEvent.pageY);
         },
+        onPanResponderTerminationRequest: () => false,
         onPanResponderRelease: () => {
           endDrag();
         },
@@ -395,11 +402,24 @@ export function TaskModal({
           color: theme.colors.statusDanger,
           fontSize: 13,
         },
+        footer: {
+          flexDirection: "row",
+          alignItems: "center",
+          flexWrap: "wrap",
+          flexShrink: 0,
+          gap: 10,
+          paddingTop: 12,
+          paddingHorizontal: 6,
+          paddingBottom: 4,
+          borderTopWidth: 1,
+          borderTopColor: theme.colors.border,
+        },
         buttonRow: {
           flexDirection: "row",
           justifyContent: "flex-end",
           gap: 10,
-          marginTop: 10,
+          marginLeft: "auto",
+          flexShrink: 0,
         },
         cancelButton: {
           paddingHorizontal: 16,
@@ -428,12 +448,8 @@ export function TaskModal({
           fontWeight: "600",
         },
         deleteSection: {
-          marginTop: 12,
-          paddingTop: 12,
-          borderTopWidth: 1,
-          borderTopColor: theme.colors.border,
           flexDirection: "row",
-          justifyContent: "space-between",
+          flexShrink: 1,
           alignItems: "center",
         },
         deleteButton: {
@@ -688,7 +704,9 @@ export function TaskModal({
               </Pressable>
             </View>
           </View>
+        </ScrollView>
 
+        <View style={styles.footer}>
           {/* Delete Task Section for Edit Mode */}
           {session.mode === "edit" && (
             <View style={styles.deleteSection}>
@@ -765,7 +783,7 @@ export function TaskModal({
               </Text>
             </Pressable>
           </View>
-        </ScrollView>
+        </View>
       </Modal.Content>
     </Modal>
   );

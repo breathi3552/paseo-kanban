@@ -221,7 +221,7 @@ export function GitHubImportModal(props: Props) {
           flex: props.compact ? undefined : 1,
           minWidth: 0,
         },
-        list: { flex: 1, minHeight: 0, maxHeight: props.compact ? 340 : 520 },
+        list: { flex: 1, minHeight: 0 },
         row: {
           flexDirection: "row",
           alignItems: "center",
@@ -591,7 +591,7 @@ export function GitHubImportModal(props: Props) {
             )}
           </View>
         )}
-        <View style={styles.footer}>
+        <View style={[styles.footer, { marginTop: "auto" }]}>
           <Text style={styles.secondary}>
             {t("import.selected", { count: chosen.length })}
           </Text>

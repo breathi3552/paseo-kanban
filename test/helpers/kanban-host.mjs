@@ -204,6 +204,7 @@ export function createHost({
   };
   const { default: contribute } = loadClientModule("../index.client", {
     "./web": {
+      useProjectFilterLayout: () => {},
       WebDialogPortal: ({ children }) =>
         React.createElement("WebDialogPortal", {}, children),
       WebMenuPortal: ({ children, ...props }) =>

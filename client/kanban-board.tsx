@@ -43,6 +43,7 @@ import {
   type TaskEditSession,
 } from "./kanban-session";
 import { useI18n, I18nLanguageContext } from "./i18n";
+import { useProjectFilterLayout } from "./web";
 
 interface KanbanBoardProps extends PluginSurfaceProps {
   initialProjectId?: string | null;
@@ -59,6 +60,7 @@ export function KanbanBoardView(props: KanbanBoardProps) {
 
 function KanbanBoardContent(props: KanbanBoardProps) {
   const { theme } = props;
+  useProjectFilterLayout();
   const [panelWidth, setPanelWidth] = useState<number | null>(null);
   const compact =
     props.layout.compact || (panelWidth !== null && panelWidth < 600);
@@ -621,8 +623,9 @@ function KanbanBoardContent(props: KanbanBoardProps) {
         </View>
 
         {/* Project Filter */}
-        <View style={{ maxWidth: 360 }}>
+        <View style={{ maxWidth: 520 }}>
           <SettingsSelect
+            testID="kanban-project-filter"
             label={t("kanban.filterLabel")}
             value={selectedProjectId}
             options={[

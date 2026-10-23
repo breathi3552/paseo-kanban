@@ -35,7 +35,9 @@ export function LaneManagementDialog({
           style={{ backgroundColor: colors.surface0 }}
           contentContainerStyle={contentStyle}
         >
-          {actions && <View style={{ alignItems: "flex-end" }}>{actions}</View>}
+          {actions && (
+            <View style={{ alignItems: "flex-start" }}>{actions}</View>
+          )}
           {children}
         </Modal.Content>
       </Modal>
@@ -122,6 +124,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
   },
-  title: { flex: 1, minWidth: 0, fontSize: 16, fontWeight: "600" },
-  close: { padding: 8, borderRadius: 8 },
+  title: { flexShrink: 1, minWidth: 0, fontSize: 16, fontWeight: "600" },
+  close: { marginLeft: "auto", padding: 8, borderRadius: 8 },
 });
