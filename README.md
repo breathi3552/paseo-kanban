@@ -11,6 +11,7 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 ## Highlights
 
 - **Swimlane Management**: Manage lanes in one horizontal dialog. Add, rename, and delete immediately; preview ordering with left/right controls or dragging, then save the order. Deleting a lane with unfinished tasks requires confirmation and removes those tasks across all projects; completed tasks are kept.
+- **Task Context Menu**: Right-click a card to edit, move, complete, copy its full prompt, open its source Issue, or delete with confirmation. Left-click no longer opens details; drag anywhere except the checkbox and Send to Agent button.
 - **Drag-and-Drop Interaction**: Fluid intra-lane reordering and cross-lane movement with animated drop-slot displacement, viewport edge auto-scrolling, and smooth drop-in feedback.
 - **Send to Agent**: Send a card's title, description, steps, and source to a new Agent using a host preset. Choose an existing workspace, a new regular workspace, or a new worktree; execution stays independent of board status.
 - **GitHub Issue Import**: One-way import of open issues from the project repository's GitHub origin into a chosen lane, featuring pagination, repository-wide creation-time sorting, automatic deduplication, and source links.

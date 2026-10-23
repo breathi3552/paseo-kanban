@@ -12,6 +12,7 @@ import type {
   ViewProps,
 } from "react-native";
 import type { KanbanTask } from "../shared/kanban";
+import { isCardControl } from "./card-interaction.ts";
 
 export interface Rect {
   x: number;
@@ -136,7 +137,8 @@ export interface PanResponderFactory {
 
 export interface CardDragBinding {
   readonly isDragging: boolean;
-  readonly cardPanHandlers?: GestureResponderHandlers;
+  readonly cardPanHandlers?: GestureResponderHandlers &
+    Pick<ViewProps, "onTouchCancel">;
   readonly handlePanHandlers?: GestureResponderHandlers;
   readonly onLayout: (rect: Rect) => void;
   readonly onUnmount: () => void;
@@ -623,8 +625,17 @@ export class KanbanDragController {
           ? native.pointerType !== "mouse"
           : (pointerTouch ?? native.touches?.length > 0);
       };
+      const accepts = (event: GestureResponderEvent) => {
+        const button = (
+          event.nativeEvent as typeof event.nativeEvent & { button?: number }
+        ).button;
+        return (
+          !isCardControl(event) &&
+          (isTouch(event) || button == null || button === 0)
+        );
+      };
       const observeTouch = (event: GestureResponderEvent) => {
-        if (!isTouch(event) || this.activeSession) return;
+        if (!accepts(event) || !isTouch(event) || this.activeSession) return;
         this.handlePointerDown(
           { taskId, laneId, onPress: this.cardCallbacks.get(key) },
           { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY },
@@ -649,11 +660,14 @@ export class KanbanDragController {
           observeTouch(event);
           return false;
         },
-        onStartShouldSetPanResponder: (event) => !isTouch(event),
-        onMoveShouldSetPanResponderCapture: shouldClaimMove,
+        onStartShouldSetPanResponder: (event) =>
+          accepts(event) && !isTouch(event),
+        onMoveShouldSetPanResponderCapture: (event) =>
+          accepts(event) && shouldClaimMove(),
         onMoveShouldSetPanResponder: (event) =>
-          !isTouch(event) || shouldClaimMove(),
+          accepts(event) && (!isTouch(event) || shouldClaimMove()),
         onPanResponderGrant: (event, gs) => {
+          if (!accepts(event)) return;
           if (ownsTouch()) {
             claimed = true;
             // Grant follows the long press on the next move: retain the
@@ -766,7 +780,8 @@ export class KanbanDragController {
     if (this.currentDroppingState) return;
 
     this.clearPendingTimer();
-    this.pendingOnPress = context.onPress ?? null;
+    this.pendingOnPress =
+      inputKind === "touch" ? (context.onPress ?? null) : null;
     this.pendingInputKind = inputKind ?? "mouse";
 
     if (source === "handle") {

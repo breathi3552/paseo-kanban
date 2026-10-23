@@ -27,6 +27,8 @@ export interface KanbanLaneViewProps {
   onSelectTask: (task: KanbanTask) => void;
   onSendToAgent?: (task: KanbanTask) => void;
   onSetCompleted?: (taskId: string, completed: boolean) => void;
+  onContextMenu?: (taskId: string, point: { x: number; y: number }) => void;
+  onScrollCards?: () => void;
   completionPending?: boolean;
   resolveProjectName?: (projectId: string | null) => string | null;
 }
@@ -42,6 +44,8 @@ function KanbanLaneViewInner({
   onSelectTask,
   onSendToAgent,
   onSetCompleted,
+  onContextMenu,
+  onScrollCards,
   completionPending = false,
   resolveProjectName,
 }: KanbanLaneViewProps) {
@@ -273,7 +277,10 @@ function KanbanLaneViewInner({
         style={styles.cardsScroll}
         showsVerticalScrollIndicator={false}
         onLayout={(e) => registerCardsViewport(e.nativeEvent.layout)}
-        onScroll={(e) => handleLaneScroll(e.nativeEvent.contentOffset.y)}
+        onScroll={(e) => {
+          onScrollCards?.();
+          handleLaneScroll(e.nativeEvent.contentOffset.y);
+        }}
         scrollEventThrottle={16}
       >
         <View style={styles.cardsList}>
@@ -304,6 +311,7 @@ function KanbanLaneViewInner({
                 )}
                 slideAnimation={displacedTasksRef.current.get(task.id)}
                 onSetCompleted={onSetCompleted}
+                onContextMenu={onContextMenu}
                 onSendToAgent={onSendToAgent}
                 completionDisabled={
                   completionPending || (dragBinding.isDragLocked?.() ?? false)
