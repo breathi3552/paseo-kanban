@@ -24,18 +24,26 @@ export type SaveFn = (board: KanbanBoard, revision: string) => Promise<boolean>;
 
 export type SessionLanguage = "zh" | "en";
 
-export async function executeIssueImport(input: {
+export interface ExecuteIssueImportOptions {
   baseBoard: KanbanBoard;
   baseRevision: string;
   projectId: string;
   laneId: string;
   issues: GitHubIssue[];
-  descriptions: string[];
   save: SaveFn;
   language: SessionLanguage;
-}): Promise<SessionResult> {
+}
+
+export async function executeIssueImport(
+  input: ExecuteIssueImportOptions,
+): Promise<SessionResult> {
   try {
-    const next = importGitHubTasks(input.baseBoard, input);
+    const next = importGitHubTasks(input.baseBoard, {
+      projectId: input.projectId,
+      laneId: input.laneId,
+      issues: input.issues,
+      language: input.language,
+    });
     if (await input.save(next, input.baseRevision)) return { success: true };
   } catch {
     /* Preserve the selection and recheck current board before retry. */

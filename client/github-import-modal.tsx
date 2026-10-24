@@ -285,20 +285,12 @@ export function GitHubImportModal(props: Props) {
     savingRef.current = true;
     setSaving(true);
     setSaveError(false);
-    const descriptions = chosen.map((issue) => {
-      const absolute = new Date(issue.createdAt)
-        .toISOString()
-        .replace("T", " ")
-        .replace(/\.\d{3}Z$/, " +00:00");
-      return `${issue.body}\n\n---\nGitHub Issue #${issue.number} · ${issue.author}\n${t("import.created", { time: absolute })}`;
-    });
     const result = await executeIssueImport({
       baseBoard: props.board,
       baseRevision: props.revision,
       projectId,
       laneId,
       issues: chosen,
-      descriptions,
       save: props.save,
       language,
     });
