@@ -520,13 +520,24 @@ export function deleteTask(board: KanbanBoard, taskId: string): KanbanBoard {
   });
 }
 
+function formatIssueDescription(issue: GitHubIssue, language?: string): string {
+  const isZh =
+    typeof language === "string" && language.toLowerCase().startsWith("zh");
+  const absolute = new Date(issue.createdAt)
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d{3}Z$/, " +00:00");
+  const created = isZh ? `创建于 ${absolute}` : `Created at ${absolute}`;
+  return `${issue.body}\n\n---\nGitHub Issue #${issue.number} · ${issue.author}\n${created}`;
+}
+
 export function importGitHubTasks(
   board: KanbanBoard,
   input: {
     projectId: string;
     laneId: string;
     issues: GitHubIssue[];
-    descriptions: string[];
+    language?: string;
   },
 ): KanbanBoard {
   if (
@@ -536,24 +547,20 @@ export function importGitHubTasks(
     )
   )
     throw new Error("import_target");
-  if (
-    input.issues.length === 0 ||
-    input.issues.length > 25 ||
-    input.descriptions.length !== input.issues.length
-  )
+  if (input.issues.length === 0 || input.issues.length > 25)
     throw new Error("import_selection");
   const numbers = new Set(
     board.tasks
       .filter((task) => task.projectId === input.projectId)
       .map((task) => task.issueNumber),
   );
-  const tasks = input.issues.map((issue, index) => {
+  const tasks = input.issues.map((issue) => {
     if (numbers.has(issue.number)) throw new Error("import_duplicate");
     numbers.add(issue.number);
     return {
       id: `task_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`,
       title: issue.title,
-      description: input.descriptions[index],
+      description: formatIssueDescription(issue, input.language),
       laneId: input.laneId,
       projectId: input.projectId,
       subtasks: [],

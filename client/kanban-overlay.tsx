@@ -1,252 +1,37 @@
-import { useEffect, useRef, useSyncExternalStore, memo } from "react";
+import { memo } from "react";
 import { Animated, View, StyleSheet } from "react-native";
-import type { ViewStyle } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import type { KanbanTask } from "../shared/kanban";
 import { KanbanCardPreview } from "./kanban-card";
-import type { UseKanbanDragReturn } from "./kanban-drag";
+import { useKanbanDragOverlay, type OverlayDragBinding } from "./kanban-drag";
 
 type PluginTheme = PluginSurfaceProps["theme"];
-
 const AnimatedView = (Animated && Animated.View) || View;
 
 export interface KanbanDragOverlayProps {
-  drag: UseKanbanDragReturn;
+  binding: OverlayDragBinding;
   theme: PluginTheme;
   layout: { compact: boolean };
-  task?: KanbanTask | null;
-  projectDisplayName?: string | null;
 }
 
 function KanbanDragOverlayInner({
-  drag,
+  binding,
   theme,
   layout,
-  task: propTask,
-  projectDisplayName: propProjectName,
 }: KanbanDragOverlayProps) {
-  const liveFeedback = useSyncExternalStore(
-    drag.controller ? drag.controller.subscribe : () => () => {},
-    drag.controller ? drag.controller.getFeedback : () => drag.feedback,
-    drag.controller ? drag.controller.getFeedback : () => drag.feedback,
-  );
-
-  const curDropping = useSyncExternalStore(
-    drag.controller ? drag.controller.subscribeDrop : () => () => {},
-    drag.controller
-      ? drag.controller.getDroppingState
-      : () => drag.droppingState,
-    drag.controller
-      ? drag.controller.getDroppingState
-      : () => drag.droppingState,
-  );
-  const animPos = useRef(
-    Animated?.ValueXY ? new Animated.ValueXY({ x: 0, y: 0 }) : null,
-  ).current;
-  const animRotate = useRef(
-    Animated?.Value ? new Animated.Value(0) : null,
-  ).current;
-  const animScale = useRef(
-    Animated?.Value ? new Animated.Value(1) : null,
-  ).current;
-  const droppingHandledRef = useRef<string | null>(null);
-  const lastOpIdRef = useRef<string | null>(null);
-  const liftingTaskIdRef = useRef<string | null>(null);
-
-  if (
-    curDropping &&
-    animPos &&
-    animRotate &&
-    animScale &&
-    lastOpIdRef.current !== curDropping.operationId
-  ) {
-    lastOpIdRef.current = curDropping.operationId;
-    animPos.setValue({ x: curDropping.fromX, y: curDropping.fromY });
-    animRotate.setValue(1);
-    animScale.setValue(1.03);
-  } else if (!curDropping) {
-    lastOpIdRef.current = null;
-  }
-
-  useEffect(() => {
-    if (
-      !liveFeedback.isDragging ||
-      !liveFeedback.draggingTaskId ||
-      curDropping
-    ) {
-      if (!liveFeedback.isDragging && !curDropping) {
-        liftingTaskIdRef.current = null;
-      }
-      return;
-    }
-
-    if (liftingTaskIdRef.current === liveFeedback.draggingTaskId) {
-      return;
-    }
-    liftingTaskIdRef.current = liveFeedback.draggingTaskId;
-
-    if (!Animated || !animRotate || !animScale) {
-      return;
-    }
-
-    animRotate.setValue(0);
-    animScale.setValue(1);
-    Animated.timing(animRotate, {
-      toValue: 1,
-      duration: 120,
-      useNativeDriver: false,
-    }).start();
-    Animated.timing(animScale, {
-      toValue: 1.03,
-      duration: 120,
-      useNativeDriver: false,
-    }).start();
-  }, [
-    liveFeedback.isDragging,
-    liveFeedback.draggingTaskId,
-    curDropping,
-    animRotate,
-    animScale,
-  ]);
-
-  useEffect(() => {
-    if (!curDropping) {
-      droppingHandledRef.current = null;
-      return;
-    }
-
-    const dropKey =
-      curDropping.operationId ||
-      `${curDropping.taskId}_${curDropping.targetLaneId}_${curDropping.targetIndex}`;
-    if (droppingHandledRef.current === dropKey) {
-      return;
-    }
-    droppingHandledRef.current = dropKey;
-
-    if (!Animated || !animPos || !animRotate || !animScale) {
-      drag.commitDrop();
-      return;
-    }
-
-    animPos.setValue({ x: curDropping.fromX, y: curDropping.fromY });
-    animRotate.setValue(1);
-    animScale.setValue(1.03);
-
-    Animated.parallel([
-      Animated.spring(animPos, {
-        toValue: { x: curDropping.toX, y: curDropping.toY },
-        useNativeDriver: false,
-        friction: 9,
-        tension: 90,
-        restDisplacementThreshold: 1,
-        restSpeedThreshold: 1,
-      }),
-      Animated.timing(animRotate, {
-        toValue: 0,
-        duration: 160,
-        useNativeDriver: false,
-      }),
-      Animated.timing(animScale, {
-        toValue: 1,
-        duration: 160,
-        useNativeDriver: false,
-      }),
-    ]).start((result) => {
-      if (result === undefined || result?.finished) {
-        drag.commitDrop();
-      } else {
-        drag.abortDrop?.();
-      }
-    });
-  }, [curDropping, drag, animPos, animRotate, animScale]);
-
-  const activeTask =
-    curDropping?.task ??
-    propTask ??
-    (curDropping?.taskId && drag.getTaskPreview
-      ? drag.getTaskPreview(curDropping.taskId)?.task
-      : null) ??
-    (liveFeedback.draggingTaskId && drag.getTaskPreview
-      ? drag.getTaskPreview(liveFeedback.draggingTaskId)?.task
-      : null);
-  const activeProjectName =
-    curDropping?.projectName ??
-    propProjectName ??
-    (curDropping?.taskId && drag.getTaskPreview
-      ? drag.getTaskPreview(curDropping.taskId)?.projectDisplayName
-      : null) ??
-    (liveFeedback.draggingTaskId && drag.getTaskPreview
-      ? drag.getTaskPreview(liveFeedback.draggingTaskId)?.projectDisplayName
-      : null);
-
-  const isVisible =
-    (liveFeedback.isDragging &&
-      typeof liveFeedback.pointerX === "number" &&
-      activeTask !== null) ||
-    (curDropping !== null && activeTask !== null);
-
-  if (!isVisible || !activeTask) {
-    return null;
-  }
-
-  const containerBounds = drag.controller?.getContainerBounds?.() ?? null;
-  const containerX = containerBounds?.x ?? 0;
-  const containerY = containerBounds?.y ?? 0;
-  const cardHalfWidth = layout.compact ? 125 : 140;
-  const activeCardWidth =
-    curDropping?.draggedCardWidth ?? liveFeedback.draggedCardWidth;
-
-  let overlayStyle: Animated.WithAnimatedValue<ViewStyle>;
-  if (curDropping && animPos && animRotate && animScale) {
-    overlayStyle = {
-      transform: [
-        { translateX: animPos.x },
-        { translateY: animPos.y },
-        {
-          rotate: animRotate.interpolate({
-            inputRange: [0, 1],
-            outputRange: ["0deg", "2.5deg"],
-          }),
-        },
-        { scale: animScale },
-      ],
-    };
-  } else if (
-    typeof liveFeedback.pointerX === "number" &&
-    typeof liveFeedback.pointerY === "number"
-  ) {
-    const offsetX = liveFeedback.grabOffsetX ?? cardHalfWidth;
-    const offsetY = liveFeedback.grabOffsetY ?? 20;
-    overlayStyle = {
-      transform: [
-        { translateX: liveFeedback.pointerX - containerX - offsetX },
-        { translateY: liveFeedback.pointerY - containerY - offsetY },
-        {
-          rotate: animRotate
-            ? animRotate.interpolate({
-                inputRange: [0, 1],
-                outputRange: ["0deg", "2.5deg"],
-              })
-            : "2.5deg",
-        },
-        { scale: animScale ?? 1.03 },
-      ],
-    };
-  } else {
-    return null;
-  }
+  const overlay = useKanbanDragOverlay(binding, layout.compact);
+  if (!overlay) return null;
 
   return (
     <AnimatedView
       pointerEvents="none"
-      style={[styles.dragOverlay, overlayStyle]}
+      style={[styles.dragOverlay, overlay.style]}
     >
       <KanbanCardPreview
-        task={activeTask}
-        projectDisplayName={activeProjectName ?? null}
+        task={overlay.task}
+        projectDisplayName={overlay.projectDisplayName}
         theme={theme}
         layout={layout}
-        width={activeCardWidth}
+        width={overlay.width}
         animated={true}
       />
     </AnimatedView>
