@@ -5,11 +5,15 @@ import { createHost, mount, press, text } from "./helpers/kanban-host.mjs";
 import { KanbanBoardSchema } from "../shared/kanban.ts";
 
 let language = "en";
+let windowEvents;
 globalThis.localStorage = { getItem: () => JSON.stringify({ language }) };
 test.beforeEach(() => {
   language = "en";
+  windowEvents = new EventTarget();
+  globalThis.window = windowEvents;
 });
 test.after(() => {
+  delete globalThis.window;
   delete globalThis.localStorage;
 });
 
@@ -202,6 +206,50 @@ test("等待 Agent 创建时显示发送中反馈，禁止重复提交，完成�
   assert.equal(createdAgents.length, 1);
   assert.deepEqual(opened, [{ agentId: "agent-1" }]);
   assert.equal(renderer.root.findAllByType("Modal").length, 0);
+});
+
+test("派发期间切换语言，完成后按当前语言仅通知一次 prompt 已保存", async (t) => {
+  const gate = Promise.withResolvers();
+  const { host, createdAgents, opened } = fixture({ agentGate: gate.promise });
+  const renderer = await mount(t, host);
+  await press(renderer.root, "Send to Agent");
+  const instruction = "Discuss the task before making changes.";
+  await act(async () =>
+    modal(renderer)
+      .findByProps({ accessibilityLabel: "prompt" })
+      .props.onChangeText(instruction),
+  );
+  const send = modal(renderer)
+    .findAllByType("Pressable")
+    .find((node) =>
+      node.findAllByType("Text").some((child) => text(child) === "Send"),
+    );
+  let pending;
+  await act(async () => {
+    pending = send.props.onPress();
+  });
+  assert.equal(host.settingsValues["agent-dispatch"].prompt, instruction);
+  assert.deepEqual(host.notifications, []);
+  await act(async () => {
+    language = "zh";
+    windowEvents.dispatchEvent(new Event("focus"));
+  });
+  assert.ok(
+    modal(renderer).findAllByType("Text").map(text).includes("发送中…"),
+  );
+  await act(async () => {
+    gate.resolve();
+    await pending;
+  });
+  assert.equal(createdAgents.length, 1);
+  assert.ok(
+    createdAgents[0].prompt.startsWith(`${instruction}\n\n# 修复 登录页`),
+  );
+  assert.deepEqual(opened, [{ agentId: "agent-1" }]);
+  assert.equal(renderer.root.findAllByType("Modal").length, 0);
+  assert.deepEqual(host.notifications, ["prompt 已保存"]);
+  await act(async () => windowEvents.dispatchEvent(new Event("focus")));
+  assert.deepEqual(host.notifications, ["prompt 已保存"]);
 });
 
 test("卡片发送到新普通工作区：宿主预设、完整任务消息和新聊天贯通", async (t) => {
