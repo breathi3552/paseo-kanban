@@ -151,6 +151,49 @@ test("左右排序仅预览，先保存或还原才能增删改，完成泳道�
   assert.deepEqual(host.notifications, ["Lane order saved"]);
 });
 
+test("拖拽和左右按钮共用顺序草稿，释放仅预览，显式保存后更新看板", async (t) => {
+  const { host, renderer } = await setup(t);
+  const drag = async (title, dx) => {
+    const grip = dialog(renderer)
+      .findAllByType("View")
+      .find(
+        (node) =>
+          node.props.accessibilityLabel === `Reorder ${title}` &&
+          node.props.onPanResponderGrant,
+      );
+    assert.ok(grip, `reachable lane grip: ${title}`);
+    const event = {
+      nativeEvent: { pointerType: "mouse", pageX: 200, pageY: 100 },
+    };
+    await act(async () => grip.props.onPanResponderGrant(event));
+    await act(async () => grip.props.onPanResponderMove(event, { dx, dy: 0 }));
+    await act(async () => grip.props.onPanResponderRelease());
+  };
+  await click(dialog(renderer), "Move Todo right");
+  await drag("Doing", 172);
+  assert.deepEqual(displayedLanes(renderer), [
+    "Rename Todo",
+    "Rename Doing",
+    "Rename Finished",
+  ]);
+  assert.equal(button(dialog(renderer), "+ Add lane").props.disabled, false);
+  await drag("Todo", 172);
+  assert.deepEqual(displayedLanes(renderer), [
+    "Rename Doing",
+    "Rename Todo",
+    "Rename Finished",
+  ]);
+  assert.equal(button(dialog(renderer), "+ Add lane").props.disabled, true);
+  assert.deepEqual(host.board.lanes, lanes);
+  assert.deepEqual(host.notifications, []);
+  await press(dialog(renderer), "Save order");
+  assert.deepEqual(
+    host.board.lanes.map((lane) => lane.id),
+    ["doing", "todo", "done"],
+  );
+  assert.deepEqual(host.notifications, ["Lane order saved"]);
+});
+
 test("删除按未完成状态跨项目清理，确认无数量，保留完成任务及其恢复能力", async (t) => {
   const { host, renderer } = await setup(t, {
     board: {
@@ -245,7 +288,29 @@ test("空泳道删除途中出现任务则补确认，授权后按最新范围�
     ],
   });
   await act(async () => host.replaceBoard(latest));
+  let releaseConfirmed;
+  host.holdSave(
+    new Promise((resolve) => {
+      releaseConfirmed = resolve;
+    }),
+  );
   await press(confirmation(renderer), "Delete lane");
+  const newest = KanbanBoardSchema.parse({
+    lanes,
+    tasks: [
+      ...latest.tasks,
+      {
+        id: "after-confirm",
+        title: "Delete after authorization",
+        laneId: "todo",
+        projectId: "project-a",
+      },
+    ],
+  });
+  await act(async () => host.replaceBoard(newest));
+  await act(async () => {
+    releaseConfirmed();
+  });
   assert.equal(confirmation(renderer), undefined);
   assert.deepEqual(host.board.tasks, [latest.tasks[0], latest.tasks[2]]);
   assert.deepEqual(
@@ -280,6 +345,141 @@ test("改名保存途中仅任务更新时自动续存，不覆盖新任务且�
   assert.equal(host.board.lanes[0].title, "Ready");
   assert.equal(host.board.tasks[0].title, "Concurrent");
   assert.deepEqual(host.notifications, ["Lane renamed"]);
+});
+
+test("持续任务并发更新时有界停止续存，保留名称草稿和最新任务，稍后可重试", async (t) => {
+  const { host, renderer } = await setup(t);
+  await click(dialog(renderer), "Rename Todo");
+  await enter(renderer, "Ready");
+  let pending = Promise.withResolvers();
+  host.holdSave(pending.promise);
+  await press(dialog(renderer), "Confirm");
+  for (const id of ["first", "second", "third"]) {
+    const previous = pending;
+    pending = Promise.withResolvers();
+    host.holdSave(pending.promise);
+    await act(async () => {
+      host.replaceBoard(
+        KanbanBoardSchema.parse({
+          lanes,
+          tasks: [...host.board.tasks, { id, title: id, laneId: "todo" }],
+        }),
+      );
+      previous.resolve();
+    });
+  }
+  assert.equal(dialog(renderer).findByType("TextInput").props.value, "Ready");
+  assert.equal(button(dialog(renderer), "Confirm").props.disabled, false);
+  assert.match(texts(dialog(renderer)), /Lane save failed/);
+  assert.deepEqual(host.board.lanes, lanes);
+  assert.deepEqual(
+    host.board.tasks.map((task) => task.id),
+    ["first", "second", "third"],
+  );
+  assert.deepEqual(host.notifications, [
+    "Lane save failed. Draft preserved; check the latest data.",
+  ]);
+  pending.resolve();
+  await press(dialog(renderer), "Confirm");
+  assert.equal(host.board.lanes[0].title, "Ready");
+  assert.deepEqual(
+    host.board.tasks.map((task) => task.id),
+    ["first", "second", "third"],
+  );
+  assert.deepEqual(host.notifications, [
+    "Lane save failed. Draft preserved; check the latest data.",
+    "Lane renamed",
+  ]);
+});
+
+test("保存开始后关闭管理窗口仍续存任务冲突，最终持久化并只通知一次", async (t) => {
+  const { host, renderer } = await setup(t);
+  await click(dialog(renderer), "Rename Todo");
+  await enter(renderer, "Ready");
+  let release;
+  host.holdSave(
+    new Promise((resolve) => {
+      release = resolve;
+    }),
+  );
+  await press(dialog(renderer), "Confirm");
+  await click(dialog(renderer), "Close");
+  assert.equal(dialogs(renderer).length, 0);
+  await act(async () =>
+    host.replaceBoard(
+      KanbanBoardSchema.parse({
+        lanes,
+        tasks: [{ id: "new", title: "Concurrent", laneId: "todo" }],
+      }),
+    ),
+  );
+  await act(async () => {
+    release();
+  });
+  assert.equal(host.board.lanes[0].title, "Ready");
+  assert.equal(host.board.tasks[0].title, "Concurrent");
+  assert.deepEqual(host.notifications, ["Lane renamed"]);
+  await press(renderer.root, "Manage lanes");
+  assert.deepEqual(displayedLanes(renderer), [
+    "Rename Ready",
+    "Rename Doing",
+    "Rename Finished",
+  ]);
+});
+
+test("卸载看板后保存仍自动续存，等待期间切换语言使用最新通知文本", async (t) => {
+  const { host, renderer } = await setup(t);
+  await click(dialog(renderer), "Rename Todo");
+  await enter(renderer, "Ready");
+  let release;
+  host.holdSave(
+    new Promise((resolve) => {
+      release = resolve;
+    }),
+  );
+  await press(dialog(renderer), "Confirm");
+  await act(async () => renderer.unmount());
+  language = "zh";
+  windowEvents.dispatchEvent(new Event("focus"));
+  host.replaceBoard(
+    KanbanBoardSchema.parse({
+      lanes,
+      tasks: [{ id: "new", title: "Concurrent", laneId: "todo" }],
+    }),
+  );
+  await act(async () => {
+    release();
+  });
+  assert.equal(host.board.lanes[0].title, "Ready");
+  assert.equal(host.board.tasks[0].title, "Concurrent");
+  assert.deepEqual(host.notifications, ["泳道已重命名"]);
+});
+
+test("关窗后的保存失败不覆盖数据，并按等待期间切换的语言只通知一次", async (t) => {
+  const { host, renderer } = await setup(t);
+  await click(dialog(renderer), "Rename Todo");
+  await enter(renderer, "Ready");
+  let release;
+  host.holdSave(
+    new Promise((resolve) => {
+      release = resolve;
+    }),
+  );
+  host.failNextSave(new Error("Disk full"));
+  await press(dialog(renderer), "Confirm");
+  await click(dialog(renderer), "Close");
+  assert.equal(dialogs(renderer).length, 0);
+  await act(async () => {
+    language = "zh";
+    windowEvents.dispatchEvent(new Event("focus"));
+  });
+  await act(async () => {
+    release();
+  });
+  assert.deepEqual(host.board.lanes, lanes);
+  assert.deepEqual(host.notifications, [
+    "泳道保存失败，草稿已保留，请核实最新数据。",
+  ]);
 });
 
 test("外部泳道变化拒绝自动合并并保留名称或排序草稿，加载最新后恢复", async (t) => {
