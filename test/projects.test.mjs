@@ -1,3 +1,4 @@
+import { findDialog } from "./helpers/kanban-host.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -207,7 +208,7 @@ test("任务详情保留任务原关联项目，即使缺失也不清空，且�
   assert.ok(editButton, "Edit details button exists");
   await act(async () => editButton.props.onPress());
 
-  const modal = renderer.root.findByType("Modal");
+  const modal = findDialog(renderer.root);
   assert.ok(modal, "task modal opened");
 
   // Find the project Select inside TaskModal
@@ -394,7 +395,7 @@ test("任务传递入口验证缺失项目占位不能作为有效目标创建�
   // Click the send button on the card
   await press(renderer.root, "Send to Agent");
 
-  const modal = renderer.root.findByType("Modal");
+  const modal = findDialog(renderer.root);
   assert.ok(modal, "agent dispatch modal opened");
 
   // Attempt to submit directly with the missing project placeholder

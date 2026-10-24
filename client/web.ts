@@ -1,6 +1,7 @@
 import {
   useEffect,
   useLayoutEffect,
+  useId,
   useRef,
   useState,
   type ReactNode,
@@ -96,6 +97,27 @@ const focusable = (root: WebElement) =>
       node.getAttribute("aria-disabled") !== "true" &&
       node.getClientRects().length > 0,
   );
+
+/** Focus styling targets only this dialog's owned content, including host sheets. */
+export function useDialogInputFocus(color?: string) {
+  const id = `kanban-dialog-${useId()}`;
+  useEffect(() => {
+    if (!color || Platform.OS !== "web" || typeof document === "undefined")
+      return;
+    const style = document.createElement("style");
+    const scope = `[id="${id}"]`;
+    style.textContent = `
+      ${scope} input:focus, ${scope} textarea:focus {
+        outline: 2px solid ${color} !important;
+        outline-offset: 1px !important;
+        border-color: ${color} !important;
+      }
+    `;
+    document.body.appendChild(style);
+    return () => style.remove();
+  }, [id, color]);
+  return id;
+}
 
 /** Own web surface, never a selector or mutation of the host's private DOM.
  * z=0 sits above app content by insertion order, below the host overlay plane
