@@ -13,11 +13,11 @@ import {
   useToast,
 } from "@getpaseo/plugin/client/react-native";
 import { SettingsSelect } from "@getpaseo/plugin/client/ui";
-import { listGitHubIssues, type IssuePage } from "../shared/github-import";
-import type { KanbanBoard } from "../shared/kanban";
-import { executeIssueImport, type SaveFn } from "./kanban-session";
-import type { ProjectItem } from "./use-projects";
-import { useI18n, type TranslationKey } from "./i18n";
+import { listGitHubIssues, type IssuePage } from "../../shared/github-import";
+import type { KanbanBoard } from "../../shared/kanban";
+import { executeIssueImport, type SaveFn } from "../session/kanban-session";
+import type { ProjectItem } from "../session/use-projects";
+import { useI18n, type TranslationKey } from "../platform/i18n";
 import { BusinessDialog } from "./business-dialog";
 
 interface Props {
@@ -143,63 +143,7 @@ export function GitHubImportModal(props: Props) {
   const disabled = saving || !ready || !props.settingsReady;
   const colors = props.theme.colors;
   const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        body: {
-          flex: 1,
-          minHeight: 0,
-          gap: 12,
-          backgroundColor: colors.surface0,
-        },
-        selectors: { flexDirection: props.compact ? "column" : "row", gap: 12 },
-        select: { flex: 1, minWidth: 0 },
-        selectProject: {
-          flex: props.compact ? undefined : 1.15,
-          minWidth: 0,
-        },
-        selectLane: {
-          flex: props.compact ? undefined : 1,
-          minWidth: 0,
-        },
-        list: { flex: 1, minHeight: 0 },
-        row: {
-          flexDirection: "row",
-          alignItems: "center",
-          paddingVertical: 12,
-          paddingHorizontal: 4,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-          gap: 10,
-        },
-        title: { color: colors.foreground, fontSize: 14, flex: 1 },
-        secondary: { color: colors.foregroundMuted, fontSize: 12 },
-        checkbox: {
-          width: 36,
-          height: 32,
-          alignItems: "center",
-          justifyContent: "center",
-        },
-        footer: {
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-          flexWrap: "wrap",
-        },
-        button: {
-          minHeight: 36,
-          minWidth: 36,
-          padding: 8,
-          alignItems: "center",
-          justifyContent: "center",
-        },
-        primary: {
-          backgroundColor: colors.accent,
-          borderRadius: 6,
-          paddingHorizontal: 16,
-        },
-        error: { color: colors.statusDanger, fontSize: 13 },
-      }),
+    () => createImportStyles(colors, props.compact),
     [colors, props.compact],
   );
 
@@ -397,7 +341,7 @@ export function GitHubImportModal(props: Props) {
                 return (
                   <Pressable
                     key={issue.number}
-                    style={[styles.row, imported && { opacity: 0.4 }]}
+                    style={[styles.row, imported && styles.rowImported]}
                     accessibilityRole="checkbox"
                     accessibilityLabel={t("import.selectIssue", {
                       number: issue.number,
@@ -423,7 +367,7 @@ export function GitHubImportModal(props: Props) {
                         color={colors.foregroundMuted}
                       />
                     </View>
-                    <View style={{ flex: 1, gap: 4 }}>
+                    <View style={styles.issueTextWrap}>
                       <Text style={styles.title} numberOfLines={2}>
                         {issue.title}
                       </Text>
@@ -476,7 +420,7 @@ export function GitHubImportModal(props: Props) {
                       <Text
                         style={[
                           styles.title,
-                          number === page && { color: colors.accent },
+                          number === page && styles.pageActiveText,
                         ]}
                       >
                         {number}
@@ -519,11 +463,11 @@ export function GitHubImportModal(props: Props) {
           )}
         </View>
       )}
-      <View style={[styles.footer, { marginTop: "auto" }]}>
+      <View style={[styles.footer, styles.bottomFooter]}>
         <Text style={styles.secondary}>
           {t("import.selected", { count: chosen.length })}
         </Text>
-        <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={styles.footerButtons}>
           <Pressable
             style={styles.button}
             disabled={saving}
@@ -535,20 +479,121 @@ export function GitHubImportModal(props: Props) {
             style={[
               styles.button,
               styles.primary,
-              (disabled || !validProject || !validLane || !chosen.length) && {
-                opacity: 0.4,
-              },
+              (disabled || !validProject || !validLane || !chosen.length) &&
+                styles.primaryDisabled,
             ]}
             disabled={disabled || !validProject || !validLane || !chosen.length}
             onPress={submit}
           >
             {saving && <ActivityIndicator color={colors.accentForeground} />}
-            <Text style={{ color: colors.accentForeground }}>
-              {t("import.submit")}
-            </Text>
+            <Text style={styles.primaryText}>{t("import.submit")}</Text>
           </Pressable>
         </View>
       </View>
     </BusinessDialog>
   );
+}
+
+function createImportStyles(
+  colors: PluginSurfaceProps["theme"]["colors"],
+  compact: boolean,
+) {
+  return StyleSheet.create({
+    body: {
+      flex: 1,
+      minHeight: 0,
+      gap: 12,
+      backgroundColor: colors.surface0,
+    },
+    selectors: {
+      flexDirection: compact ? "column" : "row",
+      gap: 12,
+    },
+    select: {
+      flex: 1,
+      minWidth: 0,
+    },
+    selectProject: {
+      flex: compact ? undefined : 1.15,
+      minWidth: 0,
+    },
+    selectLane: {
+      flex: compact ? undefined : 1,
+      minWidth: 0,
+    },
+    list: {
+      flex: 1,
+      minHeight: 0,
+    },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 12,
+      paddingHorizontal: 4,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      gap: 10,
+    },
+    rowImported: {
+      opacity: 0.4,
+    },
+    issueTextWrap: {
+      flex: 1,
+      gap: 4,
+    },
+    title: {
+      color: colors.foreground,
+      fontSize: 14,
+      flex: 1,
+    },
+    pageActiveText: {
+      color: colors.accent,
+    },
+    secondary: {
+      color: colors.foregroundMuted,
+      fontSize: 12,
+    },
+    checkbox: {
+      width: 36,
+      height: 32,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    footer: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+      flexWrap: "wrap",
+    },
+    bottomFooter: {
+      marginTop: "auto",
+    },
+    footerButtons: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    button: {
+      minHeight: 36,
+      minWidth: 36,
+      padding: 8,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    primary: {
+      backgroundColor: colors.accent,
+      borderRadius: 6,
+      paddingHorizontal: 16,
+    },
+    primaryDisabled: {
+      opacity: 0.4,
+    },
+    primaryText: {
+      color: colors.accentForeground,
+    },
+    error: {
+      color: colors.statusDanger,
+      fontSize: 13,
+    },
+  });
 }

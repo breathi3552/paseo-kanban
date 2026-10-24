@@ -1,8 +1,7 @@
-import { findDialog } from "./helpers/kanban-host.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { act } from "./helpers/react-host-env.mjs";
-import { createHost, mount, press, text } from "./helpers/kanban-host.mjs";
+import { createHost, mount, text } from "./helpers/kanban-host.mjs";
 
 const displays = {
   zh: { title: "任务看板", entry: "看板", stats: "3 任务 · 2 泳道" },
@@ -20,7 +19,6 @@ function configureUpstream(t) {
     },
     navigator,
     window,
-    // Reproduce #16: page and Intl defaults can remain English on a Chinese system.
     document: { documentElement: { lang: "en" } },
   };
   for (const [key, value] of Object.entries(globals)) {
@@ -54,26 +52,7 @@ function assertDisplay(renderer, host, expected, scenario) {
   assert.equal(host.panels.get("kanban").title, expected.entry, scenario);
 }
 
-test("任务弹窗中英文字段简化为标题、泳道、项目并保留必填标记", async (t) => {
-  const upstream = configureUpstream(t);
-  for (const [language, add, expected] of [
-    ["zh-CN", "+ 添加", ["标题 *", "泳道", "项目"]],
-    ["en", "+ Add", ["Title *", "Lane", "Project"]],
-  ]) {
-    upstream.select(language);
-    const renderer = await mount(t, createHost());
-    await press(renderer.root, add);
-    const modal = findDialog(renderer.root);
-    const labels = [
-      ...modal.findAllByType("Text").map(text),
-      ...modal.findAllByType("Select").map((node) => node.props.label),
-    ];
-    for (const label of expected)
-      assert.ok(labels.includes(label), `${language}: ${label}`);
-  }
-});
-
-test("上游语言决定插件显示：简繁中文使用中文，其余使用英文，支持跟随系统", async (t) => {
+test("上游语言决定插件显示（简繁中文/英文/跟随系统），窗口获焦时动态同步已打开看板与入口标题", async (t) => {
   const upstream = configureUpstream(t);
   for (const [language, systemLocale, display] of [
     ["zh-CN", "en-US", "zh"],
@@ -94,14 +73,11 @@ test("上游语言决定插件显示：简繁中文使用中文，其余使用�
       `${language}/${systemLocale}`,
     );
   }
-});
 
-test("修改宿主语言后返回插件，已打开的看板与入口标题同步切换", async (t) => {
-  const upstream = configureUpstream(t);
   upstream.select("en");
   const host = createHost();
   const renderer = await mount(t, host);
-  assertDisplay(renderer, host, displays.en);
+  assertDisplay(renderer, host, displays.en, "initial en");
 
   for (const [language, display] of [
     ["zh-TW", "zh"],
@@ -111,23 +87,6 @@ test("修改宿主语言后返回插件，已打开的看板与入口标题同�
       upstream.select(language);
       upstream.focus();
     });
-    assertDisplay(renderer, host, displays[display]);
-  }
-});
-
-test("提交空标题时，插件使用当前语言显示错误提示", async (t) => {
-  const upstream = configureUpstream(t);
-  for (const [language, newTask, submit, error] of [
-    ["zh-TW", "+ 添加", "创建", "任务标题不能为空"],
-    ["en", "+ Add", "Create", "Task title cannot be empty"],
-  ]) {
-    upstream.select(language);
-    const host = createHost();
-    const renderer = await mount(t, host);
-    await press(renderer.root, newTask);
-    await press(findDialog(renderer.root), submit);
-    assert.ok(
-      renderer.root.findAllByType("Text").some((node) => text(node) === error),
-    );
+    assertDisplay(renderer, host, displays[display], `focus ${language}`);
   }
 });

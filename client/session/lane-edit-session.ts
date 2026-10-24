@@ -5,9 +5,9 @@ import {
   reorderLanes,
   LaneTitleError,
   type KanbanBoard,
-} from "../shared/kanban";
+} from "../../shared/kanban";
 import type { SaveFn } from "./kanban-session";
-import type { TranslationKey } from "./i18n";
+import type { TranslationKey } from "../platform/i18n";
 
 export interface LaneBoardSnapshot {
   board: KanbanBoard;

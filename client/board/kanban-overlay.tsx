@@ -2,7 +2,7 @@ import { memo } from "react";
 import { Animated, View, StyleSheet } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { KanbanCardPreview } from "./kanban-card";
-import { useKanbanDragOverlay, type OverlayDragBinding } from "./kanban-drag";
+import { useKanbanDragOverlay, type OverlayDragBinding } from "./drag";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 const AnimatedView = (Animated && Animated.View) || View;

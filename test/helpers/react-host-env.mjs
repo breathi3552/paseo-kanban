@@ -21,7 +21,7 @@
  * are strictly preserved.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import ts from "typescript";
@@ -118,8 +118,14 @@ export const mockReactNative = {
 export function loadClientModule(file, moduleOverrides = {}) {
   const cache = new Map();
   function load(modulePath) {
-    const filePath = [modulePath, `${modulePath}.tsx`, `${modulePath}.ts`].find(
-      (candidate) => existsSync(candidate),
+    const filePath = [
+      `${modulePath}.tsx`,
+      `${modulePath}.ts`,
+      path.join(modulePath, "index.tsx"),
+      path.join(modulePath, "index.ts"),
+      modulePath,
+    ].find(
+      (candidate) => existsSync(candidate) && statSync(candidate).isFile(),
     );
     if (!filePath) throw new Error(`Module not found: ${modulePath}`);
     if (cache.has(filePath)) return cache.get(filePath);

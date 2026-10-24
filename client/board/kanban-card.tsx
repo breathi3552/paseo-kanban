@@ -10,9 +10,9 @@ import {
 } from "react-native";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import type { KanbanTask } from "../shared/kanban";
-import type { CardDragBinding } from "./kanban-drag";
-import { useI18n } from "./i18n";
+import type { KanbanTask } from "../../shared/kanban";
+import type { CardDragBinding } from "./drag";
+import { useI18n } from "../platform/i18n";
 import {
   isCardControl,
   type CardContextEvent,
@@ -41,20 +41,13 @@ function CompletionIndicator({
   completed: boolean;
   theme: PluginTheme;
 }) {
+  const styles = useMemo(() => createCardStyles(theme, false), [theme]);
   return (
     <View
-      style={{
-        width: 18,
-        height: 18,
-        borderWidth: 1,
-        borderRadius: 4,
-        alignItems: "center",
-        justifyContent: "center",
-        borderColor: completed
-          ? theme.colors.accent
-          : theme.colors.foregroundMuted,
-        backgroundColor: completed ? theme.colors.accent : "transparent",
-      }}
+      style={[
+        styles.completionBox,
+        completed ? styles.completionBoxChecked : styles.completionBoxUnchecked,
+      ]}
     >
       {completed && (
         <Icon name="Check" size={14} color={theme.colors.accentForeground} />
@@ -74,77 +67,36 @@ function CardBody({
   send?: ReactNode;
 }) {
   const { t } = useI18n();
+  const styles = useMemo(
+    () => createCardStyles(theme, layout.compact),
+    [theme, layout.compact],
+  );
   const count = task.subtasks.filter((step) => step.completed).length;
+  const allCompleted = count === task.subtasks.length;
   return (
-    <View style={{ flex: 1, gap: 8 }}>
-      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
-        <Text
-          numberOfLines={2}
-          style={{
-            flex: 1,
-            fontSize: layout.compact ? 13 : 14,
-            lineHeight: layout.compact ? 18 : 20,
-            fontWeight: "600",
-            color: theme.colors.foreground,
-            userSelect: "none",
-          }}
-        >
+    <View style={styles.bodyContainer}>
+      <View style={styles.titleRow}>
+        <Text numberOfLines={2} style={styles.titleText}>
           {task.title}
         </Text>
         {send}
       </View>
       {(projectDisplayName || task.subtasks.length > 0) && (
-        <View
-          style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
+        <View style={styles.badgesRow}>
           {projectDisplayName && (
-            <View
-              style={{
-                backgroundColor: theme.colors.surface1,
-                borderColor: theme.colors.border,
-                borderWidth: 1,
-                borderRadius: 4,
-                paddingHorizontal: 6,
-                paddingVertical: 2,
-              }}
-            >
-              <Text
-                numberOfLines={1}
-                style={{
-                  fontSize: 11,
-                  lineHeight: 14,
-                  color: theme.colors.foregroundMuted,
-                  fontWeight: "500",
-                }}
-              >
+            <View style={styles.projectBadge}>
+              <Text numberOfLines={1} style={styles.projectBadgeText}>
                 {projectDisplayName}
               </Text>
             </View>
           )}
           {task.subtasks.length > 0 && (
-            <View
-              style={{
-                backgroundColor: theme.colors.surface1,
-                borderRadius: 4,
-                paddingHorizontal: 6,
-                paddingVertical: 2,
-              }}
-            >
+            <View style={styles.subtaskBadge}>
               <Text
-                style={{
-                  fontSize: 11,
-                  lineHeight: 14,
-                  fontWeight: "500",
-                  color:
-                    count === task.subtasks.length
-                      ? (theme.colors.statusSuccess ?? theme.colors.accent)
-                      : theme.colors.foregroundMuted,
-                }}
+                style={[
+                  styles.subtaskBadgeText,
+                  allCompleted && styles.subtaskBadgeTextCompleted,
+                ]}
               >
                 {t("card.subtasksCount", {
                   completed: count,
@@ -173,6 +125,10 @@ export function KanbanCard({
   interactionDisabled = false,
 }: KanbanCardProps) {
   const { t } = useI18n();
+  const styles = useMemo(
+    () => createCardStyles(theme, layout.compact),
+    [theme, layout.compact],
+  );
   const cardRef = useRef<View>(null);
   const bindingRef = useRef(binding);
   bindingRef.current = binding;
@@ -209,12 +165,7 @@ export function KanbanCard({
         event.stopPropagation();
       }}
       onTouchEnd={(event) => event.stopPropagation()}
-      style={{
-        width: 20,
-        height: layout.compact ? 18 : 20,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
+      style={styles.sendControl}
       onPress={(event) => {
         event.stopPropagation();
         if (!disabled) onSendToAgent(task);
@@ -226,11 +177,7 @@ export function KanbanCard({
   return (
     <View
       ref={cardRef}
-      style={
-        binding.isDragging
-          ? { position: "absolute", left: 0, right: 0, opacity: 0 }
-          : undefined
-      }
+      style={binding.isDragging ? styles.cardDraggingHidden : undefined}
       {...(interactionDisabled ? {} : binding.cardPanHandlers)}
       {...(Platform.OS === "web"
         ? {
@@ -271,17 +218,7 @@ export function KanbanCard({
     >
       <CardContainer
         style={[
-          {
-            userSelect: "none",
-            backgroundColor: theme.colors.surface2,
-            borderColor: theme.colors.border,
-            borderWidth: 1,
-            borderRadius: 8,
-            padding: layout.compact ? 10 : 12,
-            gap: 8,
-            flexDirection: "row",
-            alignItems: "flex-start",
-          },
+          styles.cardSurface,
           !binding.isDragging && slideAnimation
             ? { transform: [{ translateY: animTranslateY }] }
             : undefined,
@@ -294,11 +231,10 @@ export function KanbanCard({
             event.stopPropagation();
           }}
           onTouchEnd={(event) => event.stopPropagation()}
-          style={{
-            padding: 8,
-            margin: -6,
-            opacity: completionDisabled ? 0.5 : 1,
-          }}
+          style={[
+            styles.checkboxControl,
+            completionDisabled && styles.checkboxControlDisabled,
+          ]}
           accessibilityRole="checkbox"
           accessibilityLabel={t(
             task.completed ? "card.reopenTask" : "card.completeTask",
@@ -346,33 +282,25 @@ export function KanbanCardPreview({
   width?: number;
   animated?: boolean;
 }) {
+  const styles = useMemo(
+    () => createCardStyles(theme, layout.compact),
+    [theme, layout.compact],
+  );
+  const resolvedWidth = width && width > 0 ? width : layout.compact ? 250 : 280;
   return (
     <View
       pointerEvents="none"
       style={
         {
-          userSelect: "none",
-          width: width && width > 0 ? width : layout.compact ? 250 : 280,
-          backgroundColor: theme.colors.surface2,
-          borderColor: theme.colors.accent,
-          borderWidth: 2,
-          borderRadius: 8,
-          padding: layout.compact ? 10 : 12,
-          gap: 8,
-          flexDirection: "row",
-          alignItems: "flex-start",
+          ...styles.previewSurface,
+          width: resolvedWidth,
           ...(animated
             ? {}
             : { transform: [{ rotate: "2.5deg" }, { scale: 1.03 }] }),
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.25,
-          shadowRadius: 10,
-          elevation: 8,
         } as ViewStyle
       }
     >
-      <View style={{ padding: 2 }}>
+      <View style={styles.previewCheckboxWrap}>
         <CompletionIndicator
           completed={Boolean(task.completed)}
           theme={theme}
@@ -384,14 +312,7 @@ export function KanbanCardPreview({
         theme={theme}
         layout={layout}
         send={
-          <View
-            style={{
-              width: 20,
-              height: layout.compact ? 18 : 20,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
+          <View style={styles.sendControl}>
             <Icon name="Send" size={16} color={theme.colors.accent} />
           </View>
         }
@@ -444,20 +365,7 @@ export function KanbanDropSpacer({
         useNativeDriver: false,
       }).start();
   }, [slideFromY, animTranslateY]);
-  const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        spacer: {
-          borderRadius: 8,
-          borderWidth: 2,
-          borderStyle: "dashed",
-          borderColor: theme.colors.accent,
-          backgroundColor: theme.colors.surface1,
-          opacity: 0.7,
-        },
-      }),
-    [theme],
-  );
+  const styles = useMemo(() => createCardStyles(theme, false), [theme]);
   return (
     <Animated.View
       style={[
@@ -470,4 +378,135 @@ export function KanbanDropSpacer({
       onLayout={(event) => onLayout?.(event.nativeEvent.layout)}
     />
   );
+}
+
+function createCardStyles(theme: PluginTheme, compact: boolean) {
+  return StyleSheet.create({
+    completionBox: {
+      width: 18,
+      height: 18,
+      borderWidth: 1,
+      borderRadius: 4,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    completionBoxChecked: {
+      borderColor: theme.colors.accent,
+      backgroundColor: theme.colors.accent,
+    },
+    completionBoxUnchecked: {
+      borderColor: theme.colors.foregroundMuted,
+      backgroundColor: "transparent",
+    },
+    bodyContainer: {
+      flex: 1,
+      gap: 8,
+    },
+    titleRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 8,
+    },
+    titleText: {
+      flex: 1,
+      fontSize: compact ? 13 : 14,
+      lineHeight: compact ? 18 : 20,
+      fontWeight: "600",
+      color: theme.colors.foreground,
+      userSelect: "none",
+    },
+    badgesRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 6,
+    },
+    projectBadge: {
+      backgroundColor: theme.colors.surface1,
+      borderColor: theme.colors.border,
+      borderWidth: 1,
+      borderRadius: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    projectBadgeText: {
+      fontSize: 11,
+      lineHeight: 14,
+      color: theme.colors.foregroundMuted,
+      fontWeight: "500",
+    },
+    subtaskBadge: {
+      backgroundColor: theme.colors.surface1,
+      borderRadius: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    subtaskBadgeText: {
+      fontSize: 11,
+      lineHeight: 14,
+      fontWeight: "500",
+      color: theme.colors.foregroundMuted,
+    },
+    subtaskBadgeTextCompleted: {
+      color: theme.colors.statusSuccess ?? theme.colors.accent,
+    },
+    cardDraggingHidden: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      opacity: 0,
+    },
+    cardSurface: {
+      userSelect: "none",
+      backgroundColor: theme.colors.surface2,
+      borderColor: theme.colors.border,
+      borderWidth: 1,
+      borderRadius: 8,
+      padding: compact ? 10 : 12,
+      gap: 8,
+      flexDirection: "row",
+      alignItems: "flex-start",
+    },
+    checkboxControl: {
+      padding: 8,
+      margin: -6,
+      opacity: 1,
+    },
+    checkboxControlDisabled: {
+      opacity: 0.5,
+    },
+    sendControl: {
+      width: 20,
+      height: compact ? 18 : 20,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    previewSurface: {
+      userSelect: "none",
+      backgroundColor: theme.colors.surface2,
+      borderColor: theme.colors.accent,
+      borderWidth: 2,
+      borderRadius: 8,
+      padding: compact ? 10 : 12,
+      gap: 8,
+      flexDirection: "row",
+      alignItems: "flex-start",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.25,
+      shadowRadius: 10,
+      elevation: 8,
+    },
+    previewCheckboxWrap: {
+      padding: 2,
+    },
+    spacer: {
+      borderRadius: 8,
+      borderWidth: 2,
+      borderStyle: "dashed",
+      borderColor: theme.colors.accent,
+      backgroundColor: theme.colors.surface1,
+      opacity: 0.7,
+    },
+  });
 }

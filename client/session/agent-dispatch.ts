@@ -9,14 +9,14 @@ import {
   updateTask,
   type KanbanBoard,
   type KanbanTask,
-} from "../shared/kanban";
+} from "../../shared/kanban";
 import {
   agentDispatchSettings,
   validateGitBranch,
-} from "../shared/agent-dispatch";
+} from "../../shared/agent-dispatch";
 import type { SaveFn } from "./kanban-session";
 import type { ProjectItem } from "./use-projects";
-import type { SupportedLanguage } from "./i18n";
+import type { SupportedLanguage } from "../platform/i18n";
 
 export type Paseo = ReturnType<typeof usePaseo>;
 export type AgentProfile = NonNullable<

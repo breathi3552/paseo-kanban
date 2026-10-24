@@ -233,7 +233,7 @@ export function createHost({
     addWorkspacePanel: (panel) => register(panels, panel),
   };
   const { default: contribute } = loadClientModule("../index.client", {
-    "./web": {
+    "../platform/web": {
       useProjectFilterLayout: () => {},
       useDialogInputFocus: () => undefined,
       WebDialogPortal: ({ children, ...props }) =>

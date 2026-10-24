@@ -1,5 +1,11 @@
-import { useRef, useState } from "react";
-import { View, Text, Pressable, ActivityIndicator } from "react-native";
+import { useMemo, useRef, useState } from "react";
+import {
+  View,
+  Text,
+  Pressable,
+  ActivityIndicator,
+  StyleSheet,
+} from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import {
   Modal,
@@ -8,11 +14,11 @@ import {
   useToast,
 } from "@getpaseo/plugin/client/react-native";
 import { SettingsSelect } from "@getpaseo/plugin/client/ui";
-import type { KanbanBoard, KanbanTask } from "../shared/kanban";
-import type { SaveFn } from "./kanban-session";
-import type { ProjectItem } from "./use-projects";
-import { useI18n } from "./i18n";
-import { useAgentDispatch } from "./agent-dispatch";
+import type { KanbanBoard, KanbanTask } from "../../shared/kanban";
+import type { SaveFn } from "../session/kanban-session";
+import type { ProjectItem } from "../session/use-projects";
+import { useI18n } from "../platform/i18n";
+import { useAgentDispatch } from "../session/agent-dispatch";
 
 interface Props {
   task: KanbanTask;
@@ -63,6 +69,7 @@ export function AgentDispatchModal({
 
   const { profiles, workspaces, sending, disabled, errors } = dispatch;
   const colors = theme.colors;
+  const styles = useMemo(() => createDispatchStyles(colors), [colors]);
   const project = projects.find((item) => item.projectId === projectId);
   const projectWorkspaces = workspaces.filter(
     (item) => item.projectId === projectId,
@@ -96,41 +103,24 @@ export function AgentDispatchModal({
     >
       <Modal.Content
         scrollable={false}
-        style={{ backgroundColor: colors.surface0 }}
-        contentContainerStyle={{ flexShrink: 1, minHeight: 0, gap: 16 }}
+        style={styles.modalSurface}
+        contentContainerStyle={styles.modalContent}
       >
         <ScrollView
-          style={{ flexShrink: 1, maxHeight: 440 }}
+          style={styles.scrollArea}
           // Leave room inside the scroll viewport for the input focus outline.
-          contentContainerStyle={{ gap: 16, padding: 4 }}
+          contentContainerStyle={styles.scrollContent}
         >
-          <Text
-            style={{
-              color: colors.foreground,
-              fontSize: 16,
-              fontWeight: "600",
-            }}
-          >
-            {task.title}
-          </Text>
-          <View style={{ gap: 6 }}>
-            <Text style={{ color: colors.foreground }}>prompt</Text>
+          <Text style={styles.taskTitle}>{task.title}</Text>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>prompt</Text>
             <TextInput
               accessibilityLabel="prompt"
               multiline
               value={prompt}
               editable={!disabled}
               onChangeText={setPromptDraft}
-              style={{
-                color: colors.foreground,
-                backgroundColor: colors.surface1,
-                borderColor: colors.border,
-                borderWidth: 1,
-                borderRadius: 6,
-                padding: 10,
-                minHeight: 88,
-                textAlignVertical: "top",
-              }}
+              style={styles.promptInput}
             />
           </View>
           <SettingsSelect
@@ -151,9 +141,7 @@ export function AgentDispatchModal({
             }}
           />
           {errors.project && (
-            <Text style={{ color: colors.statusDanger }}>
-              {t("dispatch.selectProject")}
-            </Text>
+            <Text style={styles.errorText}>{t("dispatch.selectProject")}</Text>
           )}
           <SettingsSelect
             label={t("dispatch.workspace")}
@@ -172,15 +160,13 @@ export function AgentDispatchModal({
             onValueChange={setWorkspaceId}
           />
           {errors.workspace && (
-            <Text style={{ color: colors.statusDanger }}>
+            <Text style={styles.errorText}>
               {t("dispatch.selectWorkspace")}
             </Text>
           )}
           {workspaceId === "new-worktree" && (
-            <View style={{ gap: 6 }}>
-              <Text style={{ color: colors.foreground }}>
-                {t("dispatch.branchName")}
-              </Text>
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>{t("dispatch.branchName")}</Text>
               <TextInput
                 accessibilityLabel={t("dispatch.branchName")}
                 placeholder={t("dispatch.branchName")}
@@ -189,21 +175,12 @@ export function AgentDispatchModal({
                 onChangeText={setBranchName}
                 autoCapitalize="none"
                 autoCorrect={false}
-                style={{
-                  color: colors.foreground,
-                  backgroundColor: colors.surface1,
-                  borderColor: colors.border,
-                  borderWidth: 1,
-                  borderRadius: 6,
-                  padding: 10,
-                }}
+                style={styles.textInput}
               />
             </View>
           )}
           {workspaceId === "new-worktree" && errors.branch && (
-            <Text style={{ color: colors.statusDanger }}>
-              {t("dispatch.invalidBranch")}
-            </Text>
+            <Text style={styles.errorText}>{t("dispatch.invalidBranch")}</Text>
           )}
           <SettingsSelect
             label={t("dispatch.profile")}
@@ -216,41 +193,28 @@ export function AgentDispatchModal({
             onValueChange={setProfileId}
           />
           {errors.profile && (
-            <Text style={{ color: colors.statusDanger }}>
-              {t("dispatch.selectProfile")}
-            </Text>
+            <Text style={styles.errorText}>{t("dispatch.selectProfile")}</Text>
           )}
-          <Text style={{ color: colors.foregroundMuted, fontSize: 12 }}>
-            {t("dispatch.manageProfiles")}
-          </Text>
+          <Text style={styles.hintText}>{t("dispatch.manageProfiles")}</Text>
         </ScrollView>
-        <View
-          style={{ flexDirection: "row", justifyContent: "flex-end", gap: 12 }}
-        >
+        <View style={styles.footerRow}>
           <Pressable
             disabled={sending}
             onPress={onClose}
-            style={{ padding: 10 }}
+            style={styles.cancelButton}
           >
-            <Text style={{ color: colors.foreground }}>
-              {t("dispatch.cancel")}
-            </Text>
+            <Text style={styles.fieldLabel}>{t("dispatch.cancel")}</Text>
           </Pressable>
           <Pressable
             disabled={disabled}
             onPress={submit}
-            style={{
-              padding: 10,
-              borderRadius: 6,
-              backgroundColor: colors.accent,
-              opacity: disabled && !sending ? 0.4 : 1,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-            }}
+            style={[
+              styles.submitButton,
+              disabled && !sending && styles.submitButtonDisabled,
+            ]}
           >
             {sending && <ActivityIndicator color={colors.accentForeground} />}
-            <Text style={{ color: colors.accentForeground }}>
+            <Text style={styles.submitButtonText}>
               {t(sending ? "dispatch.sending" : "dispatch.send")}
             </Text>
           </Pressable>
@@ -258,4 +222,84 @@ export function AgentDispatchModal({
       </Modal.Content>
     </Modal>
   );
+}
+
+function createDispatchStyles(colors: PluginSurfaceProps["theme"]["colors"]) {
+  return StyleSheet.create({
+    modalSurface: {
+      backgroundColor: colors.surface0,
+    },
+    modalContent: {
+      flexShrink: 1,
+      minHeight: 0,
+      gap: 16,
+    },
+    scrollArea: {
+      flexShrink: 1,
+      maxHeight: 440,
+    },
+    scrollContent: {
+      gap: 16,
+      padding: 4,
+    },
+    taskTitle: {
+      color: colors.foreground,
+      fontSize: 16,
+      fontWeight: "600",
+    },
+    fieldGroup: {
+      gap: 6,
+    },
+    fieldLabel: {
+      color: colors.foreground,
+    },
+    promptInput: {
+      color: colors.foreground,
+      backgroundColor: colors.surface1,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: 6,
+      padding: 10,
+      minHeight: 88,
+      textAlignVertical: "top",
+    },
+    textInput: {
+      color: colors.foreground,
+      backgroundColor: colors.surface1,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: 6,
+      padding: 10,
+    },
+    errorText: {
+      color: colors.statusDanger,
+    },
+    hintText: {
+      color: colors.foregroundMuted,
+      fontSize: 12,
+    },
+    footerRow: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 12,
+    },
+    cancelButton: {
+      padding: 10,
+    },
+    submitButton: {
+      padding: 10,
+      borderRadius: 6,
+      backgroundColor: colors.accent,
+      opacity: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    submitButtonDisabled: {
+      opacity: 0.4,
+    },
+    submitButtonText: {
+      color: colors.accentForeground,
+    },
+  });
 }

@@ -10,8 +10,8 @@ import {
   reorderTask,
   setTaskCompleted,
   importGitHubTasks,
-} from "../shared/kanban.ts";
-import type { GitHubIssue } from "../shared/github-import";
+} from "../../shared/kanban";
+import type { GitHubIssue } from "../../shared/github-import";
 
 export type SessionResult =
   | { success: true; unchanged?: boolean }

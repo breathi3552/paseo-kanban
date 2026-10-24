@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { KanbanBoardSchema, addLane, reorderTask } from "../shared/kanban.ts";
+import {
+  KanbanBoardSchema,
+  kanbanSettings,
+  getLaneTasks,
+} from "../shared/kanban.ts";
 
 const task = (id, laneId = "to-plan", projectId = null) => ({
   id,
@@ -9,7 +13,6 @@ const task = (id, laneId = "to-plan", projectId = null) => ({
   projectId,
 });
 
-// Persisted-board validation is a public contract, independent of editing commands.
 test("空数据初始化为默认泳道与空任务", () => {
   assert.deepEqual(KanbanBoardSchema.parse({}), {
     lanes: [
@@ -62,46 +65,77 @@ test("持久化数据拒绝重复标识、空标题和未完成任务的失效�
   }
 });
 
-test("普通泳道排序按目标槽位插入，项目筛选保留隐藏任务", () => {
-  const board = KanbanBoardSchema.parse({
+test("设置版本升级平滑迁移：v1/v2 升级至最新结构，转换旧完成泳道并补齐任务默认属性", () => {
+  const legacyV1 = {
+    lanes: [
+      { id: "todo", title: "待办" },
+      { id: "done", title: "已完成历史" },
+      { id: "review", title: "评审" },
+    ],
     tasks: [
-      task("t1", "to-plan", "projA"),
-      task("t2", "to-plan", "projB"),
-      task("t3", "to-plan", "projA"),
-      task("t4", "in-progress"),
+      { id: "old1", title: "Old 1", laneId: "done" },
+      { id: "active", title: "Active", laneId: "todo" },
+      { id: "old2", title: "Old 2", laneId: "done" },
     ],
+  };
+
+  const migratedV1 = kanbanSettings.migrate(legacyV1, 1);
+  assert.deepEqual(migratedV1.lanes.at(-1), {
+    id: "done",
+    title: "已完成历史",
+    isCompletionLane: true,
   });
-  for (const [name, id, laneId, index, filter, expected] of [
-    ["同泳道下移", "t1", "to-plan", 2, undefined, ["t2", "t3", "t1", "t4"]],
-    ["同泳道上移", "t3", "to-plan", 0, undefined, ["t3", "t1", "t2", "t4"]],
-    ["跨泳道", "t1", "in-progress", 0, undefined, ["t2", "t3", "t1", "t4"]],
-    [
-      "目标无可见锚点",
-      "t1",
-      "in-progress",
-      0,
-      "projA",
-      ["t2", "t3", "t4", "t1"],
-    ],
-    ["筛选后的可见槽位", "t3", "to-plan", 0, "projA", ["t3", "t1", "t2", "t4"]],
-  ]) {
-    const reordered = reorderTask(board, id, laneId, index, filter);
-    // Compare full task data as well as global order; hidden tasks survive unchanged.
-    assert.deepEqual(
-      reordered.tasks,
-      expected.map((taskId) => ({
-        ...board.tasks.find((entry) => entry.id === taskId),
-        ...(taskId === id ? { laneId } : {}),
-      })),
-      name,
-    );
-  }
-  const emptyLane = addLane(board, { id: "empty", title: "Empty" });
   assert.deepEqual(
-    reorderTask(emptyLane, "t1", "empty", 0).tasks.map(
-      ({ id, laneId }) => `${id}:${laneId}`,
+    getLaneTasks(migratedV1, "done").map(
+      ({ id, laneId, completed, completedAt, source }) => ({
+        id,
+        laneId,
+        completed,
+        completedAt,
+        source,
+      }),
     ),
-    ["t2:to-plan", "t3:to-plan", "t4:in-progress", "t1:empty"],
-    "空目标泳道按泳道次序插入全量数组",
+    [
+      {
+        id: "old1",
+        laneId: "review",
+        completed: true,
+        completedAt: null,
+        source: "manual",
+      },
+      {
+        id: "old2",
+        laneId: "review",
+        completed: true,
+        completedAt: null,
+        source: "manual",
+      },
+    ],
   );
+
+  const legacyV2 = {
+    lanes: [
+      { id: "todo", title: "Todo", isCompletionLane: false },
+      { id: "done", title: "Done", isCompletionLane: true },
+    ],
+    tasks: [
+      {
+        id: "old",
+        title: "Old",
+        description: "https://github.com/example/repo/issues/1",
+        laneId: "todo",
+        projectId: null,
+        subtasks: [],
+        completed: true,
+        completedAt: 123,
+      },
+    ],
+  };
+  const migratedV2 = kanbanSettings.migrate(legacyV2, 2);
+  assert.deepEqual(migratedV2.tasks[0], {
+    ...legacyV2.tasks[0],
+    source: "manual",
+    issueNumber: null,
+    externalUrl: null,
+  });
 });

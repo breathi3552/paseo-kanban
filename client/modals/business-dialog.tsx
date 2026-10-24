@@ -11,8 +11,8 @@ import {
 } from "react-native";
 import { Icon, Modal, ScrollView } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { WebDialogPortal, useDialogInputFocus } from "./web";
-import { useI18n } from "./i18n";
+import { WebDialogPortal, useDialogInputFocus } from "../platform/web";
+import { useI18n } from "../platform/i18n";
 
 interface Props {
   title: string;
@@ -61,10 +61,7 @@ export function BusinessDialog({
     if (next || canClose()) onOpenChange(next);
   };
   const dismiss = () => changeOpen(false);
-  const bodyStyle = [
-    { padding: 24, gap: 16, minHeight: 0, flexShrink: 1 },
-    contentStyle,
-  ];
+  const bodyStyle = [styles.bodyBase, contentStyle];
   if (!open) return null;
   if (compact || Platform.OS !== "web")
     return (
@@ -74,11 +71,9 @@ export function BusinessDialog({
           style={{ backgroundColor: colors.surface0 }}
           contentContainerStyle={bodyStyle}
         >
-          {actions && (
-            <View style={{ alignItems: "flex-start" }}>{actions}</View>
-          )}
+          {actions && <View style={styles.actionsWrap}>{actions}</View>}
           {inputFocus ? (
-            <View nativeID={inputFocusId} style={{ flex: 1, minHeight: 0 }}>
+            <View nativeID={inputFocusId} style={styles.inputFocusWrap}>
               {children}
             </View>
           ) : (
@@ -142,7 +137,10 @@ export function BusinessDialog({
           {scroll === "content" ? (
             <ScrollView
               keyboardShouldPersistTaps="handled"
-              style={{ flexShrink: 1, backgroundColor: colors.surface0 }}
+              style={[
+                styles.scrollSurface,
+                { backgroundColor: colors.surface0 },
+              ]}
               contentContainerStyle={bodyStyle}
             >
               {children}
@@ -162,6 +160,22 @@ export function BusinessDialog({
 }
 
 const styles = StyleSheet.create({
+  bodyBase: {
+    padding: 24,
+    gap: 16,
+    minHeight: 0,
+    flexShrink: 1,
+  },
+  actionsWrap: {
+    alignItems: "flex-start",
+  },
+  inputFocusWrap: {
+    flex: 1,
+    minHeight: 0,
+  },
+  scrollSurface: {
+    flexShrink: 1,
+  },
   overlay: {
     flex: 1,
     alignItems: "center",

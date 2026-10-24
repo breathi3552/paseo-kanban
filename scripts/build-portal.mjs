@@ -4,7 +4,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 const root = new URL("../", import.meta.url);
-const directory = new URL("client/generated/", root);
+const directory = new URL("client/platform/generated/", root);
 const result = await build({
   stdin: {
     contents: 'export { createPortal } from "react-dom";',

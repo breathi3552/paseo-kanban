@@ -11,15 +11,9 @@ import {
 import { useSettings, useRpc, openExternalUrl } from "@getpaseo/plugin/client";
 import { settingsRpc } from "@getpaseo/plugin";
 import { useToast, copyText } from "@getpaseo/plugin/client/react-native";
-import { agentDispatchSettings } from "../shared/agent-dispatch";
-import { taskPrompt } from "./agent-dispatch";
-import {
-  TaskContextMenu,
-  type TaskMenuTarget,
-  type TaskMenuAction,
-} from "./task-context-menu";
-import { TaskDeleteDialog } from "./task-delete-dialog";
+import { SettingsSelect } from "@getpaseo/plugin/client/ui";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
+import { agentDispatchSettings } from "../../shared/agent-dispatch";
 import {
   kanbanSettings,
   KanbanBoardSchema,
@@ -27,17 +21,13 @@ import {
   isTaskMatchingFilter,
   type KanbanBoard,
   type KanbanTask,
-} from "../shared/kanban";
-import { useProjects, getProjectOptions } from "./use-projects";
-import { TaskModal } from "./task-modal";
-import { SettingsSelect } from "@getpaseo/plugin/client/ui";
-import { GitHubImportModal } from "./github-import-modal";
-import { AgentDispatchModal } from "./agent-dispatch-modal";
-import { LaneManagementModal } from "./lane-management-modal";
-import { openLaneEditSession, type LaneEditSession } from "./lane-edit-session";
-import { useKanbanDrag } from "./kanban-drag";
-import { KanbanLaneView } from "./kanban-lane";
-import { KanbanDragOverlay } from "./kanban-overlay";
+} from "../../shared/kanban";
+import { taskPrompt } from "../session/agent-dispatch";
+import { useProjects, getProjectOptions } from "../session/use-projects";
+import {
+  openLaneEditSession,
+  type LaneEditSession,
+} from "../session/lane-edit-session";
 import {
   openTaskSession,
   openTaskDeleteSession,
@@ -46,15 +36,28 @@ import {
   type ReloadBoardResult,
   type TaskDeleteSession,
   type TaskEditSession,
-} from "./kanban-session";
+} from "../session/kanban-session";
 import {
   useI18n,
   I18nLanguageContext,
   detectPaseoLanguage,
   t as translate,
   type TranslationKey,
-} from "./i18n";
-import { useProjectFilterLayout } from "./web";
+} from "../platform/i18n";
+import { useProjectFilterLayout } from "../platform/web";
+import { TaskModal } from "../modals/task-modal";
+import { TaskDeleteDialog } from "../modals/task-delete-dialog";
+import { GitHubImportModal } from "../modals/github-import-modal";
+import { AgentDispatchModal } from "../modals/agent-dispatch-modal";
+import { LaneManagementModal } from "../modals/lane-management-modal";
+import {
+  TaskContextMenu,
+  type TaskMenuTarget,
+  type TaskMenuAction,
+} from "./task-context-menu";
+import { useKanbanDrag } from "./drag";
+import { KanbanLaneView } from "./kanban-lane";
+import { KanbanDragOverlay } from "./kanban-overlay";
 
 const laneSettingsRead = settingsRpc(kanbanSettings.id).read;
 
@@ -429,129 +432,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   };
 
   const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        container: {
-          flex: 1,
-          minWidth: 0,
-          minHeight: 0,
-          backgroundColor: theme.colors.surface0,
-          userSelect: "none",
-        },
-        header: {
-          paddingHorizontal: layout.compact ? 12 : 20,
-          paddingVertical: layout.compact ? 10 : 14,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.colors.border,
-          backgroundColor: theme.colors.surface0,
-          gap: 10,
-        },
-        headerTopRow: {
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: 8,
-        },
-        titleRow: {
-          flexDirection: "row",
-          flexWrap: "wrap",
-          flexShrink: 1,
-          maxWidth: "100%",
-          alignItems: "center",
-          gap: 8,
-        },
-        titleText: {
-          fontSize: layout.compact ? 18 : 22,
-          fontWeight: "700",
-          color: theme.colors.foreground,
-        },
-        headerActions: {
-          flexDirection: "row",
-          flexWrap: "wrap",
-          maxWidth: "100%",
-          alignItems: "center",
-          gap: 8,
-        },
-        primaryButton: {
-          backgroundColor: theme.colors.accent,
-          paddingHorizontal: 14,
-          paddingVertical: 8,
-          borderRadius: 8,
-        },
-        primaryButtonText: {
-          color: theme.colors.accentForeground,
-          fontSize: 13,
-          fontWeight: "600",
-        },
-        secondaryButton: {
-          backgroundColor: theme.colors.surface1,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-          paddingHorizontal: 12,
-          paddingVertical: 8,
-          borderRadius: 8,
-        },
-        secondaryButtonText: {
-          color: theme.colors.foreground,
-          fontSize: 13,
-          fontWeight: "500",
-        },
-        conflictBanner: {
-          marginHorizontal: layout.compact ? 12 : 20,
-          marginTop: 10,
-          padding: 10,
-          backgroundColor: theme.colors.surface2,
-          borderColor: theme.colors.statusDanger,
-          borderWidth: 1,
-          borderRadius: 8,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-        },
-        conflictText: {
-          color: theme.colors.statusDanger,
-          fontSize: 13,
-          flex: 1,
-        },
-        conflictAction: {
-          marginLeft: 10,
-          paddingHorizontal: 8,
-          paddingVertical: 4,
-          backgroundColor: theme.colors.surface1,
-          borderRadius: 4,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-        },
-        lanesWrapper: {
-          flex: 1,
-          minHeight: 0,
-          position: "relative",
-          userSelect: "none",
-        },
-        lanesContainer: {
-          flex: 1,
-          userSelect: "none",
-        },
-        lanesContent: {
-          flexDirection: "row",
-          gap: layout.compact ? 10 : 14,
-          padding: layout.compact ? 10 : 16,
-          paddingRight: 24,
-        },
-        centerBox: {
-          flex: 1,
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 24,
-          gap: 12,
-        },
-        centerText: {
-          fontSize: 14,
-          color: theme.colors.foreground,
-          textAlign: "center",
-        },
-      }),
+    () => createBoardStyles(theme, layout.compact),
     [theme, layout.compact],
   );
 
@@ -567,7 +448,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   if (settings.status === "error" && !preserveImport) {
     return (
       <View style={[styles.container, styles.centerBox]}>
-        <Text style={[styles.centerText, { color: theme.colors.statusDanger }]}>
+        <Text style={[styles.centerText, styles.errorCenterText]}>
           {t("kanban.loadError", { error: settings.error })}
         </Text>
         <Pressable
@@ -585,23 +466,13 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   if (settings.status === "invalid" && !preserveImport) {
     return (
       <View style={[styles.container, styles.centerBox]}>
-        <Text
-          style={[
-            styles.centerText,
-            { color: theme.colors.statusWarning ?? theme.colors.statusDanger },
-          ]}
-        >
+        <Text style={[styles.centerText, styles.warningCenterText]}>
           {t("kanban.formatError", { error: settings.error })}
         </Text>
-        <Text
-          style={[
-            styles.centerText,
-            { color: theme.colors.foregroundMuted, fontSize: 12 },
-          ]}
-        >
+        <Text style={[styles.centerText, styles.hintCenterText]}>
           {t("kanban.formatErrorHint")}
         </Text>
-        <View style={{ flexDirection: "row", gap: 10 }}>
+        <View style={styles.invalidActionsRow}>
           <Pressable
             onPress={() => settings.reload()}
             style={styles.secondaryButton}
@@ -632,21 +503,8 @@ function KanbanBoardContent(props: KanbanBoardProps) {
         <View style={styles.headerTopRow}>
           <View style={styles.titleRow}>
             <Text style={styles.titleText}>{t("kanban.title")}</Text>
-            <View
-              style={{
-                backgroundColor: theme.colors.surface2,
-                paddingHorizontal: 6,
-                paddingVertical: 2,
-                borderRadius: 10,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 11,
-                  color: theme.colors.foregroundMuted,
-                  fontWeight: "600",
-                }}
-              >
+            <View style={styles.statsBadge}>
+              <Text style={styles.statsText}>
                 {t("kanban.stats", {
                   tasks: board.tasks.length,
                   lanes: board.lanes.length,
@@ -678,7 +536,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
         </View>
 
         {/* Project Filter */}
-        <View style={{ maxWidth: 520 }}>
+        <View style={styles.filterWrapper}>
           <SettingsSelect
             testID="kanban-project-filter"
             label={t("kanban.filterLabel")}
@@ -697,13 +555,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
             disabled={drag.isDragLocked()}
           />
           {projectsError && (
-            <Text
-              style={{
-                fontSize: 11,
-                color:
-                  theme.colors.statusWarning ?? theme.colors.foregroundMuted,
-              }}
-            >
+            <Text style={styles.projectsErrorText}>
               {t("kanban.projectsError")}
             </Text>
           )}
@@ -725,9 +577,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
             }}
             style={styles.conflictAction}
           >
-            <Text style={{ fontSize: 12, color: theme.colors.foreground }}>
-              {t("kanban.refresh")}
-            </Text>
+            <Text style={styles.conflictActionText}>{t("kanban.refresh")}</Text>
           </Pressable>
         </View>
       )}
@@ -870,4 +720,168 @@ function KanbanBoardContent(props: KanbanBoardProps) {
       )}
     </View>
   );
+}
+
+function createBoardStyles(
+  theme: PluginSurfaceProps["theme"],
+  compact: boolean,
+) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 0,
+      backgroundColor: theme.colors.surface0,
+      userSelect: "none",
+    },
+    header: {
+      paddingHorizontal: compact ? 12 : 20,
+      paddingVertical: compact ? 10 : 14,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+      backgroundColor: theme.colors.surface0,
+      gap: 10,
+    },
+    headerTopRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    titleRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      flexShrink: 1,
+      maxWidth: "100%",
+      alignItems: "center",
+      gap: 8,
+    },
+    titleText: {
+      fontSize: compact ? 18 : 22,
+      fontWeight: "700",
+      color: theme.colors.foreground,
+    },
+    statsBadge: {
+      backgroundColor: theme.colors.surface2,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 10,
+    },
+    statsText: {
+      fontSize: 11,
+      color: theme.colors.foregroundMuted,
+      fontWeight: "600",
+    },
+    headerActions: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      maxWidth: "100%",
+      alignItems: "center",
+      gap: 8,
+    },
+    primaryButton: {
+      backgroundColor: theme.colors.accent,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 8,
+    },
+    primaryButtonText: {
+      color: theme.colors.accentForeground,
+      fontSize: 13,
+      fontWeight: "600",
+    },
+    secondaryButton: {
+      backgroundColor: theme.colors.surface1,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+    },
+    secondaryButtonText: {
+      color: theme.colors.foreground,
+      fontSize: 13,
+      fontWeight: "500",
+    },
+    filterWrapper: {
+      maxWidth: 520,
+    },
+    projectsErrorText: {
+      fontSize: 11,
+      color: theme.colors.statusWarning ?? theme.colors.foregroundMuted,
+    },
+    conflictBanner: {
+      marginHorizontal: compact ? 12 : 20,
+      marginTop: 10,
+      padding: 10,
+      backgroundColor: theme.colors.surface2,
+      borderColor: theme.colors.statusDanger,
+      borderWidth: 1,
+      borderRadius: 8,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    conflictText: {
+      color: theme.colors.statusDanger,
+      fontSize: 13,
+      flex: 1,
+    },
+    conflictAction: {
+      marginLeft: 10,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      backgroundColor: theme.colors.surface1,
+      borderRadius: 4,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    conflictActionText: {
+      fontSize: 12,
+      color: theme.colors.foreground,
+    },
+    lanesWrapper: {
+      flex: 1,
+      minHeight: 0,
+      position: "relative",
+      userSelect: "none",
+    },
+    lanesContainer: {
+      flex: 1,
+      userSelect: "none",
+    },
+    lanesContent: {
+      flexDirection: "row",
+      gap: compact ? 10 : 14,
+      padding: compact ? 10 : 16,
+      paddingRight: 24,
+    },
+    centerBox: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 24,
+      gap: 12,
+    },
+    centerText: {
+      fontSize: 14,
+      color: theme.colors.foreground,
+      textAlign: "center",
+    },
+    errorCenterText: {
+      color: theme.colors.statusDanger,
+    },
+    warningCenterText: {
+      color: theme.colors.statusWarning ?? theme.colors.statusDanger,
+    },
+    hintCenterText: {
+      color: theme.colors.foregroundMuted,
+      fontSize: 12,
+    },
+    invalidActionsRow: {
+      flexDirection: "row",
+      gap: 10,
+    },
+  });
 }

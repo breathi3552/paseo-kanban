@@ -1,7 +1,7 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
-import { KanbanBoardView } from "./client/kanban-board";
-import { KanbanWorkspacePanel } from "./client/kanban-workspace-panel";
-import { t, getLanguage, subscribeLanguage } from "./client/i18n";
+import { KanbanBoardView } from "./client/board/kanban-board";
+import { KanbanWorkspacePanel } from "./client/board/kanban-workspace-panel";
+import { t, getLanguage, subscribeLanguage } from "./client/platform/i18n";
 
 export default function contribute(client: PluginClientContext) {
   const removeSurface = client.addSurface("kanban", KanbanBoardView);

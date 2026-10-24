@@ -88,11 +88,11 @@ gh workflow run release.yml --ref "v$VERSION"
 9. **GitHub Issue 导入**：从项目 GitHub 仓库单向导入 Open Issues，支持分页、排序、去重、项目锁定与外部链接打开。
 10. **发送到 Agent**：从卡片发送图标打开弹窗，支持选择已有工作区、新建普通工作区或 worktree，整套应用 Agent 配置并直接发送任务内容，校验与分阶段提交反馈正常。
 
-宿主 SDK 0.11.4 的 Modal 桌面宽度固定为 520px。任务编辑、Issue 导入与泳道管理通过 `client/business-dialog.tsx` 声明各自的尺寸、滚动和关闭策略；宽屏 Web 使用 `client/web.ts` 创建自己的 Portal 容器，位于应用内容之上、宿主 overlay plane 之下，不读取或修改宿主私有 DOM。窄屏和原生客户端仍使用宿主 Modal，尺寸与安全区由宿主拥有。
+宿主 SDK 0.11.4 的 Modal 桌面宽度固定为 520px。任务编辑、Issue 导入与泳道管理通过 `client/modals/business-dialog.tsx` 声明各自的尺寸、滚动和关闭策略；宽屏 Web 使用 `client/platform/web.ts` 创建自己的 Portal 容器，位于应用内容之上、宿主 overlay plane 之下，不读取或修改宿主私有 DOM。窄屏和原生客户端仍使用宿主 Modal，尺寸与安全区由宿主拥有。
 
 按 [#39](https://github.com/breathi3552/paseo-kanban/issues/39) 验收三个弹窗的差异：泳道管理最大宽 1120px 及横向预览；导入最大宽 840px、90vw 宽度及长列表内部滚动；任务编辑最大宽 520px、编辑态 57vh、描述调整及输入焦点可见性。分别检查深浅主题、窄分屏、原生客户端、Esc、Tab/Shift+Tab 圈定与关窗焦点恢复，以及保存中任务编辑/导入拒绝关闭、泳道保存允许关窗后继续完成的既有规则。保存/失败 Toast 和命令面板继续由宿主呈现，检查其不被遮挡、嵌套删除确认正常，以及同时从两个看板入口打开弹窗时样式隔离、关闭其中一个不影响另一个。模拟宿主测试不代表真实布局、键盘焦点或层级验收已通过。
 
-Portal 使用 React DOM 19.1.0 的公开 `createPortal`，以与宿主共享 React 的预打包产物发布。`npm run build:portal` 更新 `client/generated/` 内的代码、类型与 MIT 许可证；更新 React DOM 或构建工具后重跑并提交产物。`npm run check:portal` 核对产物一致性及无 Node `process` 依赖，避免宿主 neutral 编译器未替换 NODE_ENV 导致客户端失败。
+Portal 使用 React DOM 19.1.0 的公开 `createPortal`，以与宿主共享 React 的预打包产物发布。`npm run build:portal` 更新 `client/platform/generated/` 内的代码、类型与 MIT 许可证；更新 React DOM 或构建工具后重跑并提交产物。`npm run check:portal` 核对产物一致性及无 Node `process` 依赖，避免宿主 neutral 编译器未替换 NODE_ENV 导致客户端失败。
 
 ## 4. 官方市场素材与验收
 

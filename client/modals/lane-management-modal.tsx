@@ -1,4 +1,9 @@
-import { useRef, useSyncExternalStore, type ComponentProps } from "react";
+import {
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+  type ComponentProps,
+} from "react";
 import {
   View,
   Text,
@@ -13,9 +18,9 @@ import {
   ScrollView,
 } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import type { LaneEditSession } from "./lane-edit-session";
-import { useI18n } from "./i18n";
-import { useLaneReorder } from "./use-lane-reorder";
+import type { LaneEditSession } from "../session/lane-edit-session";
+import { useI18n } from "../platform/i18n";
+import { useLaneReorder } from "../session/use-lane-reorder";
 import { BusinessDialog } from "./business-dialog";
 
 interface Props {
@@ -36,6 +41,10 @@ export function LaneManagementModal(props: Props) {
   const width = props.compact ? 156 : 160;
   const height = 180;
   const step = width + 12;
+  const styles = useMemo(
+    () => createLaneModalStyles(colors, props.compact, width, height),
+    [colors, props.compact, width, height],
+  );
   const reorder = useLaneReorder({
     ids: order,
     step,
@@ -92,11 +101,11 @@ export function LaneManagementModal(props: Props) {
         ) : (
           <Text
             numberOfLines={1}
-            style={{
-              color: textColor,
-              fontSize: 13,
-              fontWeight: filled ? "600" : "400",
-            }}
+            style={[
+              styles.buttonText,
+              { color: textColor },
+              filled && styles.buttonTextFilled,
+            ]}
           >
             {display ?? label}
           </Text>
@@ -112,14 +121,7 @@ export function LaneManagementModal(props: Props) {
       value={title}
       editable={!isSaving}
       onChangeText={session.setTitle}
-      style={[
-        styles.nameInput,
-        {
-          color: colors.foreground,
-          backgroundColor: colors.surface2,
-          borderColor: colors.border,
-        },
-      ]}
+      style={styles.nameInput}
     />
   );
   const editorActions = (
@@ -144,7 +146,7 @@ export function LaneManagementModal(props: Props) {
   );
   const errorPanel = error && (
     <View>
-      <Text accessibilityRole="alert" style={{ color: colors.statusDanger }}>
+      <Text accessibilityRole="alert" style={styles.errorText}>
         {error}
       </Text>
       {action(t("laneManagement.reload"), session.reload)}
@@ -153,7 +155,7 @@ export function LaneManagementModal(props: Props) {
   const dialogProps = {
     theme: props.theme,
     compact: props.compact,
-    contentStyle: { padding: props.compact ? 12 : 20, gap: 12 },
+    contentStyle: styles.dialogContent,
   };
   return (
     <>
@@ -180,26 +182,16 @@ export function LaneManagementModal(props: Props) {
             reorder.onScroll(event.nativeEvent.contentOffset.x)
           }
           scrollEventThrottle={16}
-          onContentSizeChange={(width) => {
-            reorder.onContentSizeChange(width);
+          onContentSizeChange={(contentWidth) => {
+            reorder.onContentSizeChange(contentWidth);
             if (adding) scrollRef.current?.scrollTo({ x: 0, animated: true });
           }}
         >
           <View style={styles.row}>
             {adding && (
-              <View
-                style={[
-                  styles.lane,
-                  {
-                    width,
-                    height,
-                    borderColor: colors.accent,
-                    backgroundColor: colors.surface1,
-                  },
-                ]}
-              >
+              <View style={[styles.lane, styles.addingLane]}>
                 <View style={styles.grip}>
-                  <Text style={{ color: colors.foregroundMuted, fontSize: 12 }}>
+                  <Text style={styles.mutedSmallText}>
                     {t("laneModal.titleCreate")}
                   </Text>
                 </View>
@@ -214,15 +206,8 @@ export function LaneManagementModal(props: Props) {
                   pointerEvents="none"
                   style={[
                     styles.lane,
-                    {
-                      position: "absolute",
-                      width,
-                      left: reorder.slot * step,
-                      height,
-                      borderStyle: "dashed",
-                      borderColor: colors.accent,
-                      backgroundColor: colors.surface2,
-                    },
+                    styles.slotPreview,
+                    { left: reorder.slot * step },
                   ]}
                 />
               )}
@@ -241,15 +226,7 @@ export function LaneManagementModal(props: Props) {
                     key={lane.id}
                     style={[
                       styles.lane,
-                      {
-                        position: "absolute",
-                        left: 0,
-                        top: 0,
-                        height,
-                        width,
-                        backgroundColor: colors.surface1,
-                        borderColor: colors.border,
-                      },
+                      styles.positionedLane,
                       reorder.style(lane.id),
                     ]}
                   >
@@ -289,11 +266,7 @@ export function LaneManagementModal(props: Props) {
                           >
                             <Text
                               numberOfLines={1}
-                              style={{
-                                color: colors.foreground,
-                                fontSize: 14,
-                                fontWeight: "600",
-                              }}
+                              style={styles.laneTitleText}
                             >
                               {lane.title}
                             </Text>
@@ -316,12 +289,7 @@ export function LaneManagementModal(props: Props) {
                     </View>
                     <View pointerEvents="box-none" style={styles.laneActions}>
                       {lane.isCompletionLane ? (
-                        <Text
-                          style={{
-                            color: colors.foregroundMuted,
-                            fontSize: 12,
-                          }}
-                        >
+                        <Text style={styles.mutedSmallText}>
                           {t("laneManagement.completion")}
                         </Text>
                       ) : (
@@ -365,13 +333,13 @@ export function LaneManagementModal(props: Props) {
           </View>
         </ScrollView>
         {lanes.length <= 2 && (
-          <Text style={{ color: colors.foregroundMuted, fontSize: 12 }}>
+          <Text style={styles.mutedSmallText}>
             {t("laneModal.cannotDeleteLast")}
           </Text>
         )}
         {dirty && (
           <>
-            <Text style={{ color: colors.foregroundMuted }}>
+            <Text style={styles.mutedText}>
               {t("laneManagement.orderPending")}
             </Text>
             <View style={styles.controls}>
@@ -399,7 +367,7 @@ export function LaneManagementModal(props: Props) {
             if (!open) session.cancelDelete();
           }}
         >
-          <Text style={{ color: colors.foreground }}>
+          <Text style={styles.foregroundText}>
             {t("laneManagement.deletePrompt")}
           </Text>
           {errorPanel}
@@ -419,60 +387,127 @@ export function LaneManagementModal(props: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  row: { flexDirection: "row", gap: 12, padding: 4 },
-  lane: {
-    minHeight: 180,
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 10,
-    gap: 6,
-  },
-  grip: { height: 24, alignItems: "center", justifyContent: "center" },
-  nameRow: { height: 36, flexDirection: "row", alignItems: "center", gap: 6 },
-  nameDisplay: { flex: 1, minWidth: 0, height: 36, justifyContent: "center" },
-  nameInput: {
-    flex: 1,
-    minWidth: 0,
-    height: 36,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    fontSize: 14,
-  },
-  editActions: {
-    height: 32,
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 6,
-  },
-  laneActions: {
-    height: 32,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  controls: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 10,
-    marginTop: 10,
-  },
-  button: {
-    minHeight: 32,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  iconButton: {
-    width: 32,
-    height: 32,
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-  },
-});
+function createLaneModalStyles(
+  colors: PluginSurfaceProps["theme"]["colors"],
+  compact: boolean,
+  width: number,
+  height: number,
+) {
+  return StyleSheet.create({
+    dialogContent: {
+      padding: compact ? 12 : 20,
+      gap: 12,
+    },
+    row: { flexDirection: "row", gap: 12, padding: 4 },
+    lane: {
+      minHeight: 180,
+      borderWidth: 1,
+      borderRadius: 10,
+      padding: 10,
+      gap: 6,
+    },
+    addingLane: {
+      width,
+      height,
+      borderColor: colors.accent,
+      backgroundColor: colors.surface1,
+    },
+    slotPreview: {
+      position: "absolute",
+      width,
+      height,
+      borderStyle: "dashed",
+      borderColor: colors.accent,
+      backgroundColor: colors.surface2,
+    },
+    positionedLane: {
+      position: "absolute",
+      left: 0,
+      top: 0,
+      height,
+      width,
+      backgroundColor: colors.surface1,
+      borderColor: colors.border,
+    },
+    grip: { height: 24, alignItems: "center", justifyContent: "center" },
+    nameRow: { height: 36, flexDirection: "row", alignItems: "center", gap: 6 },
+    nameDisplay: {
+      flex: 1,
+      minWidth: 0,
+      height: 36,
+      justifyContent: "center",
+    },
+    laneTitleText: {
+      color: colors.foreground,
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    nameInput: {
+      flex: 1,
+      minWidth: 0,
+      height: 36,
+      borderWidth: 1,
+      borderRadius: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      fontSize: 14,
+      color: colors.foreground,
+      backgroundColor: colors.surface2,
+      borderColor: colors.border,
+    },
+    editActions: {
+      height: 32,
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 6,
+    },
+    laneActions: {
+      height: 32,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    controls: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+    footer: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 10,
+      marginTop: 10,
+    },
+    button: {
+      minHeight: 32,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 8,
+      borderWidth: 1,
+    },
+    iconButton: {
+      width: 32,
+      height: 32,
+      paddingHorizontal: 0,
+      paddingVertical: 0,
+    },
+    buttonText: {
+      fontSize: 13,
+      fontWeight: "400",
+    },
+    buttonTextFilled: {
+      fontWeight: "600",
+    },
+    errorText: {
+      color: colors.statusDanger,
+    },
+    mutedSmallText: {
+      color: colors.foregroundMuted,
+      fontSize: 12,
+    },
+    mutedText: {
+      color: colors.foregroundMuted,
+    },
+    foregroundText: {
+      color: colors.foreground,
+    },
+  });
+}

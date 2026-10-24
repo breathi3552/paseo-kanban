@@ -14,20 +14,20 @@ import {
   useToast,
 } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import type { KanbanLane } from "../shared/kanban";
-import { getProjectOptions, type ProjectItem } from "./use-projects";
+import { SettingsSelect } from "@getpaseo/plugin/client/ui";
+import type { KanbanLane } from "../../shared/kanban";
+import { getProjectOptions, type ProjectItem } from "../session/use-projects";
 import {
   openTaskDeleteSession,
   type ReloadBoardFn,
   type SaveFn,
   type TaskDeleteSession,
   type TaskEditSession,
-} from "./kanban-session";
+} from "../session/kanban-session";
+import { useI18n } from "../platform/i18n";
 import { useTaskDelete } from "./task-delete-dialog";
-import { useI18n } from "./i18n";
 import { IssueLink } from "./issue-link";
 import { BusinessDialog } from "./business-dialog";
-import { SettingsSelect } from "@getpaseo/plugin/client/ui";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 
@@ -239,217 +239,7 @@ export function TaskModal({
   const toast = useToast();
 
   const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        modalBody: {
-          flex: 1,
-          minHeight: 0,
-        },
-        scrollBody: {
-          flex: 1,
-          minHeight: 0,
-        },
-        container: {
-          gap: layout.compact ? 12 : 16,
-          paddingHorizontal: 6,
-          paddingVertical: 4,
-        },
-        fieldGroup: {
-          gap: 6,
-        },
-        label: {
-          fontSize: 13,
-          fontWeight: "600",
-          color: theme.colors.foreground,
-        },
-        input: {
-          backgroundColor: theme.colors.surface2,
-          color: theme.colors.foreground,
-          borderColor: theme.colors.border,
-          borderWidth: 1,
-          borderRadius: 8,
-          paddingHorizontal: 12,
-          paddingVertical: 8,
-          fontSize: 14,
-        },
-        multilineInput: {
-          backgroundColor: theme.colors.surface2,
-          color: theme.colors.foreground,
-          borderColor: theme.colors.border,
-          borderWidth: 1,
-          borderRadius: 8,
-          paddingHorizontal: 12,
-          paddingVertical: 8,
-          fontSize: 14,
-          minHeight: 80,
-          textAlignVertical: "top",
-        },
-        descWrapper: {
-          position: "relative",
-        },
-        resizeHandle: {
-          position: "absolute",
-          right: 4,
-          bottom: 4,
-          width: 22,
-          height: 22,
-          alignItems: "flex-end",
-          justifyContent: "flex-end",
-          paddingRight: 4,
-          paddingBottom: 4,
-          cursor: "se-resize" as unknown as "pointer",
-          zIndex: 3,
-        },
-        resizeGripOuter: {
-          width: 10,
-          height: 10,
-          borderBottomWidth: 1.5,
-          borderRightWidth: 1.5,
-          borderColor: theme.colors.foregroundMuted,
-          alignItems: "flex-end",
-          justifyContent: "flex-end",
-          opacity: 0.6,
-        },
-        resizeGripInner: {
-          width: 5,
-          height: 5,
-          borderBottomWidth: 1.5,
-          borderRightWidth: 1.5,
-          borderColor: theme.colors.foregroundMuted,
-          opacity: 0.6,
-        },
-        selectorRow: {
-          flexDirection: "row",
-          flexWrap: "wrap",
-          gap: 8,
-        },
-        optionChip: {
-          paddingHorizontal: 10,
-          paddingVertical: 6,
-          borderRadius: 6,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-          backgroundColor: theme.colors.surface1,
-        },
-        optionChipSelected: {
-          borderColor: theme.colors.accent,
-          backgroundColor: theme.colors.accent,
-        },
-        optionChipText: {
-          fontSize: 13,
-          color: theme.colors.foreground,
-        },
-        optionChipTextSelected: {
-          color: theme.colors.accentForeground,
-          fontWeight: "600",
-        },
-        subtaskItem: {
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 8,
-          paddingVertical: 6,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.colors.border,
-        },
-        subtaskCheck: {
-          width: 22,
-          height: 22,
-          borderRadius: 4,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: theme.colors.surface2,
-        },
-        subtaskCheckCompleted: {
-          backgroundColor: theme.colors.accent,
-          borderColor: theme.colors.accent,
-        },
-        subtaskInput: {
-          flex: 1,
-          fontSize: 13,
-          color: theme.colors.foreground,
-          paddingVertical: 4,
-        },
-        subtaskInputCompleted: {
-          textDecorationLine: "line-through",
-          color: theme.colors.foregroundMuted,
-        },
-        errorBanner: {
-          backgroundColor: theme.colors.surface2,
-          borderColor: theme.colors.statusDanger,
-          borderWidth: 1,
-          borderRadius: 8,
-          padding: 10,
-        },
-        errorText: {
-          color: theme.colors.statusDanger,
-          fontSize: 13,
-        },
-        footer: {
-          flexDirection: "row",
-          alignItems: "center",
-          flexWrap: "wrap",
-          flexShrink: 0,
-          gap: 10,
-          paddingTop: 12,
-          paddingHorizontal: 6,
-          paddingBottom: 4,
-          borderTopWidth: 1,
-          borderTopColor: theme.colors.border,
-        },
-        buttonRow: {
-          flexDirection: "row",
-          justifyContent: "flex-end",
-          gap: 10,
-          marginLeft: "auto",
-          flexShrink: 0,
-        },
-        cancelButton: {
-          paddingHorizontal: 16,
-          paddingVertical: 10,
-          borderRadius: 8,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-          backgroundColor: theme.colors.surface1,
-        },
-        cancelButtonText: {
-          color: theme.colors.foreground,
-          fontSize: 14,
-        },
-        saveButton: {
-          paddingHorizontal: 18,
-          paddingVertical: 10,
-          borderRadius: 8,
-          backgroundColor: theme.colors.accent,
-        },
-        saveButtonDisabled: {
-          opacity: 0.6,
-        },
-        saveButtonText: {
-          color: theme.colors.accentForeground,
-          fontSize: 14,
-          fontWeight: "600",
-        },
-        deleteSection: {
-          flexDirection: "row",
-          flexShrink: 1,
-          alignItems: "center",
-        },
-        deleteButton: {
-          paddingHorizontal: 12,
-          paddingVertical: 8,
-          borderRadius: 6,
-          backgroundColor: theme.colors.surface1,
-          borderWidth: 1,
-          borderColor: theme.colors.statusDanger,
-        },
-        deleteButtonText: {
-          color: theme.colors.statusDanger,
-          fontSize: 13,
-          fontWeight: "500",
-        },
-      }),
+    () => createTaskModalStyles(theme, layout.compact),
     [theme, layout.compact],
   );
 
@@ -540,7 +330,7 @@ export function TaskModal({
             placeholder={t("taskModal.titlePlaceholder")}
             placeholderTextColor={theme.colors.foregroundMuted}
             value={snapshot.title}
-            onChangeText={(t) => session.setTitle(t)}
+            onChangeText={(txt) => session.setTitle(txt)}
           />
         </View>
 
@@ -600,7 +390,7 @@ export function TaskModal({
               placeholder={t("taskModal.descPlaceholder")}
               placeholderTextColor={theme.colors.foregroundMuted}
               value={snapshot.description}
-              onChangeText={(t) => session.setDescription(t)}
+              onChangeText={(txt) => session.setDescription(txt)}
             />
             <View
               style={styles.resizeHandle}
@@ -672,24 +462,18 @@ export function TaskModal({
             </View>
           ))}
 
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+          <View style={styles.newSubtaskRow}>
             <TextInput
-              style={[styles.input, { flex: 1 }]}
+              style={[styles.input, styles.newSubtaskInput]}
               placeholder={t("taskModal.newSubtaskPlaceholder")}
               placeholderTextColor={theme.colors.foregroundMuted}
               value={newSubtaskTitle}
-              onChangeText={(t) => setNewSubtaskTitle(t)}
+              onChangeText={(txt) => setNewSubtaskTitle(txt)}
               onSubmitEditing={handleAddSubtask}
             />
             <Pressable
               onPress={handleAddSubtask}
-              style={[
-                styles.optionChip,
-                {
-                  backgroundColor: theme.colors.surface2,
-                  justifyContent: "center",
-                },
-              ]}
+              style={[styles.optionChip, styles.addStepButton]}
             >
               <Text style={styles.optionChipText}>
                 {t("taskModal.addStep")}
@@ -714,18 +498,9 @@ export function TaskModal({
                 </Text>
               </Pressable>
             ) : (
-              <View style={{ gap: 8, flexShrink: 1 }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    gap: 8,
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <Text
-                    style={{ fontSize: 13, color: theme.colors.statusDanger }}
-                  >
+              <View style={styles.deleteConfirmBox}>
+                <View style={styles.deleteConfirmRow}>
+                  <Text style={styles.errorText}>
                     {t("contextMenu.deleteConfirm", {
                       title: deleteSnapshot.title,
                     })}
@@ -734,23 +509,22 @@ export function TaskModal({
                     onPress={() => {
                       void handleDelete();
                     }}
-                    style={[
-                      styles.deleteButton,
-                      { backgroundColor: theme.colors.statusDanger },
-                    ]}
+                    style={[styles.deleteButton, styles.confirmDeleteButton]}
                     disabled={isBusy}
                   >
-                    <Text style={[styles.deleteButtonText, { color: "#fff" }]}>
+                    <Text
+                      style={[
+                        styles.deleteButtonText,
+                        styles.confirmDeleteButtonText,
+                      ]}
+                    >
                       {t("taskModal.confirmDelete")}
                     </Text>
                   </Pressable>
                   <Pressable
                     onPress={handleCancelDelete}
                     disabled={isBusy}
-                    style={[
-                      styles.optionChip,
-                      { backgroundColor: theme.colors.surface2 },
-                    ]}
+                    style={[styles.optionChip, styles.cancelDeleteButton]}
                   >
                     <Text style={styles.optionChipText}>
                       {t("taskModal.cancel")}
@@ -758,31 +532,15 @@ export function TaskModal({
                   </Pressable>
                 </View>
                 {deleteSnapshot.error && (
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      gap: 8,
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        color: theme.colors.statusDanger,
-                      }}
-                    >
-                      {deleteSnapshot.error}
-                    </Text>
+                  <View style={styles.deleteConfirmRow}>
+                    <Text style={styles.errorText}>{deleteSnapshot.error}</Text>
                     <Pressable
                       disabled={isBusy}
                       onPress={() => {
                         void handleRefreshDelete();
                       }}
                     >
-                      <Text
-                        style={{ fontSize: 13, color: theme.colors.accent }}
-                      >
+                      <Text style={styles.refreshLinkText}>
                         {t("kanban.refresh")}
                       </Text>
                     </Pressable>
@@ -824,4 +582,252 @@ export function TaskModal({
       </View>
     </BusinessDialog>
   );
+}
+
+function createTaskModalStyles(theme: PluginTheme, compact: boolean) {
+  return StyleSheet.create({
+    modalBody: {
+      flex: 1,
+      minHeight: 0,
+    },
+    scrollBody: {
+      flex: 1,
+      minHeight: 0,
+    },
+    container: {
+      gap: compact ? 12 : 16,
+      paddingHorizontal: 6,
+      paddingVertical: 4,
+    },
+    fieldGroup: {
+      gap: 6,
+    },
+    label: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: theme.colors.foreground,
+    },
+    input: {
+      backgroundColor: theme.colors.surface2,
+      color: theme.colors.foreground,
+      borderColor: theme.colors.border,
+      borderWidth: 1,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      fontSize: 14,
+    },
+    multilineInput: {
+      backgroundColor: theme.colors.surface2,
+      color: theme.colors.foreground,
+      borderColor: theme.colors.border,
+      borderWidth: 1,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      fontSize: 14,
+      minHeight: 80,
+      textAlignVertical: "top",
+    },
+    descWrapper: {
+      position: "relative",
+    },
+    resizeHandle: {
+      position: "absolute",
+      right: 4,
+      bottom: 4,
+      width: 22,
+      height: 22,
+      alignItems: "flex-end",
+      justifyContent: "flex-end",
+      paddingRight: 4,
+      paddingBottom: 4,
+      cursor: "se-resize" as unknown as "pointer",
+      zIndex: 3,
+    },
+    resizeGripOuter: {
+      width: 10,
+      height: 10,
+      borderBottomWidth: 1.5,
+      borderRightWidth: 1.5,
+      borderColor: theme.colors.foregroundMuted,
+      alignItems: "flex-end",
+      justifyContent: "flex-end",
+      opacity: 0.6,
+    },
+    resizeGripInner: {
+      width: 5,
+      height: 5,
+      borderBottomWidth: 1.5,
+      borderRightWidth: 1.5,
+      borderColor: theme.colors.foregroundMuted,
+      opacity: 0.6,
+    },
+    selectorRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    optionChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.surface1,
+    },
+    optionChipSelected: {
+      borderColor: theme.colors.accent,
+      backgroundColor: theme.colors.accent,
+    },
+    optionChipText: {
+      fontSize: 13,
+      color: theme.colors.foreground,
+    },
+    optionChipTextSelected: {
+      color: theme.colors.accentForeground,
+      fontWeight: "600",
+    },
+    subtaskItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 6,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    subtaskCheck: {
+      width: 22,
+      height: 22,
+      borderRadius: 4,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.surface2,
+    },
+    subtaskCheckCompleted: {
+      backgroundColor: theme.colors.accent,
+      borderColor: theme.colors.accent,
+    },
+    subtaskInput: {
+      flex: 1,
+      fontSize: 13,
+      color: theme.colors.foreground,
+      paddingVertical: 4,
+    },
+    subtaskInputCompleted: {
+      textDecorationLine: "line-through",
+      color: theme.colors.foregroundMuted,
+    },
+    newSubtaskRow: {
+      flexDirection: "row",
+      gap: 8,
+      marginTop: 4,
+    },
+    newSubtaskInput: {
+      flex: 1,
+    },
+    addStepButton: {
+      backgroundColor: theme.colors.surface2,
+      justifyContent: "center",
+    },
+    errorBanner: {
+      backgroundColor: theme.colors.surface2,
+      borderColor: theme.colors.statusDanger,
+      borderWidth: 1,
+      borderRadius: 8,
+      padding: 10,
+    },
+    errorText: {
+      color: theme.colors.statusDanger,
+      fontSize: 13,
+    },
+    footer: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      flexShrink: 0,
+      gap: 10,
+      paddingTop: 12,
+      paddingHorizontal: 6,
+      paddingBottom: 4,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.border,
+    },
+    buttonRow: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 10,
+      marginLeft: "auto",
+      flexShrink: 0,
+    },
+    cancelButton: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.surface1,
+    },
+    cancelButtonText: {
+      color: theme.colors.foreground,
+      fontSize: 14,
+    },
+    saveButton: {
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      borderRadius: 8,
+      backgroundColor: theme.colors.accent,
+    },
+    saveButtonDisabled: {
+      opacity: 0.6,
+    },
+    saveButtonText: {
+      color: theme.colors.accentForeground,
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    deleteSection: {
+      flexDirection: "row",
+      flexShrink: 1,
+      alignItems: "center",
+    },
+    deleteButton: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 6,
+      backgroundColor: theme.colors.surface1,
+      borderWidth: 1,
+      borderColor: theme.colors.statusDanger,
+    },
+    deleteButtonText: {
+      color: theme.colors.statusDanger,
+      fontSize: 13,
+      fontWeight: "500",
+    },
+    deleteConfirmBox: {
+      gap: 8,
+      flexShrink: 1,
+    },
+    deleteConfirmRow: {
+      flexDirection: "row",
+      gap: 8,
+      alignItems: "center",
+      flexWrap: "wrap",
+    },
+    confirmDeleteButton: {
+      backgroundColor: theme.colors.statusDanger,
+    },
+    confirmDeleteButtonText: {
+      color: "#fff",
+    },
+    cancelDeleteButton: {
+      backgroundColor: theme.colors.surface2,
+    },
+    refreshLinkText: {
+      fontSize: 13,
+      color: theme.colors.accent,
+    },
+  });
 }

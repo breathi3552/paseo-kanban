@@ -1,10 +1,17 @@
-import { useEffect, useRef, useState } from "react";
-import { Pressable, Text, View, Platform, type ViewStyle } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  Platform,
+  type ViewStyle,
+} from "react-native";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import type { KanbanLane, KanbanTask } from "../shared/kanban";
-import { WebMenuPortal } from "./web";
-import { useI18n } from "./i18n";
+import type { KanbanLane, KanbanTask } from "../../shared/kanban";
+import { WebMenuPortal } from "../platform/web";
+import { useI18n } from "../platform/i18n";
 import type { CardKeyEvent } from "./card-interaction";
 
 export type TaskMenuAction =
@@ -81,6 +88,7 @@ export function TaskContextMenu({
     ? lanes.find((lane) => lane.isCompletionLane)?.id
     : task.laneId;
   const destinations = lanes.filter((lane) => lane.id !== currentLane);
+  const styles = useMemo(() => createContextMenuStyles(colors), [colors]);
   const root = (ref: typeof mainRef) =>
     ref.current as unknown as MenuElement | null;
   useEffect(() => {
@@ -147,28 +155,13 @@ export function TaskContextMenu({
     items[next]?.focus();
   };
   const panelStyle = (x: number, y: number, panelWidth: number): ViewStyle => ({
-    position: "absolute",
+    ...styles.panelBase,
     left: x,
     top: y,
     width: panelWidth,
     maxHeight,
-    padding: 4,
-    backgroundColor: colors.surface1,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 6,
-    overflow: "auto" as "scroll",
-    pointerEvents: "auto",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
   });
-  const divider = (
-    <View
-      style={{ height: 1, marginVertical: 4, backgroundColor: colors.border }}
-    />
-  );
+  const divider = <View style={styles.divider} />;
   const item = (
     label: string,
     icon: string,
@@ -210,13 +203,7 @@ export function TaskContextMenu({
         hovered?: boolean;
         pressed: boolean;
       }) => ({
-        minHeight: 28,
-        paddingHorizontal: 8,
-        paddingVertical: 5,
-        borderRadius: 4,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
+        ...styles.menuItem,
         opacity: options.disabled ? 0.5 : 1,
         backgroundColor:
           hovered || pressed || (options.move && submenu)
@@ -231,11 +218,7 @@ export function TaskContextMenu({
       />
       <Text
         numberOfLines={1}
-        style={{
-          flex: 1,
-          fontSize: 13,
-          color: options.danger ? colors.statusDanger : colors.foreground,
-        }}
+        style={[styles.menuItemText, options.danger && styles.menuItemDanger]}
       >
         {label}
       </Text>
@@ -314,4 +297,47 @@ export function TaskContextMenu({
       )}
     </WebMenuPortal>
   );
+}
+
+function createContextMenuStyles(
+  colors: PluginSurfaceProps["theme"]["colors"],
+) {
+  return StyleSheet.create({
+    panelBase: {
+      position: "absolute",
+      padding: 4,
+      backgroundColor: colors.surface1,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: 6,
+      overflow: "auto" as "scroll",
+      pointerEvents: "auto",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.2,
+      shadowRadius: 12,
+    },
+    divider: {
+      height: 1,
+      marginVertical: 4,
+      backgroundColor: colors.border,
+    },
+    menuItem: {
+      minHeight: 28,
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+      borderRadius: 4,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    menuItemText: {
+      flex: 1,
+      fontSize: 13,
+      color: colors.foreground,
+    },
+    menuItemDanger: {
+      color: colors.statusDanger,
+    },
+  });
 }

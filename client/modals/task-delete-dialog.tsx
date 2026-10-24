@@ -1,12 +1,12 @@
-import { useRef, useSyncExternalStore } from "react";
-import { Pressable, Text, View } from "react-native";
+import { useMemo, useRef, useSyncExternalStore } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Modal, useToast } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type {
   TaskDeleteSession,
   TaskDeleteSessionSnapshot,
-} from "./kanban-session";
-import { useI18n } from "./i18n";
+} from "../session/kanban-session";
+import { useI18n } from "../platform/i18n";
 
 const emptySubscribe = () => () => {};
 const getNullSnapshot = () => null;
@@ -90,8 +90,11 @@ export function TaskDeleteDialog({
     onCancel: onClose,
     onDeleted: onClose,
   });
+  const styles = useMemo(
+    () => createTaskDeleteStyles(theme.colors),
+    [theme.colors],
+  );
   if (!snapshot) return null;
-  const colors = theme.colors;
   const busy = snapshot.isBusy;
   return (
     <Modal
@@ -102,48 +105,41 @@ export function TaskDeleteDialog({
       }}
     >
       <Modal.Content
-        style={{ backgroundColor: colors.surface0 }}
-        contentContainerStyle={{ padding: 20, gap: 16 }}
+        style={styles.modalSurface}
+        contentContainerStyle={styles.modalContent}
       >
-        <Text style={{ color: colors.foreground }}>
+        <Text style={styles.promptText}>
           {t("contextMenu.deleteConfirm", { title: snapshot.title })}
         </Text>
         {snapshot.error && (
-          <View style={{ gap: 8 }}>
-            <Text style={{ color: colors.statusDanger }}>{snapshot.error}</Text>
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{snapshot.error}</Text>
             <Pressable
               disabled={busy}
               onPress={() => {
                 void refresh();
               }}
             >
-              <Text style={{ color: colors.accent }}>
-                {t("kanban.refresh")}
-              </Text>
+              <Text style={styles.refreshText}>{t("kanban.refresh")}</Text>
             </Pressable>
           </View>
         )}
-        <View
-          style={{ flexDirection: "row", justifyContent: "flex-end", gap: 12 }}
-        >
-          <Pressable disabled={busy} onPress={cancel} style={{ padding: 8 }}>
-            <Text style={{ color: colors.foreground }}>
-              {t("taskModal.cancel")}
-            </Text>
+        <View style={styles.actionsRow}>
+          <Pressable
+            disabled={busy}
+            onPress={cancel}
+            style={styles.cancelButton}
+          >
+            <Text style={styles.promptText}>{t("taskModal.cancel")}</Text>
           </Pressable>
           <Pressable
             disabled={busy}
             onPress={() => {
               void confirm();
             }}
-            style={{
-              padding: 8,
-              backgroundColor: colors.statusDanger,
-              borderRadius: 6,
-              opacity: busy ? 0.5 : 1,
-            }}
+            style={[styles.confirmButton, busy && styles.confirmButtonBusy]}
           >
-            <Text style={{ color: colors.accentForeground }}>
+            <Text style={styles.confirmButtonText}>
               {t("taskModal.confirmDelete")}
             </Text>
           </Pressable>
@@ -151,4 +147,48 @@ export function TaskDeleteDialog({
       </Modal.Content>
     </Modal>
   );
+}
+
+function createTaskDeleteStyles(colors: PluginSurfaceProps["theme"]["colors"]) {
+  return StyleSheet.create({
+    modalSurface: {
+      backgroundColor: colors.surface0,
+    },
+    modalContent: {
+      padding: 20,
+      gap: 16,
+    },
+    promptText: {
+      color: colors.foreground,
+    },
+    errorBox: {
+      gap: 8,
+    },
+    errorText: {
+      color: colors.statusDanger,
+    },
+    refreshText: {
+      color: colors.accent,
+    },
+    actionsRow: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 12,
+    },
+    cancelButton: {
+      padding: 8,
+    },
+    confirmButton: {
+      padding: 8,
+      backgroundColor: colors.statusDanger,
+      borderRadius: 6,
+      opacity: 1,
+    },
+    confirmButtonBusy: {
+      opacity: 0.5,
+    },
+    confirmButtonText: {
+      color: colors.accentForeground,
+    },
+  });
 }
