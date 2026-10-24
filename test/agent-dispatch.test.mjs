@@ -75,7 +75,10 @@ function fixture({
     agents: {
       create: async (request) => {
         if (agentGate) await agentGate;
-        if (failAt === "agent") throw new Error("Agent creation failed");
+        if (failAt === "agent") {
+          failAt = null;
+          throw new Error("Agent creation failed");
+        }
         createdAgents.push({ workspaceId: id, ...request });
         return { id: `agent-${createdAgents.length}` };
       },
@@ -96,7 +99,10 @@ function fixture({
     }),
     navigation: {
       openAgent: (target) => {
-        if (failAt === "navigation") throw new Error("Navigation failed");
+        if (failAt === "navigation") {
+          failAt = null;
+          throw new Error("Navigation failed");
+        }
         opened.push(target);
       },
     },
@@ -135,8 +141,10 @@ function fixture({
               };
         },
         create: async (request) => {
-          if (failAt === "workspace")
+          if (failAt === "workspace") {
+            failAt = null;
             throw new Error("Workspace creation failed");
+          }
           createdWorkspaces.push(request);
           return workspace("new-workspace");
         },
@@ -526,6 +534,19 @@ test("分阶段失败保留输入与已成功结果，不启动后续 Agent 或�
       );
       assert.equal(createdAgents.length, failure === "navigation" ? 1 : 0);
       assert.deepEqual(opened, []);
+      if (failure !== "conflict") {
+        await press(modal(renderer), "Send");
+        assert.equal(host.board.tasks[0].projectId, "project-b");
+        assert.equal(
+          createdWorkspaces.length,
+          ["agent", "navigation"].includes(failure) ? 2 : 1,
+        );
+        assert.equal(createdAgents.length, failure === "navigation" ? 2 : 1);
+        assert.deepEqual(opened, [
+          { agentId: failure === "navigation" ? "agent-2" : "agent-1" },
+        ]);
+        assert.equal(renderer.root.findAllByType("Modal").length, 0);
+      }
     });
   }
 });
@@ -604,6 +625,39 @@ test("prompt 跨重开、任务、项目与入口持久保留，不把旧任务�
   assert.equal(
     second.createdAgents[0].prompt,
     `${instruction}\n\n# 另一个任务\n\n## 描述\n\n新的正文`,
+  );
+
+  const concurrent = fixture({
+    settingsValues: structuredClone(second.host.settingsValues),
+  });
+  const windowA = await mount(t, concurrent.host);
+  const windowB = await mount(t, concurrent.host, "workspace-a");
+  await press(windowA.root, "发送到 Agent");
+  await press(windowB.root, "发送到 Agent");
+  await act(async () =>
+    modal(windowA)
+      .findByProps({ accessibilityLabel: "prompt" })
+      .props.onChangeText("窗口 A 的最新指令"),
+  );
+  await act(async () =>
+    modal(windowB)
+      .findByProps({ accessibilityLabel: "prompt" })
+      .props.onChangeText("窗口 B 先保存的指令"),
+  );
+  await press(modal(windowB), "发送");
+  assert.equal(
+    concurrent.host.settingsValues["agent-dispatch"].prompt,
+    "窗口 B 先保存的指令",
+  );
+  await press(modal(windowA), "发送");
+  assert.equal(
+    concurrent.host.settingsValues["agent-dispatch"].prompt,
+    "窗口 A 的最新指令",
+  );
+  assert.ok(
+    concurrent.createdAgents[1].prompt.startsWith(
+      "窗口 A 的最新指令\n\n# 修复 登录页",
+    ),
   );
 });
 
