@@ -10,7 +10,7 @@ import {
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanLane, KanbanTask } from "../shared/kanban";
 import { KanbanCard, KanbanDropSpacer } from "./kanban-card";
-import { getProjectDisplayName, type ProjectItem } from "./use-projects";
+import type { ProjectItem, ProjectNameResolver } from "./use-projects";
 import type { LaneDragBinding } from "./kanban-drag";
 import { useI18n } from "./i18n";
 
@@ -19,7 +19,6 @@ type PluginTheme = PluginSurfaceProps["theme"];
 export interface KanbanLaneViewProps {
   lane: KanbanLane;
   tasks: KanbanTask[];
-  projects: ProjectItem[];
   theme: PluginTheme;
   layout: { compact: boolean; platform: "ios" | "android" | "web" };
   dragBinding: LaneDragBinding;
@@ -30,13 +29,13 @@ export interface KanbanLaneViewProps {
   onContextMenu?: (taskId: string, point: { x: number; y: number }) => void;
   onScrollCards?: () => void;
   completionPending?: boolean;
-  resolveProjectName?: (projectId: string | null) => string | null;
+  resolveProjectName: ProjectNameResolver;
+  projects?: ProjectItem[];
 }
 
 function KanbanLaneViewInner({
   lane,
   tasks,
-  projects,
   theme,
   layout,
   dragBinding,
@@ -297,11 +296,7 @@ function KanbanLaneViewInner({
               )}
               <KanbanCard
                 task={task}
-                projectDisplayName={
-                  resolveProjectName
-                    ? resolveProjectName(task.projectId)
-                    : getProjectDisplayName(task.projectId, projects)
-                }
+                projectDisplayName={resolveProjectName(task.projectId)}
                 theme={theme}
                 layout={layout}
                 binding={bindCard(
