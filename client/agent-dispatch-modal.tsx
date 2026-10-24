@@ -37,6 +37,8 @@ export function AgentDispatchModal({
 }: Props) {
   const toast = useToast();
   const { t, language } = useI18n();
+  const latestT = useRef(t);
+  latestT.current = t;
   const reportFailure = useRef(() => toast.error(t("dispatch.failed")));
   reportFailure.current = () => toast.error(t("dispatch.failed"));
   const dispatch = useAgentDispatch({
@@ -74,7 +76,9 @@ export function AgentDispatchModal({
       profileId,
     });
     if (result.promptSaved) {
-      toast.show(t("dispatch.promptSaved"), { variant: "success" });
+      toast.show(latestT.current("dispatch.promptSaved"), {
+        variant: "success",
+      });
     }
     if (result.status === "sent") {
       onClose();

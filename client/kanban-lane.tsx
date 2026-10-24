@@ -10,7 +10,7 @@ import {
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanLane, KanbanTask } from "../shared/kanban";
 import { KanbanCard, KanbanDropSpacer } from "./kanban-card";
-import type { ProjectItem, ProjectNameResolver } from "./use-projects";
+import type { ProjectNameResolver } from "./use-projects";
 import type { LaneDragBinding } from "./kanban-drag";
 import { useI18n } from "./i18n";
 
@@ -30,7 +30,6 @@ export interface KanbanLaneViewProps {
   onScrollCards?: () => void;
   completionPending?: boolean;
   resolveProjectName: ProjectNameResolver;
-  projects?: ProjectItem[];
 }
 
 function KanbanLaneViewInner({

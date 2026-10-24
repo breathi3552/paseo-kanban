@@ -77,18 +77,6 @@ export function createProjectNameResolver(
   };
 }
 
-export function getProjectDisplayName(
-  projectId: string | null | undefined,
-  projectsOrResolver: ProjectItem[] | ProjectNameResolver,
-): string | null {
-  if (!projectId) return null;
-  if (typeof projectsOrResolver === "function") {
-    return projectsOrResolver(projectId);
-  }
-  const match = projectsOrResolver.find((p) => p.projectId === projectId);
-  return match ? match.projectDisplayName : projectId;
-}
-
 export interface ProjectsState {
   projects?: ProjectItem[];
   isLoading?: boolean;
