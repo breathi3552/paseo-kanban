@@ -18,6 +18,7 @@ interface KeyEvent {
   stopPropagation(): void;
 }
 interface WebElement {
+  textContent: string | null;
   style: Record<string, string>;
   tabIndex: number;
   isConnected: boolean;
@@ -37,7 +38,52 @@ declare const document: {
   body: WebElement;
   activeElement: WebElement | null;
   createElement(tag: string): WebElement;
+  addEventListener(
+    type: string,
+    listener: (event: MenuDocumentEvent) => void,
+    capture?: boolean,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: (event: MenuDocumentEvent) => void,
+    capture?: boolean,
+  ): void;
 };
+interface MenuDocumentEvent {
+  target: WebElement | null;
+  key?: string;
+  preventDefault(): void;
+  stopPropagation(): void;
+}
+declare const window: {
+  addEventListener(type: string, listener: () => void): void;
+  removeEventListener(type: string, listener: () => void): void;
+};
+
+/** SettingsSelect exposes no row styles; keep this override local to the board filter. */
+export function useProjectFilterLayout() {
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const style = document.createElement("style");
+    style.textContent = `
+      [data-testid="kanban-project-filter"] {
+        padding-inline: 0 !important;
+        justify-content: flex-start !important;
+        flex-wrap: nowrap !important;
+        gap: 0 !important;
+      }
+      [data-testid="kanban-project-filter"] > :first-child {
+        flex: 0 0 auto !important;
+        margin-right: 8px !important;
+      }
+      [data-testid="kanban-project-filter"] > :last-child {
+        min-width: 0;
+      }
+    `;
+    document.body.appendChild(style);
+    return () => style.remove();
+  }, []);
+}
 
 const focusable = (root: WebElement) =>
   Array.from(
@@ -153,6 +199,68 @@ export function WebDialogPortal({
         : (focusable(container)[0] ?? container);
     target.focus();
   });
+  return Platform.OS === "web" && container
+    ? createPortal(children, container)
+    : null;
+}
+
+/** Non-modal surface: no backdrop and no focus trap; host overlays stay above it. */
+export function WebMenuPortal({
+  children,
+  onDismiss,
+}: {
+  children: ReactNode;
+  onDismiss: () => void;
+}) {
+  const dismiss = useRef(onDismiss);
+  dismiss.current = onDismiss;
+  const [container, setContainer] = useState<WebElement | null>(null);
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const previous = document.activeElement;
+    const node = document.createElement("div");
+    Object.assign(node.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: "0",
+      pointerEvents: "none",
+    });
+    document.body.appendChild(node);
+    setContainer(node);
+    const outside = (event: MenuDocumentEvent) => {
+      if (!node.contains(event.target)) dismiss.current();
+    };
+    const resize = () => dismiss.current();
+    const keydown = (event: MenuDocumentEvent) => {
+      if (event.key !== "Escape" && event.key !== "Tab") return;
+      // Restore before default Tab navigation, so it continues from the card.
+      if (previous?.isConnected && node.contains(document.activeElement))
+        previous.focus();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      dismiss.current();
+    };
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("scroll", outside, true);
+    document.addEventListener("keydown", keydown, true);
+    window.addEventListener("resize", resize);
+    return () => {
+      document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("scroll", outside, true);
+      document.removeEventListener("keydown", keydown, true);
+      window.removeEventListener("resize", resize);
+      const restore =
+        node.contains(document.activeElement) ||
+        document.activeElement === document.body;
+      node.remove();
+      if (restore && previous?.isConnected) previous.focus();
+    };
+  }, []);
+  useEffect(() => {
+    if (container) focusable(container)[0]?.focus();
+  }, [container]);
   return Platform.OS === "web" && container
     ? createPortal(children, container)
     : null;

@@ -4,6 +4,7 @@ A lightweight, responsive Kanban board plugin for Paseo workspaces.
 
 ## Features
 
+- **Task context menu**: Right-click a card to edit, move, complete, copy its full prompt, open its source Issue, or confirm deletion. Desktop left-click no longer opens details; the checkbox and Send to Agent button remain independent of card dragging.
 - **Send to Agent**: Send task context to a new Agent using a Paseo preset in an existing workspace, new regular workspace, or new worktree. Agent execution does not update task status.
 - **GitHub issue import**: Import up to 25 open issues from the project’s GitHub.com origin into a chosen lane. Tasks remain independent and link back to their source. Requires Git and an authenticated `gh` on the daemon machine.
 - **Flexible swimlanes**: Add, rename, and delete in one horizontal dialog. Preview lane order with left/right controls or dragging, then save. Deleting a populated lane requires confirmation and removes unfinished tasks across all projects; completed tasks are kept.
@@ -25,6 +26,7 @@ A lightweight, responsive Kanban board plugin for Paseo workspaces.
 
 ## 核心功能
 
+- **任务右键菜单**：右键卡片可编辑、移动、完成、复制完整提示词、打开来源 Issue 或确认删除。桌面左键单击不再打开详情，checkbox 与发送按钮保持独立，不参与卡片拖拽。
 - **发送到 Agent**：选择 Paseo 预设，在已有工作区、新建普通工作区或 worktree 中新建 Agent 并直接发送任务上下文；Agent 执行不修改任务状态。
 - **GitHub Issue 导入**：从项目的 GitHub.com origin 选择 Open Issues，每次最多导入 25 项到指定泳道；任务独立管理并保留外链。需要在 daemon 所在机器安装 Git 并登录 `gh`。
 - **灵活的泳道管理**：在横向弹窗中增删改，通过左右按钮或拖动预览排列，再保存顺序。含任务的泳道经确认后连同所有项目中的未完成任务删除，已完成任务保留。

@@ -369,10 +369,32 @@ export function LaneManagementModal(props: Props) {
           scrollEventThrottle={16}
           onContentSizeChange={(width) => {
             reorder.onContentSizeChange(width);
-            if (adding) scrollRef.current?.scrollToEnd({ animated: true });
+            if (adding) scrollRef.current?.scrollTo({ x: 0, animated: true });
           }}
         >
           <View style={styles.row}>
+            {adding && (
+              <View
+                style={[
+                  styles.lane,
+                  {
+                    width,
+                    height,
+                    borderColor: colors.accent,
+                    backgroundColor: colors.surface1,
+                  },
+                ]}
+              >
+                <View style={styles.grip}>
+                  <Text style={{ color: colors.foregroundMuted, fontSize: 12 }}>
+                    {t("laneModal.titleCreate")}
+                  </Text>
+                </View>
+                <View style={styles.nameRow}>{editor}</View>
+                <View style={styles.editActions}>{editorActions}</View>
+                <View style={styles.laneActions} />
+              </View>
+            )}
             <View style={{ width: order.length * step - 12, height }}>
               {reorder.slot !== null && (
                 <View
@@ -531,28 +553,6 @@ export function LaneManagementModal(props: Props) {
                 );
               })}
             </View>
-            {adding && (
-              <View
-                style={[
-                  styles.lane,
-                  {
-                    width,
-                    height,
-                    borderColor: colors.accent,
-                    backgroundColor: colors.surface1,
-                  },
-                ]}
-              >
-                <View style={styles.grip}>
-                  <Text style={{ color: colors.foregroundMuted, fontSize: 12 }}>
-                    {t("laneModal.titleCreate")}
-                  </Text>
-                </View>
-                <View style={styles.nameRow}>{editor}</View>
-                <View style={styles.editActions}>{editorActions}</View>
-                <View style={styles.laneActions} />
-              </View>
-            )}
           </View>
         </ScrollView>
         {lanes.length <= 2 && (

@@ -190,7 +190,7 @@ test("moving a mouse-held card into another lane auto-scrolls at the viewport ed
   assert.equal(board.card("task").props.style?.opacity ?? 1, 1);
 });
 
-test("stationary click and slight mouse jitter select the task exactly once without requesting reorder", async (t) => {
+test("stationary click and slight mouse jitter do not open details or request reorder", async (t) => {
   const clicks = [];
   const reorders = [];
   const board = mountCards(t, {
@@ -214,10 +214,10 @@ test("stationary click and slight mouse jitter select the task exactly once with
         });
     });
     await release(board, "task");
-    assert.equal(clicks.length, jitter ? 2 : 1);
+    assert.equal(clicks.length, 0);
     assert.equal(board.drag.isDragLocked(), false);
   }
-  assert.deepEqual(clicks, ["task", "task"]);
+  assert.deepEqual(clicks, []);
   assert.deepEqual(reorders, []);
 });
 

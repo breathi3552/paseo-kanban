@@ -60,6 +60,8 @@ export function createHost({
   rpc = async () => ({ repository: "example/repo", issues: [], totalCount: 0 }),
   compact = false,
   settingsValues = {},
+  promptReady = true,
+  copyText = async () => {},
   workspaces = {
     "workspace-a": { projectId: "project-a" },
     "workspace-b": { projectId: "project-b" },
@@ -93,6 +95,7 @@ export function createHost({
   let pendingSave = null;
   const notifications = [];
   const externalUrls = [];
+  const clipboard = [];
   let settings = { status: "ready", values, revision: String(revision) };
   const extraSettings = new Map();
   const paseo = {
@@ -130,7 +133,7 @@ export function createHost({
       const isBoard = contract.id === "kanban";
       if (!isBoard && !extraSettings.has(contract.id)) {
         extraSettings.set(contract.id, {
-          status: "ready",
+          status: promptReady ? "ready" : "loading",
           values: contract.schema.parse(settingsValues[contract.id] ?? {}),
           revision: "1",
         });
@@ -201,14 +204,21 @@ export function createHost({
   };
   const { default: contribute } = loadClientModule("../index.client", {
     "./web": {
+      useProjectFilterLayout: () => {},
       WebDialogPortal: ({ children }) =>
         React.createElement("WebDialogPortal", {}, children),
+      WebMenuPortal: ({ children, ...props }) =>
+        React.createElement("WebMenuPortal", props, children),
     },
     "@getpaseo/plugin/client": sdk,
     "@getpaseo/plugin/client/react-native": {
       Modal,
       TextInput: "TextInput",
       Icon: "Icon",
+      copyText: async (value) => {
+        await copyText(value);
+        clipboard.push(value);
+      },
       ScrollView: mockReactNative.ScrollView,
       useToast: () => ({
         show: (message) => notifications.push(message),
@@ -230,6 +240,7 @@ export function createHost({
     },
     notifications,
     externalUrls,
+    clipboard,
     get settingsValues() {
       return Object.fromEntries(
         [...extraSettings].map(([id, settings]) => [id, settings.values]),

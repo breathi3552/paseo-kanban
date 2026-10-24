@@ -306,24 +306,28 @@ test("读取失败与空列表有明确状态，重试恢复，迟到的项目�
   assert.match(texts(modal(empty.renderer)), /No open issues/);
 });
 
-test("卡片外链与详情完整网址打开同一网页，详情锁定项目且内容仍可编辑", async (t) => {
+test("右键菜单外链与详情完整网址打开同一网页，详情锁定项目且内容仍可编辑", async (t) => {
   const { host, renderer } = await setup(t, { rpc: async () => page(1, 1, 1) });
   await click(modal(renderer), "Select Issue #1");
   await press(modal(renderer), "Import");
+  const openMenu = async () => {
+    const card = renderer.root.findByProps({
+      accessibilityLabel: "Task actions: Issue 1",
+    });
+    await act(async () =>
+      card.props.onContextMenu({
+        nativeEvent: { clientX: 20, clientY: 30, button: 2 },
+        preventDefault() {},
+        stopPropagation() {},
+      }),
+    );
+  };
+  await openMenu();
   await click(renderer.root, "Open Issue in browser");
   assert.deepEqual(host.externalUrls, [issue(1).url]);
   assert.equal(renderer.root.findAllByType("Modal").length, 0);
-  const title = renderer.root
-    .findAllByType("Text")
-    .find((n) => text(n) === "Issue 1");
-  let cardBody = title.parent;
-  while (cardBody && !cardBody.props.onPanResponderGrant)
-    cardBody = cardBody.parent;
-  assert.ok(cardBody, "card has a reachable tap gesture");
-  await act(async () =>
-    cardBody.props.onPanResponderGrant({ nativeEvent: {} }, { x0: 0, y0: 0 }),
-  );
-  await act(async () => cardBody.props.onPanResponderRelease());
+  await openMenu();
+  await press(renderer.root, "Edit details");
   const project = modal(renderer).findByType("Select");
   assert.equal(project.props.disabled, true);
   assert.equal(project.props.value, "project-a");

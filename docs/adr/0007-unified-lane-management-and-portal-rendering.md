@@ -23,6 +23,7 @@
 - 桌面端（Web 平台且非 compact 视图）使用独立打包的 React DOM 19.1.0 `createPortal` 产物（`client/web.ts`），将弹窗直接挂载至 `document.body`，突破宿主 520px 宽度限制，提供最大 1120px 视口；窄屏与移动端回退至宿主原生 Modal。
 - Portal 容器层级固定为 `z=0`，位于普通应用内容之上，但在宿主 overlay plane（`z=1`）之下。该设计保证宿主全局 Toast 和命令面板正常覆盖在管理弹窗之上，不遮挡操作反馈。
 - 实现完整的桌面键盘与焦点生命周期：Esc 键关闭、Tab 键焦点圈定（Focus Trap）、以及弹窗卸载后的焦点恢复。
+- [#25](https://github.com/breathi3552/paseo-kanban/issues/25) 的任务右键菜单沿用相同层级与公开 Portal 渲染，但使用独立非模态生命周期：不铺阻挡层、不圈定焦点；Tab 从来源卡片继续导航，外部点击与看板滚动关闭菜单，菜单内部滚动保留。
 
 ### 3. 泳道重排的“本地预览”状态机
 

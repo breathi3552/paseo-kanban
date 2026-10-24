@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,12 +8,21 @@ import {
   ActivityIndicator,
   type LayoutChangeEvent,
 } from "react-native";
-import { useSettings } from "@getpaseo/plugin/client";
-import { useToast } from "@getpaseo/plugin/client/react-native";
+import { useSettings, openExternalUrl } from "@getpaseo/plugin/client";
+import { useToast, copyText } from "@getpaseo/plugin/client/react-native";
+import { agentDispatchSettings } from "../shared/agent-dispatch";
+import { taskPrompt } from "./agent-dispatch";
+import {
+  TaskContextMenu,
+  type TaskMenuTarget,
+  type TaskMenuAction,
+} from "./task-context-menu";
+import { TaskDeleteDialog } from "./task-delete-dialog";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import {
   kanbanSettings,
   getLaneTasks,
+  isTaskMatchingFilter,
   updateTask,
   type KanbanBoard,
   type KanbanTask,
@@ -34,6 +43,7 @@ import {
   type TaskEditSession,
 } from "./kanban-session";
 import { useI18n, I18nLanguageContext } from "./i18n";
+import { useProjectFilterLayout } from "./web";
 
 interface KanbanBoardProps extends PluginSurfaceProps {
   initialProjectId?: string | null;
@@ -50,6 +60,7 @@ export function KanbanBoardView(props: KanbanBoardProps) {
 
 function KanbanBoardContent(props: KanbanBoardProps) {
   const { theme } = props;
+  useProjectFilterLayout();
   const [panelWidth, setPanelWidth] = useState<number | null>(null);
   const compact =
     props.layout.compact || (panelWidth !== null && panelWidth < 600);
@@ -63,7 +74,15 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   };
   const { t, language } = useI18n();
   const settings = useSettings(kanbanSettings);
+  const promptSettings = useSettings(agentDispatchSettings);
+  const [menuTarget, setMenuTarget] = useState<TaskMenuTarget | null>(null);
+  const [deleteSession, setDeleteSession] = useState<TaskEditSession | null>(
+    null,
+  );
+  const [deleteRefreshId, setDeleteRefreshId] = useState<string | null>(null);
   const toast = useToast();
+  const feedbackText = useRef(t);
+  feedbackText.current = t;
   const {
     projects,
     resolveProjectName,
@@ -113,11 +132,17 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   if (isReady)
     lastReady.current = { board: settings.values, revision: settings.revision };
   const retained =
-    importOpen || laneManagement || dispatchDraft ? lastReady.current : null;
+    importOpen || laneManagement || dispatchDraft || deleteSession
+      ? lastReady.current
+      : null;
   const board = isReady ? settings.values : (retained?.board ?? null);
   const revision = isReady ? settings.revision : (retained?.revision ?? "");
   const preserveImport =
-    (importOpen || laneManagement || dispatchDraft !== null) && board !== null;
+    (importOpen ||
+      laneManagement ||
+      dispatchDraft !== null ||
+      deleteSession !== null) &&
+    board !== null;
 
   const handleReorderTask = async (
     taskId: string,
@@ -125,21 +150,28 @@ function KanbanBoardContent(props: KanbanBoardProps) {
     targetIndex: number,
   ) => {
     if (!board || completionPendingRef.current) return;
-    const result = await executeTaskReorder({
-      baseBoard: board,
-      baseRevision: revision,
-      taskId,
-      targetLaneId,
-      targetIndex,
-      filter: selectedProjectId,
-      save: (b, r) => settings.save(b, r),
-      language,
-    });
-    if (!result.success) {
-      setTaskOperationError(result.error);
-      toast.error(t("notification.taskReorderFailed"));
-    } else {
-      setTaskOperationError(null);
+    completionPendingRef.current = true;
+    setCompletionPending(true);
+    try {
+      const result = await executeTaskReorder({
+        baseBoard: board,
+        baseRevision: revision,
+        taskId,
+        targetLaneId,
+        targetIndex,
+        filter: selectedProjectId,
+        save: (b, r) => settings.save(b, r),
+        language,
+      });
+      if (!result.success) {
+        setTaskOperationError(result.error);
+        toast.error(feedbackText.current("notification.taskReorderFailed"));
+      } else {
+        setTaskOperationError(null);
+      }
+    } finally {
+      completionPendingRef.current = false;
+      setCompletionPending(false);
     }
   };
 
@@ -172,7 +204,8 @@ function KanbanBoardContent(props: KanbanBoardProps) {
         language,
       });
       setTaskOperationError(result.success ? null : result.error);
-      if (!result.success) toast.error(t("notification.taskCompletionFailed"));
+      if (!result.success)
+        toast.error(feedbackText.current("notification.taskCompletionFailed"));
     } finally {
       completionPendingRef.current = false;
       setCompletionPending(false);
@@ -214,6 +247,130 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   const openLaneManagement = () => {
     if (completionPendingRef.current || drag.isDragLocked() || !board) return;
     setLaneManagement(true);
+  };
+
+  const menuTask = menuTarget
+    ? board?.tasks.find(
+        (task) =>
+          task.id === menuTarget.taskId &&
+          isTaskMatchingFilter(task, selectedProjectId),
+      )
+    : null;
+  useEffect(() => {
+    if (
+      menuTarget &&
+      (!isReady ||
+        completionPending ||
+        drag.isDragLocked() ||
+        activeTaskSession ||
+        deleteSession ||
+        dispatchDraft ||
+        importOpen ||
+        laneManagement ||
+        !menuTask)
+    )
+      setMenuTarget(null);
+  }, [
+    menuTarget,
+    isReady,
+    completionPending,
+    drag,
+    menuTask,
+    activeTaskSession,
+    deleteSession,
+    dispatchDraft,
+    importOpen,
+    laneManagement,
+  ]);
+  useEffect(() => {
+    setMenuTarget(null);
+  }, [selectedProjectId]);
+  useEffect(() => {
+    if (!deleteRefreshId) return;
+    if (isReady && board) {
+      if (board.tasks.some((task) => task.id === deleteRefreshId)) {
+        setDeleteSession(
+          openTaskSession({
+            mode: "edit",
+            taskId: deleteRefreshId,
+            baseBoard: board,
+            baseRevision: revision,
+            save: (b, r) => settings.save(b, r),
+            language,
+          }),
+        );
+      } else setDeleteSession(null);
+      setDeleteRefreshId(null);
+    } else if (settings.status === "error" || settings.status === "invalid") {
+      toast.error(feedbackText.current("notification.taskDeleteFailed"));
+      setDeleteRefreshId(null);
+    }
+  }, [deleteRefreshId, isReady, board, revision, settings, language, toast, t]);
+
+  const openMenu = (taskId: string, point: { x: number; y: number }) => {
+    if (
+      !isReady ||
+      completionPendingRef.current ||
+      drag.isDragLocked() ||
+      activeTaskSession ||
+      deleteSession ||
+      dispatchDraft ||
+      importOpen ||
+      laneManagement
+    )
+      return;
+    setMenuTarget({ taskId, ...point });
+  };
+  const menuAction = async (taskId: string, action: TaskMenuAction) => {
+    if (
+      !board ||
+      !isReady ||
+      completionPendingRef.current ||
+      drag.isDragLocked()
+    )
+      return;
+    const task = board.tasks.find((candidate) => candidate.id === taskId);
+    if (!task) return;
+    if (action === "edit") openEditTask(task.id);
+    else if (action === "complete")
+      await handleSetCompleted(task.id, !task.completed);
+    else if (action === "delete")
+      setDeleteSession(
+        openTaskSession({
+          mode: "edit",
+          taskId,
+          baseBoard: board,
+          baseRevision: revision,
+          save: (b, r) => settings.save(b, r),
+          language,
+        }),
+      );
+    else if (action === "copy" && promptSettings.status === "ready") {
+      try {
+        await copyText(
+          taskPrompt(
+            task,
+            language,
+            promptSettings.values.prompt ?? t("dispatch.defaultPrompt"),
+          ),
+        );
+        toast.show(feedbackText.current("contextMenu.copied"), {
+          variant: "success",
+        });
+      } catch {
+        toast.error(feedbackText.current("contextMenu.copyFailed"));
+      }
+    } else if (
+      action === "external" &&
+      task.source === "github_issue" &&
+      task.externalUrl
+    ) {
+      try {
+        await openExternalUrl(task.externalUrl);
+      } catch {
+        toast.error(feedbackText.current("external.failed"));
+      }
+    }
   };
 
   const styles = useMemo(
@@ -466,8 +623,9 @@ function KanbanBoardContent(props: KanbanBoardProps) {
         </View>
 
         {/* Project Filter */}
-        <View style={{ maxWidth: 360 }}>
+        <View style={{ maxWidth: 520 }}>
           <SettingsSelect
+            testID="kanban-project-filter"
             label={t("kanban.filterLabel")}
             value={selectedProjectId}
             options={[
@@ -527,9 +685,10 @@ function KanbanBoardContent(props: KanbanBoardProps) {
           style={styles.lanesContainer}
           contentContainerStyle={styles.lanesContent}
           onLayout={(e) => drag.handleContainerLayout(e.nativeEvent.layout)}
-          onScroll={(e) =>
-            drag.handleContainerScroll(e.nativeEvent.contentOffset.x)
-          }
+          onScroll={(e) => {
+            setMenuTarget(null);
+            drag.handleContainerScroll(e.nativeEvent.contentOffset.x);
+          }}
           scrollEventThrottle={16}
         >
           {board.lanes.map((lane) => {
@@ -547,6 +706,8 @@ function KanbanBoardContent(props: KanbanBoardProps) {
                 onAddTask={(laneId) => openNewTask(laneId)}
                 onSelectTask={(task) => openEditTask(task.id)}
                 onSetCompleted={handleSetCompleted}
+                onContextMenu={openMenu}
+                onScrollCards={() => setMenuTarget(null)}
                 onSendToAgent={
                   props.navigation
                     ? (task) => {
@@ -566,6 +727,41 @@ function KanbanBoardContent(props: KanbanBoardProps) {
 
         <KanbanDragOverlay drag={drag} theme={theme} layout={layout} />
       </View>
+
+      {menuTarget && menuTask && (
+        <TaskContextMenu
+          key={menuTarget.taskId}
+          target={menuTarget}
+          task={menuTask}
+          lanes={board.lanes}
+          copyReady={promptSettings.status === "ready"}
+          theme={theme}
+          onDismiss={() => setMenuTarget(null)}
+          onAction={(action) => {
+            void menuAction(menuTask.id, action);
+          }}
+          onMove={(laneId) => {
+            if (!completionPendingRef.current && !drag.isDragLocked())
+              void handleReorderTask(
+                menuTask.id,
+                laneId,
+                getLaneTasks(board, laneId, selectedProjectId).length,
+              );
+          }}
+        />
+      )}
+      {deleteSession && (
+        <TaskDeleteDialog
+          session={deleteSession}
+          theme={theme}
+          onClose={() => setDeleteSession(null)}
+          onRefresh={async () => {
+            const id = deleteSession.initialValues.id;
+            await settings.reload();
+            if (id) setDeleteRefreshId(id);
+          }}
+        />
+      )}
 
       {/* Modals with Session Baseline Locking */}
       {dispatchDraft && props.navigation && (
