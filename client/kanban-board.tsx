@@ -25,7 +25,6 @@ import {
   KanbanBoardSchema,
   getLaneTasks,
   isTaskMatchingFilter,
-  updateTask,
   type KanbanBoard,
   type KanbanTask,
 } from "../shared/kanban";
@@ -814,17 +813,12 @@ function KanbanBoardContent(props: KanbanBoardProps) {
       {dispatchDraft && props.navigation && (
         <AgentDispatchModal
           task={dispatchDraft.task}
+          board={dispatchDraft.board}
+          revision={dispatchDraft.revision}
           projects={projects}
           theme={theme}
           navigation={props.navigation}
-          saveProject={(projectId) =>
-            settings.save(
-              updateTask(dispatchDraft.board, dispatchDraft.task.id, {
-                projectId,
-              }),
-              dispatchDraft.revision,
-            )
-          }
+          save={(next, expected) => settings.save(next, expected)}
           onClose={() => setDispatchDraft(null)}
         />
       )}
