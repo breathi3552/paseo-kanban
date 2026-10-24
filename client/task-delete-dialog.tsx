@@ -1,61 +1,104 @@
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useRef, useSyncExternalStore } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Modal, useToast } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import type { TaskEditSession } from "./kanban-session";
+import type {
+  TaskDeleteSession,
+  TaskDeleteSessionSnapshot,
+} from "./kanban-session";
 import { useI18n } from "./i18n";
+
+const emptySubscribe = () => () => {};
+const getNullSnapshot = () => null;
+
+export function useTaskDelete(
+  session: TaskDeleteSession | null,
+  options: {
+    onCancel(): void;
+    onDeleted(): void;
+  },
+): {
+  snapshot: TaskDeleteSessionSnapshot | null;
+  confirm(): Promise<void>;
+  refresh(): Promise<void>;
+  cancel(): void;
+} {
+  const { t } = useI18n();
+  const toast = useToast();
+  const feedbackText = useRef(t);
+  feedbackText.current = t;
+  const callbacks = useRef(options);
+  callbacks.current = options;
+
+  const snapshot = useSyncExternalStore(
+    session ? session.subscribe : emptySubscribe,
+    session ? session.getSnapshot : getNullSnapshot,
+    session ? session.getSnapshot : getNullSnapshot,
+  );
+
+  const confirm = async () => {
+    if (!session) return;
+    const result = await session.confirm();
+    if (result.success) {
+      toast.show(feedbackText.current("notification.taskDeleted"), {
+        variant: "success",
+      });
+      callbacks.current.onDeleted();
+    } else if (result.kind !== "busy") {
+      toast.error(feedbackText.current("notification.taskDeleteFailed"));
+    }
+  };
+
+  const refresh = async () => {
+    if (!session) return;
+    const result = await session.refresh();
+    if (!result.success) {
+      if (result.kind !== "busy") {
+        toast.error(feedbackText.current("notification.taskDeleteFailed"));
+      }
+    } else if (result.targetDeleted) {
+      callbacks.current.onCancel();
+    }
+  };
+
+  const cancel = () => {
+    if (!session) return;
+    if (session.cancel()) {
+      callbacks.current.onCancel();
+    }
+  };
+
+  return {
+    snapshot,
+    confirm,
+    refresh,
+    cancel,
+  };
+}
 
 export function TaskDeleteDialog({
   session,
   theme,
   onClose,
-  onRefresh,
 }: {
-  session: TaskEditSession;
+  session: TaskDeleteSession;
   theme: PluginSurfaceProps["theme"];
   onClose(): void;
-  onRefresh(): Promise<void>;
 }) {
   const { t } = useI18n();
-  const toast = useToast();
-  const feedbackText = useRef(t);
-  feedbackText.current = t;
-  const snapshot = useSyncExternalStore(
-    session.subscribe,
-    session.getSnapshot,
-    session.getSnapshot,
-  );
+  const { snapshot, confirm, refresh, cancel } = useTaskDelete(session, {
+    onCancel: onClose,
+    onDeleted: onClose,
+  });
+  if (!snapshot) return null;
   const colors = theme.colors;
-  const [refreshing, setRefreshing] = useState(false);
-  const busy = snapshot.isSaving || refreshing;
-  const refresh = async () => {
-    if (busy) return;
-    setRefreshing(true);
-    try {
-      await onRefresh();
-    } catch {
-      toast.error(feedbackText.current("notification.taskDeleteFailed"));
-    } finally {
-      setRefreshing(false);
-    }
-  };
-  const remove = async () => {
-    if (busy) return;
-    const result = await session.deleteTask();
-    if (result.success) {
-      toast.show(feedbackText.current("notification.taskDeleted"), {
-        variant: "success",
-      });
-      onClose();
-    } else if (result.kind !== "busy")
-      toast.error(feedbackText.current("notification.taskDeleteFailed"));
-  };
+  const busy = snapshot.isBusy;
   return (
     <Modal
       open
       title={t("contextMenu.delete")}
       onOpenChange={(open) => {
-        if (!open && !busy) onClose();
+        if (!open) cancel();
       }}
     >
       <Modal.Content
@@ -83,7 +126,7 @@ export function TaskDeleteDialog({
         <View
           style={{ flexDirection: "row", justifyContent: "flex-end", gap: 12 }}
         >
-          <Pressable disabled={busy} onPress={onClose} style={{ padding: 8 }}>
+          <Pressable disabled={busy} onPress={cancel} style={{ padding: 8 }}>
             <Text style={{ color: colors.foreground }}>
               {t("taskModal.cancel")}
             </Text>
@@ -91,7 +134,7 @@ export function TaskDeleteDialog({
           <Pressable
             disabled={busy}
             onPress={() => {
-              void remove();
+              void confirm();
             }}
             style={{
               padding: 8,
