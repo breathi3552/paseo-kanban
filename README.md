@@ -23,10 +23,10 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 - **Rich Task Cards**:
   - Task title and multi-line description editing (with resizable description area).
   - Subtask checklists with live completion progress tracking.
-  - Link tasks to projects created in Paseo.
+  - Link tasks to projects created in Paseo using native dropdown selection.
 - **Task Completion & Restoration**: Check a card or drag it into the completion lane to finish; uncheck or drag out to restore cards to their original ordinary swimlane.
 - **Workspace Tabs and Splits**: Open the board beside an agent or terminal with Paseo's native split controls, initially filtered to the workspace's project, or use the sidebar entry.
-- **Independent Project Filtering**: Filter cards by specific Paseo projects or view unassigned tasks without isolating the shared underlying board data.
+- **Independent Project Filtering**: Filter cards by specific Paseo projects using native select dropdowns or view unassigned tasks without isolating the shared underlying board data.
 - **Host Storage & Concurrency Protection**: Board data is safely stored in host-scoped plugin settings with optimistic revision checks (CAS) to prevent silent overwrites and preserve form drafts.
 
 ---

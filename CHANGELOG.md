@@ -8,6 +8,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), adapted 
 
 ### Features
 
+- **Task context menu**: Right-click a task card on desktop to edit details, toggle completion status, move across swimlanes with filter-aware positioning, copy the full formatted task prompt, open the source GitHub Issue in a browser, or delete with confirmation.
+- **Full-card drag and gesture isolation**: Remove redundant drag handles and card-level issue links to maximize title display space; drag cards from any non-control area (>=5px threshold); desktop clicks no longer open the modal; complete checkbox and Send to Agent buttons are strictly isolated from card dragging and context menus.
+
+### Fixes & Improvements
+
+- **Modal and filter layout refinements**: Pin actions and delete controls to dialog footers in task and GitHub import modals; position the lane creation draft at the start of the management scrollview; optimize desktop board project filter dropdown alignment.
+
+---
+
+### 新增特性
+
+- **任务卡片右键菜单**：桌面端右键卡片可编辑详情、切换完成状态、移动至指定泳道（遵循项目筛选与完成归属）、复制格式化的完整任务提示词、在浏览器中打开来源 GitHub Issue，或进行防误删二次确认。
+- **全卡拖拽与手势隔离**：移除卡片标题旁拖拽把手与外链图标以增大标题空间；整张卡片非控件区域均支持 ≥5px 位移抓起拖拽；桌面左键单击不再打开详情弹窗；完成复选框与发送到 Agent 图标按钮严格隔离手势与右键菜单。
+
+### 修复与优化
+
+- **弹窗与筛选排版优化**：任务编辑与 GitHub 导入弹窗将提交与删除等操作栏固定于底部；泳道管理新增草稿块前置显示；优化桌面端看板项目筛选下拉框对齐与样式。
+
+## [0.3.0] - 2026-10-24
+
+### Features
+
 - **Send to Agent**: Send a task card's title, markdown description, subtask checklist, and source link directly to a new Agent session. Choose an existing workspace, create a new regular workspace, or create a new worktree with branch name validation.
 - **Persistent dispatch prompt**: Customize and persist the dispatch prompt across tasks and boards without polluting individual task content; includes sending status feedback, duplicate submission guards, and staged error reporting.
 - **Host select for project filtering and assignment**: Replace horizontal chips with Paseo's native `SettingsSelect` for board project filtering and task modal project assignment; options adapt to host styling and themes, sort alphabetically by localized display name, and fallback safely for missing project IDs.
