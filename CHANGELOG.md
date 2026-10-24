@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), adapted 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-24
+
 ### Features
 
 - **Send to Agent**: Send a task card's title, markdown description, subtask checklist, and source link directly to a new Agent session. Choose an existing workspace, create a new regular workspace, or create a new worktree with branch name validation.
