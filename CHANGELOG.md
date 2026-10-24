@@ -4,7 +4,7 @@ All notable changes to Paseo Kanban are documented here in bilingual format (Eng
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), adapted for strictly mirrored bilingual release notes.
 
-## [Unreleased]
+## [0.3.1] - 2026-10-24
 
 ### Features
 
@@ -13,7 +13,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), adapted 
 
 ### Fixes & Improvements
 
-- **Modal and filter layout refinements**: Pin actions and delete controls to dialog footers in task and GitHub import modals; position the lane creation draft at the start of the management scrollview; optimize desktop board project filter dropdown alignment.
+- **Unified operation notifications**: Deliver consistent Toast feedback for both successful and failed operations across task completion, reopening, swimlane movement, and Agent dispatch.
+- **Modal and filter layout refinements**: Unify desktop portal sizing and focus management for task editing, GitHub issue import, and swimlane management with narrow-screen host modal fallback; pin dialog action footers, position the lane creation draft at the start of the management scrollview, and refine project filter dropdown alignment.
+
+### Compatibility & Migration
+
+- Requires Paseo `>= 0.11.4`.
+- No board data migration or dependency changes required.
 
 ---
 
@@ -24,7 +30,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), adapted 
 
 ### 修复与优化
 
-- **弹窗与筛选排版优化**：任务编辑与 GitHub 导入弹窗将提交与删除等操作栏固定于底部；泳道管理新增草稿块前置显示；优化桌面端看板项目筛选下拉框对齐与样式。
+- **统一操作通知反馈**：任务完成、取消完成、跨泳道或泳道内移动以及发送到 Agent 均提供一致的成功与失败 Toast 提示。
+- **弹窗尺寸与筛选排版优化**：统一任务编辑、GitHub 导入与泳道管理桌面端 Portal 弹窗尺寸与焦点控制，窄屏自动回退宿主原生弹窗；将操作与删除栏固定于弹窗底部，泳道管理新增草稿块前置显示，并优化桌面端项目筛选下拉框对齐。
+
+### 兼容性与迁移
+
+- 依赖 Paseo `>= 0.11.4`。
+- 无需看板数据迁移或依赖项变更。
 
 ## [0.3.0] - 2026-10-24
 
