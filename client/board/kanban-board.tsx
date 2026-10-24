@@ -37,13 +37,7 @@ import {
   type TaskDeleteSession,
   type TaskEditSession,
 } from "../session/kanban-session";
-import {
-  useI18n,
-  I18nLanguageContext,
-  detectPaseoLanguage,
-  t as translate,
-  type TranslationKey,
-} from "../platform/i18n";
+import { useI18n, I18nLanguageContext } from "../platform/i18n";
 import { useProjectFilterLayout } from "../platform/web";
 import { TaskModal } from "../modals/task-modal";
 import { TaskDeleteDialog } from "../modals/task-delete-dialog";
@@ -99,12 +93,6 @@ function KanbanBoardContent(props: KanbanBoardProps) {
     null,
   );
   const toast = useToast();
-  const feedbackText = useRef(t);
-  feedbackText.current = t;
-  const feedbackLanguage = useRef(language);
-  feedbackLanguage.current = language;
-  const laneFeedback = useRef({ props, toast });
-  laneFeedback.current = { props, toast };
   const reloadWaiters = useRef<Array<() => void>>([]);
   useEffect(() => {
     for (const resolve of reloadWaiters.current.splice(0)) {
@@ -211,9 +199,12 @@ function KanbanBoardContent(props: KanbanBoardProps) {
       });
       if (!result.success) {
         setTaskOperationError(result.error);
-        toast.error(feedbackText.current("notification.taskReorderFailed"));
+        toast.error(t("notification.taskReorderFailed"));
       } else {
         setTaskOperationError(null);
+        if (!result.unchanged) {
+          toast.show(t("notification.taskMoved"), { variant: "success" });
+        }
       }
     } finally {
       completionPendingRef.current = false;
@@ -250,8 +241,18 @@ function KanbanBoardContent(props: KanbanBoardProps) {
         language,
       });
       setTaskOperationError(result.success ? null : result.error);
-      if (!result.success)
-        toast.error(feedbackText.current("notification.taskCompletionFailed"));
+      if (!result.success) {
+        toast.error(t("notification.taskCompletionFailed"));
+      } else if (!result.unchanged) {
+        toast.show(
+          t(
+            completed
+              ? "notification.taskCompleted"
+              : "notification.taskReopened",
+          ),
+          { variant: "success" },
+        );
+      }
     } finally {
       completionPendingRef.current = false;
       setCompletionPending(false);
@@ -292,8 +293,6 @@ function KanbanBoardContent(props: KanbanBoardProps) {
 
   const openLaneManagement = () => {
     if (completionPendingRef.current || drag.isDragLocked() || !board) return;
-    const laneText = (key: TranslationKey) =>
-      translate(key, detectPaseoLanguage(laneFeedback.current.props));
     setLaneManagement(
       openLaneEditSession({
         initial: { board, revision },
@@ -304,12 +303,9 @@ function KanbanBoardContent(props: KanbanBoardProps) {
             : null;
         },
         load: async () => {
-          // reload() returns void: read through the public RPC to obtain a usable
-          // snapshot even when this view has unmounted. Reload also refreshes the
-          // mounted board, but no continuation depends on React rendering it.
           const result = await readLaneSettings({});
           if (result.status !== "ready")
-            throw new Error(laneText("notification.laneSaveFailed"));
+            throw new Error(t("notification.laneSaveFailed"));
           const snapshot = {
             board: KanbanBoardSchema.parse(result.values),
             revision: result.revision,
@@ -318,11 +314,10 @@ function KanbanBoardContent(props: KanbanBoardProps) {
           return snapshot;
         },
         save: (next, expected) => settings.save(next, expected),
-        translate: laneText,
+        translate: t,
         notify: (key, success) => {
-          const latestToast = laneFeedback.current.toast;
-          if (success) latestToast.show(laneText(key), { variant: "success" });
-          else latestToast.error(laneText(key));
+          if (success) toast.show(t(key), { variant: "success" });
+          else toast.error(t(key));
         },
       }),
     );
@@ -400,7 +395,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
           baseRevision: revision,
           save: (b, r) => settings.save(b, r),
           reload: reloadBoard,
-          language: () => feedbackLanguage.current,
+          language,
         }),
       );
     else if (action === "copy" && promptSettings.status === "ready") {
@@ -412,11 +407,11 @@ function KanbanBoardContent(props: KanbanBoardProps) {
             promptSettings.values.prompt ?? t("dispatch.defaultPrompt"),
           ),
         );
-        toast.show(feedbackText.current("contextMenu.copied"), {
+        toast.show(t("contextMenu.copied"), {
           variant: "success",
         });
       } catch {
-        toast.error(feedbackText.current("contextMenu.copyFailed"));
+        toast.error(t("contextMenu.copyFailed"));
       }
     } else if (
       action === "external" &&
@@ -426,7 +421,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
       try {
         await openExternalUrl(task.externalUrl);
       } catch {
-        toast.error(feedbackText.current("external.failed"));
+        toast.error(t("external.failed"));
       }
     }
   };

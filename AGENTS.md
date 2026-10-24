@@ -16,7 +16,7 @@
 
 ### Coding standards
 
-新增或修改操作反馈时，阅读并遵循 `docs/coding-standards.md`。
+编写或修改代码与测试时，阅读并遵循 `docs/coding-standards.md`。
 
 ### Development & verification
 

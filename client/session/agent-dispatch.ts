@@ -46,10 +46,10 @@ export interface AgentDispatchErrors {
 }
 
 export type AgentDispatchResult =
-  | { status: "blocked"; promptSaved: false }
-  | { status: "invalid"; errors: AgentDispatchErrors; promptSaved: false }
-  | { status: "failed"; promptSaved: boolean }
-  | { status: "sent"; agentId: string; promptSaved: boolean };
+  | { status: "blocked" }
+  | { status: "invalid"; errors: AgentDispatchErrors }
+  | { status: "failed" }
+  | { status: "sent"; agentId: string };
 
 export async function loadDispatchOptions(paseo: Paseo) {
   async function listWorkspaces() {
@@ -133,7 +133,6 @@ export function useAgentDispatch({
   projects,
   navigation,
   language,
-  defaultPrompt,
   save,
   onLoadError,
 }: {
@@ -143,7 +142,6 @@ export function useAgentDispatch({
   projects: ProjectItem[];
   navigation: NonNullable<PluginSurfaceProps["navigation"]>;
   language: SupportedLanguage;
-  defaultPrompt: string;
   save: SaveFn;
   onLoadError: () => void;
 }) {
@@ -187,7 +185,7 @@ export function useAgentDispatch({
     draft: AgentDispatchDraft,
   ): Promise<AgentDispatchResult> {
     if (sendingRef.current || disabled || promptSettings.status !== "ready") {
-      return { status: "blocked", promptSaved: false };
+      return { status: "blocked" };
     }
     const projectId =
       task.source === "github_issue" ? (task.projectId ?? "") : draft.projectId;
@@ -213,11 +211,10 @@ export function useAgentDispatch({
       !profile ||
       !project?.projectRootPath
     ) {
-      return { status: "invalid", errors: nextErrors, promptSaved: false };
+      return { status: "invalid", errors: nextErrors };
     }
     sendingRef.current = true;
     setSending(true);
-    let promptSaved = false;
     try {
       if (draft.workspaceId === "new-worktree") {
         const result = await validateBranch({ branchName: draft.branchName });
@@ -227,7 +224,6 @@ export function useAgentDispatch({
           return {
             status: "invalid",
             errors: branchErrors,
-            promptSaved: false,
           };
         }
       }
@@ -243,7 +239,6 @@ export function useAgentDispatch({
           ))
         )
           throw new Error("Prompt save failed");
-        promptSaved = draft.prompt !== (currentStoredPrompt ?? defaultPrompt);
       }
       if (
         task.source !== "github_issue" &&
@@ -272,9 +267,9 @@ export function useAgentDispatch({
         prompt: draft.prompt,
       });
       navigation.openAgent({ agentId: agent.id });
-      return { status: "sent", agentId: agent.id, promptSaved };
+      return { status: "sent", agentId: agent.id };
     } catch {
-      return { status: "failed", promptSaved };
+      return { status: "failed" };
     } finally {
       sendingRef.current = false;
       setSending(false);

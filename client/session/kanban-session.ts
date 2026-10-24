@@ -193,13 +193,14 @@ export interface OpenTaskDeleteSessionOptions {
   baseRevision: string;
   save: SaveFn;
   reload?: ReloadBoardFn;
-  language?: SessionLanguage | (() => SessionLanguage);
+  language?: SessionLanguage;
 }
 
 export function openTaskDeleteSession(
   options: OpenTaskDeleteSessionOptions,
 ): TaskDeleteSession {
   const { taskId, save: saveFn, reload: reloadFn, language = "zh" } = options;
+  const msgs = sessionMessages[language] ?? sessionMessages.zh;
 
   let currentBoard = options.baseBoard;
   let currentRevision = options.baseRevision;
@@ -211,11 +212,6 @@ export function openTaskDeleteSession(
 
   const listeners = new Set<() => void>();
   let cachedSnapshot: TaskDeleteSessionSnapshot | null = null;
-
-  function currentMsgs() {
-    const lang = typeof language === "function" ? language() : language;
-    return sessionMessages[lang] ?? sessionMessages.zh;
-  }
 
   function buildSnapshot(): TaskDeleteSessionSnapshot {
     if (!cachedSnapshot) {
@@ -253,7 +249,6 @@ export function openTaskDeleteSession(
   }
 
   async function confirm(): Promise<TaskDeleteResult> {
-    const msgs = currentMsgs();
     if (isSaving || isRefreshing) {
       return {
         success: false,
@@ -280,7 +275,7 @@ export function openTaskDeleteSession(
       const saved = await saveFn(nextBoard, currentRevision);
       isSaving = false;
       if (!saved) {
-        error = currentMsgs().taskDeleteFailed;
+        error = msgs.taskDeleteFailed;
         notify();
         return { success: false, kind: "operation", error };
       }
@@ -296,7 +291,6 @@ export function openTaskDeleteSession(
   }
 
   async function refresh(): Promise<TaskDeleteResult> {
-    const msgs = currentMsgs();
     if (isSaving || isRefreshing) {
       return {
         success: false,
@@ -317,7 +311,7 @@ export function openTaskDeleteSession(
       const reloaded = await reloadFn();
       isRefreshing = false;
       if (reloaded.status !== "ready") {
-        error = error ?? currentMsgs().taskDeleteFailed;
+        error = error ?? msgs.taskDeleteFailed;
         notify();
         return { success: false, kind: "operation", error };
       }
@@ -337,7 +331,7 @@ export function openTaskDeleteSession(
       return { success: true, targetDeleted: false };
     } catch {
       isRefreshing = false;
-      error = error ?? currentMsgs().taskDeleteFailed;
+      error = error ?? msgs.taskDeleteFailed;
       notify();
       return { success: false, kind: "operation", error };
     }

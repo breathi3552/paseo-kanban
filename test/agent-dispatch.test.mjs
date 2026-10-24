@@ -312,7 +312,7 @@ test("手动任务切换项目仅在发送时持久化，GitHub 导入任务锁�
   );
 });
 
-test("prompt 自定义与清空跨会话持久保留，发送期间防重复提交并支持动态语言通知", async (t) => {
+test("prompt 自定义与清空跨会话持久保留，发送期间防重复提交并防关闭", async (t) => {
   const gate = Promise.withResolvers();
   const first = fixture({ agentGate: gate.promise });
   const renderer = await mount(t, first.host);
@@ -334,10 +334,6 @@ test("prompt 自定义与清空跨会话持久保留，发送期间防重复提�
   });
   assert.equal(send.props.disabled, true);
   await act(async () => {
-    language = "zh";
-    windowEvents.dispatchEvent(new Event("focus"));
-  });
-  await act(async () => {
     gate.resolve();
     await pending;
   });
@@ -345,7 +341,7 @@ test("prompt 自定义与清空跨会话持久保留，发送期间防重复提�
   assert.ok(
     first.createdAgents[0].prompt.startsWith(`${instruction}\n\n# 修复 登录页`),
   );
-  assert.deepEqual(first.host.notifications, ["prompt 已保存"]);
+  assert.deepEqual(first.host.notifications, ["Sent to Agent"]);
 
   // Blank prompt persists and omits the opening instruction
   language = "en";

@@ -207,6 +207,11 @@ test("菜单跨泳道移动在项目筛选下保留隐藏任务次序，完成�
   const restored = host.board.tasks.find((t) => t.id === "a");
   assert.equal(restored.completed, false);
   assert.equal(restored.laneId, "todo");
+  assert.deepEqual(host.notifications, [
+    "Task moved",
+    "Task completed",
+    "Task reopened",
+  ]);
 });
 
 test("删除确认：拦截并发修改并支持刷新后重试，在详情窗内取消或刷新删除确认不丢失未保存草稿", async (t) => {

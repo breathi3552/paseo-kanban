@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -43,10 +43,6 @@ export function AgentDispatchModal({
 }: Props) {
   const toast = useToast();
   const { t, language } = useI18n();
-  const latestT = useRef(t);
-  latestT.current = t;
-  const reportFailure = useRef(() => toast.error(t("dispatch.failed")));
-  reportFailure.current = () => toast.error(t("dispatch.failed"));
   const dispatch = useAgentDispatch({
     task,
     board,
@@ -54,9 +50,8 @@ export function AgentDispatchModal({
     projects,
     navigation,
     language,
-    defaultPrompt: t("dispatch.defaultPrompt"),
     save,
-    onLoadError: () => reportFailure.current(),
+    onLoadError: () => toast.error(t("dispatch.failed")),
   });
   const [promptDraft, setPromptDraft] = useState<string | null>(null);
   const prompt =
@@ -82,15 +77,13 @@ export function AgentDispatchModal({
       branchName,
       profileId,
     });
-    if (result.promptSaved) {
-      toast.show(latestT.current("dispatch.promptSaved"), {
+    if (result.status === "sent") {
+      toast.show(t("dispatch.sent"), {
         variant: "success",
       });
-    }
-    if (result.status === "sent") {
       onClose();
     } else if (result.status === "failed") {
-      reportFailure.current();
+      toast.error(t("dispatch.failed"));
     }
   }
   return (

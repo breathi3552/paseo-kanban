@@ -25,8 +25,6 @@ export function useTaskDelete(
 } {
   const { t } = useI18n();
   const toast = useToast();
-  const feedbackText = useRef(t);
-  feedbackText.current = t;
   const callbacks = useRef(options);
   callbacks.current = options;
 
@@ -40,12 +38,12 @@ export function useTaskDelete(
     if (!session) return;
     const result = await session.confirm();
     if (result.success) {
-      toast.show(feedbackText.current("notification.taskDeleted"), {
+      toast.show(t("notification.taskDeleted"), {
         variant: "success",
       });
       callbacks.current.onDeleted();
     } else if (result.kind !== "busy") {
-      toast.error(feedbackText.current("notification.taskDeleteFailed"));
+      toast.error(t("notification.taskDeleteFailed"));
     }
   };
 
@@ -54,7 +52,7 @@ export function useTaskDelete(
     const result = await session.refresh();
     if (!result.success) {
       if (result.kind !== "busy") {
-        toast.error(feedbackText.current("notification.taskDeleteFailed"));
+        toast.error(t("notification.taskDeleteFailed"));
       }
     } else if (result.targetDeleted) {
       callbacks.current.onCancel();

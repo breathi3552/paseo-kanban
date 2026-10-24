@@ -55,10 +55,6 @@ export function TaskModal({
   layout,
 }: TaskModalProps) {
   const { t, language } = useI18n();
-  const feedbackText = useRef(t);
-  feedbackText.current = t;
-  const feedbackLanguage = useRef(language);
-  feedbackLanguage.current = language;
   const snapshot = useSyncExternalStore(
     session.subscribe,
     session.getSnapshot,
@@ -256,7 +252,7 @@ export function TaskModal({
     if (result.success) {
       if (!result.unchanged) {
         toast.show(
-          feedbackText.current(
+          t(
             session.mode === "create"
               ? "notification.taskCreated"
               : "notification.taskUpdated",
@@ -266,7 +262,7 @@ export function TaskModal({
       }
       onClose();
     } else if (result.kind === "operation") {
-      toast.error(feedbackText.current("notification.taskSaveFailed"));
+      toast.error(t("notification.taskSaveFailed"));
     }
   };
 
@@ -279,7 +275,7 @@ export function TaskModal({
         baseRevision: session.baseRevision,
         save,
         reload,
-        language: () => feedbackLanguage.current,
+        language,
       }),
     );
   };
