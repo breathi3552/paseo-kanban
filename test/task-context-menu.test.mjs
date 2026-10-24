@@ -252,47 +252,180 @@ test("menu complete and reopen share checkbox restoration including a deleted or
   assert.deepEqual(host.notifications, []);
 });
 
+async function openDeleteConfirm(renderer, entry, draftTitle) {
+  await open(renderer);
+  if (entry === "menu") {
+    await press(renderer.root, "Delete task");
+    assert.equal(
+      renderer.root.findAllByProps({ accessibilityRole: "menu" }).length,
+      0,
+    );
+    return;
+  }
+  await press(renderer.root, "Edit details");
+  if (draftTitle) {
+    const modal = renderer.root.findByType("Modal");
+    await act(async () =>
+      modal.findByProps({ value: "Task A" }).props.onChangeText(draftTitle),
+    );
+  }
+  await press(renderer.root, "Delete Task");
+}
+
 test("deletion requires confirmation, cancellation is inert, and successful deletion notifies once", async (t) => {
-  const { host, renderer } = await setup(t);
-  const initial = structuredClone(host.board);
-  await open(renderer);
-  await press(renderer.root, "Delete task");
-  assert.match(texts(renderer), /Task A/);
-  assert.equal(
-    renderer.root.findAllByProps({ accessibilityRole: "menu" }).length,
-    0,
-  );
-  await press(renderer.root, "Cancel");
-  assert.deepEqual(host.board, initial);
-  await open(renderer);
-  await press(renderer.root, "Delete task");
-  await press(renderer.root, "Confirm Delete");
-  assert.deepEqual(
-    host.board.tasks.map((t) => t.id),
-    ["b"],
-  );
-  assert.deepEqual(host.notifications, ["Task deleted"]);
+  for (const entry of ["menu", "details"]) {
+    const { host, renderer } = await setup(t);
+    const initial = structuredClone(host.board);
+    await openDeleteConfirm(renderer, entry, "Unsaved draft title");
+    assert.match(texts(renderer), /Delete task “Task A”\?/, entry);
+    await press(renderer.root, "Cancel");
+    assert.deepEqual(host.board, initial, entry);
+    assert.deepEqual(host.notifications, [], entry);
+    if (entry === "details") {
+      assert.ok(
+        renderer.root.findByProps({ value: "Unsaved draft title" }),
+        "cancelling delete confirmation preserves unsaved task draft",
+      );
+      await press(renderer.root, "Delete Task");
+    } else {
+      await openDeleteConfirm(renderer, entry);
+    }
+    const gate = Promise.withResolvers();
+    host.holdSave(gate.promise);
+    await press(renderer.root, "Confirm Delete");
+    await press(renderer.root, "Confirm Delete");
+    await press(renderer.root, "Cancel");
+    assert.equal(host.notifications.length, 0, entry);
+    assert.ok(renderer.root.findAllByType("Modal").length > 0, entry);
+    await act(async () => gate.resolve());
+    assert.deepEqual(
+      host.board.tasks.map((item) => item.id),
+      ["b"],
+      entry,
+    );
+    assert.deepEqual(host.externalUrls, [], entry);
+    assert.deepEqual(host.notifications, ["Task deleted"], entry);
+  }
 });
 
 test("deletion confirmation keeps its revision baseline, rejects concurrent edits, and can refresh then retry", async (t) => {
-  const { host, renderer } = await setup(t);
-  await open(renderer);
-  await press(renderer.root, "Delete task");
-  const latest = board({
-    tasks: [{ ...task, description: "Changed elsewhere" }],
-  });
-  await act(async () => host.replaceBoard(latest));
-  await press(renderer.root, "Confirm Delete");
-  assert.deepEqual(host.board, latest);
-  assert.match(texts(renderer), /fail|conflict/i);
-  assert.equal(host.notifications.length, 1);
-  await press(renderer.root, "Refresh latest data");
-  await press(renderer.root, "Confirm Delete");
-  assert.equal(host.board.tasks.length, 0);
-  assert.equal(
-    host.notifications.filter((n) => n === "Task deleted").length,
-    1,
-  );
+  for (const entry of ["menu", "details"]) {
+    const { host, renderer } = await setup(t);
+    if (entry === "details") {
+      await open(renderer);
+      await press(renderer.root, "Edit details");
+      const modal = renderer.root.findByType("Modal");
+      await act(async () =>
+        modal
+          .findByProps({ value: "Task A" })
+          .props.onChangeText("Unsaved draft title"),
+      );
+      await act(async () =>
+        host.replaceBoard(
+          board({
+            tasks: [
+              { ...task, description: "Edited before opening delete confirm" },
+              {
+                id: "b",
+                title: "Task B",
+                laneId: "doing",
+                projectId: "project-b",
+              },
+            ],
+          }),
+        ),
+      );
+      await press(renderer.root, "Delete Task");
+    } else {
+      await openDeleteConfirm(renderer, entry);
+    }
+
+    const latest = board({
+      tasks: [
+        {
+          ...task,
+          title: "Task A (updated)",
+          description: "Changed elsewhere",
+        },
+        { id: "b", title: "Task B", laneId: "doing", projectId: "project-b" },
+      ],
+    });
+    await act(async () => host.replaceBoard(latest));
+    await press(renderer.root, "Confirm Delete");
+    assert.deepEqual(host.board, latest, entry);
+    assert.match(texts(renderer), /fail|conflict/i, entry);
+    assert.deepEqual(
+      host.notifications,
+      ["Task deletion failed. Check the latest data."],
+      entry,
+    );
+
+    host.failNextReload();
+    await press(renderer.root, "Refresh latest data");
+    assert.match(texts(renderer), /fail|conflict/i, entry);
+    assert.match(texts(renderer), /Refresh latest data/, entry);
+    assert.equal(host.notifications.length, 2, entry);
+
+    await press(renderer.root, "Refresh latest data");
+    assert.match(texts(renderer), /Delete task “Task A \(updated\)”\?/, entry);
+    assert.deepEqual(host.board, latest, entry);
+    if (entry === "details") {
+      assert.ok(
+        renderer.root.findByProps({ value: "Unsaved draft title" }),
+        "refreshing delete target preserves unsaved task details draft",
+      );
+    }
+
+    await press(renderer.root, "Confirm Delete");
+    assert.deepEqual(
+      host.board.tasks.map((item) => item.id),
+      ["b"],
+      entry,
+    );
+    assert.equal(
+      host.notifications.filter((n) => n === "Task deleted").length,
+      1,
+      entry,
+    );
+
+    const externalDelete = await setup(t);
+    await openDeleteConfirm(
+      externalDelete.renderer,
+      entry,
+      "Unsaved draft title",
+    );
+    const withoutTarget = board({
+      tasks: [
+        { id: "b", title: "Task B", laneId: "doing", projectId: "project-b" },
+      ],
+    });
+    await act(async () => externalDelete.host.replaceBoard(withoutTarget));
+    await press(externalDelete.renderer.root, "Confirm Delete");
+    assert.deepEqual(externalDelete.host.board, withoutTarget, entry);
+    assert.equal(externalDelete.host.notifications.length, 1, entry);
+
+    await press(externalDelete.renderer.root, "Refresh latest data");
+    assert.doesNotMatch(
+      texts(externalDelete.renderer),
+      /Confirm Delete|Refresh latest data/,
+      entry,
+    );
+    assert.deepEqual(externalDelete.host.board, withoutTarget, entry);
+    assert.equal(
+      externalDelete.host.notifications.filter((n) => n === "Task deleted")
+        .length,
+      0,
+      entry,
+    );
+    if (entry === "details") {
+      assert.ok(
+        externalDelete.renderer.root.findByProps({
+          value: "Unsaved draft title",
+        }),
+        "ending delete confirmation on external removal preserves details draft",
+      );
+    }
+  }
 });
 
 test("move or completion failures keep saved data, show one error and recover for a later action", async (t) => {

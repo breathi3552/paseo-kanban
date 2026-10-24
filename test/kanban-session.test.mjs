@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { KanbanBoardSchema } from "../shared/kanban.ts";
 import {
   openTaskSession,
+  openTaskDeleteSession,
   executeTaskReorder,
 } from "../client/kanban-session.ts";
 
@@ -100,12 +101,11 @@ test("任务草稿从创建、编辑到删除，完整持久化内容与子步�
       externalUrl: null,
     },
   ]);
-  const remove = openTaskSession({
+  const remove = openTaskDeleteSession({
     ...store.options(),
-    mode: "edit",
     taskId: "t1",
   });
-  assert.deepEqual(await remove.deleteTask(), { success: true });
+  assert.deepEqual(await remove.confirm(), { success: true });
   assert.deepEqual(store.values.tasks, []);
 });
 

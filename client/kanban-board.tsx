@@ -40,8 +40,11 @@ import { KanbanLaneView } from "./kanban-lane";
 import { KanbanDragOverlay } from "./kanban-overlay";
 import {
   openTaskSession,
+  openTaskDeleteSession,
   executeTaskReorder,
   executeTaskCompletion,
+  type ReloadBoardResult,
+  type TaskDeleteSession,
   type TaskEditSession,
 } from "./kanban-session";
 import {
@@ -89,15 +92,40 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   currentSettings.current = settings;
   const promptSettings = useSettings(agentDispatchSettings);
   const [menuTarget, setMenuTarget] = useState<TaskMenuTarget | null>(null);
-  const [deleteSession, setDeleteSession] = useState<TaskEditSession | null>(
+  const [deleteSession, setDeleteSession] = useState<TaskDeleteSession | null>(
     null,
   );
-  const [deleteRefreshId, setDeleteRefreshId] = useState<string | null>(null);
   const toast = useToast();
   const feedbackText = useRef(t);
   feedbackText.current = t;
+  const feedbackLanguage = useRef(language);
+  feedbackLanguage.current = language;
   const laneFeedback = useRef({ props, toast });
   laneFeedback.current = { props, toast };
+  const reloadWaiters = useRef<Array<() => void>>([]);
+  useEffect(() => {
+    for (const resolve of reloadWaiters.current.splice(0)) {
+      resolve();
+    }
+  });
+  const reloadBoard = async (): Promise<ReloadBoardResult> => {
+    const rendered = new Promise<void>((resolve) => {
+      reloadWaiters.current.push(resolve);
+    });
+    await settings.reload();
+    await rendered;
+    const latest = currentSettings.current;
+    return latest.status === "ready"
+      ? {
+          status: "ready",
+          board: latest.values,
+          revision: latest.revision,
+        }
+      : {
+          status: latest.status,
+          error: "error" in latest ? latest.error : undefined,
+        };
+  };
   const {
     projects,
     resolveProjectName,
@@ -142,7 +170,11 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   if (isReady)
     lastReady.current = { board: settings.values, revision: settings.revision };
   const retained =
-    importOpen || laneManagement || dispatchDraft || deleteSession
+    importOpen ||
+    laneManagement ||
+    dispatchDraft ||
+    deleteSession ||
+    activeTaskSession
       ? lastReady.current
       : null;
   const board = isReady ? settings.values : (retained?.board ?? null);
@@ -151,7 +183,8 @@ function KanbanBoardContent(props: KanbanBoardProps) {
     (importOpen ||
       laneManagement ||
       dispatchDraft !== null ||
-      deleteSession !== null) &&
+      deleteSession !== null ||
+      activeTaskSession !== null) &&
     board !== null;
 
   const handleReorderTask = async (
@@ -328,27 +361,6 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   useEffect(() => {
     setMenuTarget(null);
   }, [selectedProjectId]);
-  useEffect(() => {
-    if (!deleteRefreshId) return;
-    if (isReady && board) {
-      if (board.tasks.some((task) => task.id === deleteRefreshId)) {
-        setDeleteSession(
-          openTaskSession({
-            mode: "edit",
-            taskId: deleteRefreshId,
-            baseBoard: board,
-            baseRevision: revision,
-            save: (b, r) => settings.save(b, r),
-            language,
-          }),
-        );
-      } else setDeleteSession(null);
-      setDeleteRefreshId(null);
-    } else if (settings.status === "error" || settings.status === "invalid") {
-      toast.error(feedbackText.current("notification.taskDeleteFailed"));
-      setDeleteRefreshId(null);
-    }
-  }, [deleteRefreshId, isReady, board, revision, settings, language, toast, t]);
 
   const openMenu = (taskId: string, point: { x: number; y: number }) => {
     if (
@@ -379,13 +391,13 @@ function KanbanBoardContent(props: KanbanBoardProps) {
       await handleSetCompleted(task.id, !task.completed);
     else if (action === "delete")
       setDeleteSession(
-        openTaskSession({
-          mode: "edit",
+        openTaskDeleteSession({
           taskId,
           baseBoard: board,
           baseRevision: revision,
           save: (b, r) => settings.save(b, r),
-          language,
+          reload: reloadBoard,
+          language: () => feedbackLanguage.current,
         }),
       );
     else if (action === "copy" && promptSettings.status === "ready") {
@@ -801,11 +813,6 @@ function KanbanBoardContent(props: KanbanBoardProps) {
           session={deleteSession}
           theme={theme}
           onClose={() => setDeleteSession(null)}
-          onRefresh={async () => {
-            const id = deleteSession.initialValues.id;
-            await settings.reload();
-            if (id) setDeleteRefreshId(id);
-          }}
         />
       )}
 
@@ -845,6 +852,8 @@ function KanbanBoardContent(props: KanbanBoardProps) {
           open={activeTaskSession !== null}
           onClose={() => setActiveTaskSession(null)}
           session={activeTaskSession}
+          save={(b, r) => settings.save(b, r)}
+          reload={reloadBoard}
           projects={projects}
           theme={theme}
           layout={layout}

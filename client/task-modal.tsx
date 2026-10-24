@@ -17,7 +17,14 @@ import {
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanLane } from "../shared/kanban";
 import { getProjectOptions, type ProjectItem } from "./use-projects";
-import type { TaskEditSession } from "./kanban-session";
+import {
+  openTaskDeleteSession,
+  type ReloadBoardFn,
+  type SaveFn,
+  type TaskDeleteSession,
+  type TaskEditSession,
+} from "./kanban-session";
+import { useTaskDelete } from "./task-delete-dialog";
 import { useI18n } from "./i18n";
 import { IssueLink } from "./issue-link";
 import { SettingsSelect } from "@getpaseo/plugin/client/ui";
@@ -28,6 +35,8 @@ export interface TaskModalProps {
   open: boolean;
   onClose: () => void;
   session: TaskEditSession;
+  save: SaveFn;
+  reload?: ReloadBoardFn;
   lanes?: KanbanLane[];
   projects: ProjectItem[];
   theme: PluginTheme;
@@ -38,12 +47,18 @@ export function TaskModal({
   open,
   onClose,
   session,
+  save,
+  reload,
   lanes: propLanes,
   projects,
   theme,
   layout,
 }: TaskModalProps) {
   const { t, language } = useI18n();
+  const feedbackText = useRef(t);
+  feedbackText.current = t;
+  const feedbackLanguage = useRef(language);
+  feedbackLanguage.current = language;
   const snapshot = useSyncExternalStore(
     session.subscribe,
     session.getSnapshot,
@@ -60,7 +75,21 @@ export function TaskModal({
   );
 
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteSession, setDeleteSession] = useState<TaskDeleteSession | null>(
+    null,
+  );
+  const {
+    snapshot: deleteSnapshot,
+    confirm: handleDelete,
+    refresh: handleRefreshDelete,
+    cancel: handleCancelDelete,
+  } = useTaskDelete(deleteSession, {
+    onCancel: () => setDeleteSession(null),
+    onDeleted: () => {
+      setDeleteSession(null);
+      onClose();
+    },
+  });
   const [descHeight, setDescHeight] = useState<number>(() =>
     Math.max(
       100,
@@ -79,7 +108,12 @@ export function TaskModal({
   useEffect(() => {
     if (open) {
       setNewSubtaskTitle("");
-      setShowDeleteConfirm(false);
+      setDeleteSession(null);
+    }
+  }, [open, session]);
+
+  useEffect(() => {
+    if (open) {
       setDescHeight(
         Math.max(
           100,
@@ -246,6 +280,8 @@ export function TaskModal({
     (lane) => !lane.isCompletionLane,
   );
   const isSaving = snapshot.isSaving;
+  const isDeleteBusy = deleteSnapshot?.isBusy ?? false;
+  const isBusy = isSaving || isDeleteBusy;
   const errorMessage = snapshot.error;
   const toast = useToast();
 
@@ -472,11 +508,12 @@ export function TaskModal({
   };
 
   const handleSave = async () => {
+    if (isDeleteBusy) return;
     const result = await session.save();
     if (result.success) {
       if (!result.unchanged) {
         toast.show(
-          t(
+          feedbackText.current(
             session.mode === "create"
               ? "notification.taskCreated"
               : "notification.taskUpdated",
@@ -486,18 +523,22 @@ export function TaskModal({
       }
       onClose();
     } else if (result.kind === "operation") {
-      toast.error(t("notification.taskSaveFailed"));
+      toast.error(feedbackText.current("notification.taskSaveFailed"));
     }
   };
 
-  const handleDelete = async () => {
-    const result = await session.deleteTask();
-    if (result.success) {
-      toast.show(t("notification.taskDeleted"), { variant: "success" });
-      onClose();
-    } else if (result.kind === "operation") {
-      toast.error(t("notification.taskDeleteFailed"));
-    }
+  const handleOpenDeleteConfirm = () => {
+    if (isBusy || session.mode !== "edit" || !snapshot.id) return;
+    setDeleteSession(
+      openTaskDeleteSession({
+        taskId: snapshot.id,
+        baseBoard: session.baseBoard,
+        baseRevision: session.baseRevision,
+        save,
+        reload,
+        language: () => feedbackLanguage.current,
+      }),
+    );
   };
 
   return (
@@ -512,7 +553,7 @@ export function TaskModal({
       }
       open={open}
       onOpenChange={(next) => {
-        if (!next && !isSaving) {
+        if (!next && !isBusy) {
           onClose();
         }
       }}
@@ -582,7 +623,7 @@ export function TaskModal({
               ...projectOptions,
             ]}
             onValueChange={(id) => session.setProjectId(id || null)}
-            disabled={isSaving || snapshot.source === "github_issue"}
+            disabled={isBusy || snapshot.source === "github_issue"}
           />
 
           {snapshot.source === "github_issue" && snapshot.externalUrl && (
@@ -705,48 +746,93 @@ export function TaskModal({
           {/* Delete Task Section for Edit Mode */}
           {session.mode === "edit" && (
             <View style={styles.deleteSection}>
-              {!showDeleteConfirm ? (
+              {!deleteSnapshot ? (
                 <Pressable
-                  onPress={() => setShowDeleteConfirm(true)}
+                  onPress={handleOpenDeleteConfirm}
                   style={styles.deleteButton}
-                  disabled={isSaving}
+                  disabled={isBusy}
                 >
                   <Text style={styles.deleteButtonText}>
                     {t("taskModal.deleteTask")}
                   </Text>
                 </Pressable>
               ) : (
-                <View
-                  style={{ flexDirection: "row", gap: 8, alignItems: "center" }}
-                >
-                  <Text
-                    style={{ fontSize: 13, color: theme.colors.statusDanger }}
+                <View style={{ gap: 8, flexShrink: 1 }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      gap: 8,
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                    }}
                   >
-                    {t("taskModal.confirmDeletePrompt")}
-                  </Text>
-                  <Pressable
-                    onPress={handleDelete}
-                    style={[
-                      styles.deleteButton,
-                      { backgroundColor: theme.colors.statusDanger },
-                    ]}
-                    disabled={isSaving}
-                  >
-                    <Text style={[styles.deleteButtonText, { color: "#fff" }]}>
-                      {t("taskModal.confirmDelete")}
+                    <Text
+                      style={{ fontSize: 13, color: theme.colors.statusDanger }}
+                    >
+                      {t("contextMenu.deleteConfirm", {
+                        title: deleteSnapshot.title,
+                      })}
                     </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setShowDeleteConfirm(false)}
-                    style={[
-                      styles.optionChip,
-                      { backgroundColor: theme.colors.surface2 },
-                    ]}
-                  >
-                    <Text style={styles.optionChipText}>
-                      {t("taskModal.cancel")}
-                    </Text>
-                  </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        void handleDelete();
+                      }}
+                      style={[
+                        styles.deleteButton,
+                        { backgroundColor: theme.colors.statusDanger },
+                      ]}
+                      disabled={isBusy}
+                    >
+                      <Text
+                        style={[styles.deleteButtonText, { color: "#fff" }]}
+                      >
+                        {t("taskModal.confirmDelete")}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleCancelDelete}
+                      disabled={isBusy}
+                      style={[
+                        styles.optionChip,
+                        { backgroundColor: theme.colors.surface2 },
+                      ]}
+                    >
+                      <Text style={styles.optionChipText}>
+                        {t("taskModal.cancel")}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  {deleteSnapshot.error && (
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        gap: 8,
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          color: theme.colors.statusDanger,
+                        }}
+                      >
+                        {deleteSnapshot.error}
+                      </Text>
+                      <Pressable
+                        disabled={isBusy}
+                        onPress={() => {
+                          void handleRefreshDelete();
+                        }}
+                      >
+                        <Text
+                          style={{ fontSize: 13, color: theme.colors.accent }}
+                        >
+                          {t("kanban.refresh")}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )}
                 </View>
               )}
             </View>
@@ -755,9 +841,11 @@ export function TaskModal({
           {/* Action Buttons */}
           <View style={styles.buttonRow}>
             <Pressable
-              onPress={onClose}
+              onPress={() => {
+                if (!isBusy) onClose();
+              }}
               style={styles.cancelButton}
-              disabled={isSaving}
+              disabled={isBusy}
             >
               <Text style={styles.cancelButtonText}>
                 {t("taskModal.cancel")}
@@ -765,9 +853,11 @@ export function TaskModal({
             </Pressable>
 
             <Pressable
-              onPress={handleSave}
-              style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
-              disabled={isSaving}
+              onPress={() => {
+                void handleSave();
+              }}
+              style={[styles.saveButton, isBusy && styles.saveButtonDisabled]}
+              disabled={isBusy}
             >
               <Text style={styles.saveButtonText}>
                 {isSaving

@@ -2,6 +2,7 @@ import {
   type KanbanBoard,
   type KanbanLane,
   type KanbanSubtask,
+  type KanbanTask,
   type ProjectFilter,
   addTask,
   updateTask,
@@ -149,7 +150,211 @@ export interface TaskEditSession {
   removeSubtask(id: string): void;
   save(draft?: TaskDraft): Promise<SessionResult>;
   saveDraft(draft?: TaskDraft): Promise<SessionResult>;
-  deleteTask(): Promise<SessionResult>;
+}
+
+export type ReloadBoardResult =
+  | { status: "ready"; board: KanbanBoard; revision: string }
+  | { status: "error" | "invalid" | "loading"; error?: string };
+
+export type ReloadBoardFn = () => Promise<ReloadBoardResult>;
+
+export type TaskDeleteResult =
+  | { success: true; targetDeleted?: boolean }
+  | {
+      success: false;
+      error: string;
+      kind: "operation" | "busy";
+    };
+
+export interface TaskDeleteSessionSnapshot {
+  readonly taskId: string;
+  readonly task: KanbanTask | null;
+  readonly title: string;
+  readonly baseBoard: KanbanBoard;
+  readonly baseRevision: string;
+  readonly active: boolean;
+  readonly isSaving: boolean;
+  readonly isRefreshing: boolean;
+  readonly isBusy: boolean;
+  readonly error: string | null;
+}
+
+export interface TaskDeleteSession {
+  getSnapshot(): TaskDeleteSessionSnapshot;
+  subscribe(listener: () => void): () => void;
+  confirm(): Promise<TaskDeleteResult>;
+  cancel(): boolean;
+  refresh(): Promise<TaskDeleteResult>;
+}
+
+export interface OpenTaskDeleteSessionOptions {
+  taskId: string;
+  baseBoard: KanbanBoard;
+  baseRevision: string;
+  save: SaveFn;
+  reload?: ReloadBoardFn;
+  language?: SessionLanguage | (() => SessionLanguage);
+}
+
+export function openTaskDeleteSession(
+  options: OpenTaskDeleteSessionOptions,
+): TaskDeleteSession {
+  const { taskId, save: saveFn, reload: reloadFn, language = "zh" } = options;
+
+  let currentBoard = options.baseBoard;
+  let currentRevision = options.baseRevision;
+  let task = currentBoard.tasks.find((t) => t.id === taskId) ?? null;
+  let active = task !== null;
+  let isSaving = false;
+  let isRefreshing = false;
+  let error: string | null = null;
+
+  const listeners = new Set<() => void>();
+  let cachedSnapshot: TaskDeleteSessionSnapshot | null = null;
+
+  function currentMsgs() {
+    const lang = typeof language === "function" ? language() : language;
+    return sessionMessages[lang] ?? sessionMessages.zh;
+  }
+
+  function buildSnapshot(): TaskDeleteSessionSnapshot {
+    if (!cachedSnapshot) {
+      cachedSnapshot = {
+        taskId,
+        task,
+        title: task?.title ?? "",
+        baseBoard: currentBoard,
+        baseRevision: currentRevision,
+        active,
+        isSaving,
+        isRefreshing,
+        isBusy: isSaving || isRefreshing,
+        error,
+      };
+    }
+    return cachedSnapshot;
+  }
+
+  function notify() {
+    cachedSnapshot = null;
+    buildSnapshot();
+    for (const listener of listeners) {
+      listener();
+    }
+  }
+
+  function cancel(): boolean {
+    if (isSaving || isRefreshing) return false;
+    if (!active && !error) return true;
+    active = false;
+    error = null;
+    notify();
+    return true;
+  }
+
+  async function confirm(): Promise<TaskDeleteResult> {
+    const msgs = currentMsgs();
+    if (isSaving || isRefreshing) {
+      return {
+        success: false,
+        kind: "busy",
+        error: msgs.savingActionInProgress,
+      };
+    }
+    if (!taskId || !currentBoard.tasks.some((t) => t.id === taskId)) {
+      error = msgs.taskNotFound(taskId);
+      notify();
+      return {
+        success: false,
+        kind: "operation",
+        error,
+      };
+    }
+
+    isSaving = true;
+    error = null;
+    notify();
+
+    try {
+      const nextBoard = deleteTask(currentBoard, taskId);
+      const saved = await saveFn(nextBoard, currentRevision);
+      isSaving = false;
+      if (!saved) {
+        error = currentMsgs().taskDeleteFailed;
+        notify();
+        return { success: false, kind: "operation", error };
+      }
+      active = false;
+      notify();
+      return { success: true };
+    } catch (err) {
+      isSaving = false;
+      error = err instanceof Error ? err.message : String(err);
+      notify();
+      return { success: false, kind: "operation", error };
+    }
+  }
+
+  async function refresh(): Promise<TaskDeleteResult> {
+    const msgs = currentMsgs();
+    if (isSaving || isRefreshing) {
+      return {
+        success: false,
+        kind: "busy",
+        error: msgs.savingActionInProgress,
+      };
+    }
+    if (!reloadFn) {
+      error = error ?? msgs.taskDeleteFailed;
+      notify();
+      return { success: false, kind: "operation", error };
+    }
+
+    isRefreshing = true;
+    notify();
+
+    try {
+      const reloaded = await reloadFn();
+      isRefreshing = false;
+      if (reloaded.status !== "ready") {
+        error = error ?? currentMsgs().taskDeleteFailed;
+        notify();
+        return { success: false, kind: "operation", error };
+      }
+      currentBoard = reloaded.board;
+      currentRevision = reloaded.revision;
+      const nextTask = currentBoard.tasks.find((t) => t.id === taskId) ?? null;
+      if (!nextTask) {
+        active = false;
+        error = null;
+        notify();
+        return { success: true, targetDeleted: true };
+      }
+      task = nextTask;
+      active = true;
+      error = null;
+      notify();
+      return { success: true, targetDeleted: false };
+    } catch {
+      isRefreshing = false;
+      error = error ?? currentMsgs().taskDeleteFailed;
+      notify();
+      return { success: false, kind: "operation", error };
+    }
+  }
+
+  return {
+    getSnapshot: buildSnapshot,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    confirm,
+    cancel,
+    refresh,
+  };
 }
 
 export interface OpenTaskSessionOptions {
@@ -431,52 +636,6 @@ export function openTaskSession(
     }
   }
 
-  async function deleteTaskAction(): Promise<SessionResult> {
-    if (isSaving) {
-      return {
-        success: false,
-        kind: "busy",
-        error: msgs.savingActionInProgress,
-      };
-    }
-    if (mode !== "edit" || !taskId) {
-      return {
-        success: false,
-        kind: "operation",
-        error: msgs.taskDeleteOnlyInEdit,
-      };
-    }
-    if (!baseBoard.tasks.some((t) => t.id === taskId)) {
-      return {
-        success: false,
-        kind: "operation",
-        error: msgs.taskNotFound(taskId),
-      };
-    }
-
-    isSaving = true;
-    error = null;
-    notify();
-
-    try {
-      const nextBoard = deleteTask(baseBoard, taskId);
-      const saved = await saveFn(nextBoard, baseRevision);
-      isSaving = false;
-      if (!saved) {
-        error = msgs.taskDeleteFailed;
-        notify();
-        return { success: false, kind: "operation", error };
-      }
-      notify();
-      return { success: true };
-    } catch (err) {
-      isSaving = false;
-      error = err instanceof Error ? err.message : String(err);
-      notify();
-      return { success: false, kind: "operation", error };
-    }
-  }
-
   return {
     mode,
     baseBoard,
@@ -499,7 +658,6 @@ export function openTaskSession(
     removeSubtask,
     save,
     saveDraft: save,
-    deleteTask: deleteTaskAction,
   };
 }
 
