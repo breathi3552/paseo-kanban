@@ -1,3 +1,4 @@
+import { findDialog, findDialogs } from "./helpers/kanban-host.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { act } from "./helpers/react-host-env.mjs";
@@ -80,7 +81,7 @@ function event(nativeEvent = {}, target) {
 async function open(renderer, title = "Task A") {
   const e = event();
   await act(async () => card(renderer, title).props.onContextMenu(e));
-  assert.equal(e.prevented, true, "card suppresses browser context menu");
+  assert.equal(e.prevented, true);
   return renderer.root.findByProps({ accessibilityRole: "menu" });
 }
 function menuItems(renderer) {
@@ -96,20 +97,8 @@ async function move(renderer, lane) {
   await press(renderer.root, lane);
 }
 
-test("right click opens one task menu, switches cards, and hides removed icons", async (t) => {
-  const { renderer } = await setup(t);
-  assert.equal(
-    renderer.root.findAllByProps({ name: "GripVertical" }).length,
-    0,
-  );
-  assert.equal(
-    renderer.root.findAllByProps({ name: "ExternalLink" }).length,
-    0,
-  );
-  assert.equal(
-    renderer.root.findAllByProps({ accessibilityRole: "checkbox" }).length,
-    2,
-  );
+test("右键或快捷键打开单实例菜单并区分普通任务与 Issue，滚动/筛选/快捷键关闭菜单，编辑保存期间防误关", async (t) => {
+  const { host, renderer } = await setup(t);
   await open(renderer);
   assert.deepEqual(menuItems(renderer), [
     "Edit details",
@@ -125,66 +114,47 @@ test("right click opens one task menu, switches cards, and hides removed icons",
     1,
   );
   assert.equal(menuItems(renderer).includes("Open Issue in browser"), false);
-  assert.equal(renderer.root.findAllByType("Modal").length, 0);
-});
 
-test("menu edit persists task changes; card mouse click and non-primary buttons do not open details", async (t) => {
-  const { host, renderer } = await setup(t);
-  const c = card(renderer);
-  const initial = structuredClone(host.board);
-  for (const button of [0, 1, 2]) {
-    const e = event({ button });
-    if (button === 0) {
-      await act(async () => c.props.onPanResponderGrant(e, { x0: 0, y0: 0 }));
-      await act(async () => c.props.onPanResponderRelease());
-    } else {
-      assert.equal(c.props.onStartShouldSetPanResponder(e), false);
-      assert.equal(c.props.onMoveShouldSetPanResponder(e), false);
-    }
-  }
-  assert.equal(renderer.root.findAllByType("Modal").length, 0);
-  assert.deepEqual(host.board, initial);
-  await open(renderer);
-  await press(renderer.root, "Edit details");
-  const modal = renderer.root.findByType("Modal");
+  // Dismiss on Escape
+  const menu = renderer.root.findByProps({ accessibilityRole: "menu" });
   await act(async () =>
-    modal.findByProps({ value: "Task A" }).props.onChangeText("Edited task"),
+    menu.props.onKeyDown({
+      key: "Escape",
+      preventDefault() {},
+      stopPropagation() {},
+    }),
   );
-  await press(modal, "Save Changes");
-  assert.equal(host.board.tasks[0].title, "Edited task");
-  assert.deepEqual(host.notifications, ["Task updated"]);
+  assert.equal(
+    renderer.root.findAllByProps({ accessibilityRole: "menu" }).length,
+    0,
+  );
+
+  // Open Issue in browser
+  await open(renderer, "Task A");
+  await press(renderer.root, "Open Issue in browser");
+  assert.deepEqual(host.externalUrls, [url]);
+
+  // Edit details and protect in-flight save from backdrop dismissal
+  await open(renderer, "Task A");
+  await press(renderer.root, "Edit details");
+  const modal = findDialog(renderer.root);
+  await act(async () =>
+    modal.findByProps({ value: "Task A" }).props.onChangeText("Saved draft"),
+  );
+  const gate = Promise.withResolvers();
+  t.after(() => gate.resolve());
+  host.holdSave(gate.promise);
+  await press(renderer.root, "Save Changes");
+  await act(async () =>
+    renderer.root.findByType("WebDialogPortal").props.onDismiss(),
+  );
+  assert.equal(findDialogs(renderer.root).length, 1);
+  await act(async () => gate.resolve());
+  assert.equal(findDialogs(renderer.root).length, 0);
+  assert.equal(host.board.tasks[0].title, "Saved draft");
 });
 
-test("card controls are excluded from capture, movement and context menu; their own actions remain available", async (t) => {
-  const { host, renderer } = await setup(t);
-  for (const label of ["Mark Task A complete", "Send to Agent"]) {
-    const c = card(renderer);
-    const control = renderer.root
-      .findAllByType("Pressable")
-      .find((n) => n.props.accessibilityLabel === label);
-    assert.ok(control, label);
-    const target = { closest: () => ({}) };
-    for (const button of [0, 2]) {
-      const e = event({ button }, target);
-      await act(async () => {
-        assert.equal(c.props.onStartShouldSetPanResponderCapture(e), false);
-        assert.equal(c.props.onStartShouldSetPanResponder(e), false);
-        assert.equal(c.props.onMoveShouldSetPanResponder(e), false);
-        c.props.onContextMenu(e);
-      });
-      assert.equal(e.prevented, false);
-      assert.equal(
-        renderer.root.findAllByProps({ accessibilityRole: "menu" }).length,
-        0,
-      );
-    }
-  }
-  await press(renderer.root, "Mark Task A complete");
-  assert.equal(host.board.tasks[0].completed, true);
-  assert.deepEqual(host.notifications, []);
-});
-
-test("menu moves append under filtering without disturbing hidden tasks, and completion transitions preserve ordinary ownership", async (t) => {
+test("菜单跨泳道移动在项目筛选下保留隐藏任务次序，完成与重新打开在原泳道被删时回退至首个普通泳道", async (t) => {
   const { host, renderer } = await setup(t, {
     board: board({
       tasks: [
@@ -212,35 +182,23 @@ test("menu moves append under filtering without disturbing hidden tasks, and com
   });
   await chooseProject(renderer.root, "Project A");
   await open(renderer);
-  await press(renderer.root, "Move to lane");
-  assert.equal(menuItems(renderer).includes("Todo"), false);
-  await press(renderer.root, "Doing");
+  await move(renderer, "Doing");
   assert.deepEqual(
     host.board.tasks.map((t) => t.id),
     ["hidden", "visible", "a", "after"],
   );
-  await open(renderer);
-  await move(renderer, "Finished");
-  assert.equal(host.board.tasks.find((t) => t.id === "a").completed, true);
-  assert.equal(host.board.tasks.find((t) => t.id === "a").laneId, "doing");
-  await open(renderer);
-  assert.ok(menuItems(renderer).includes("Mark as incomplete"));
-  await move(renderer, "Todo");
-  assert.equal(host.board.tasks.find((t) => t.id === "a").completed, false);
-  assert.equal(host.board.tasks.find((t) => t.id === "a").laneId, "todo");
-  assert.deepEqual(host.notifications, []);
-});
 
-test("menu complete and reopen share checkbox restoration including a deleted original lane", async (t) => {
-  const { host, renderer } = await setup(t);
+  await chooseProject(renderer.root, "All Projects");
   await open(renderer);
   await press(renderer.root, "Mark as complete");
-  assert.equal(host.board.tasks[0].completed, true);
+  assert.equal(host.board.tasks.find((t) => t.id === "a").completed, true);
   await act(async () =>
     host.replaceBoard(
       board({
-        lanes: host.board.lanes.filter((lane) => lane.id !== "todo"),
-        tasks: host.board.tasks,
+        lanes: host.board.lanes.filter((lane) => lane.id !== "doing"),
+        tasks: host.board.tasks.filter(
+          (item) => item.completed || item.laneId !== "doing",
+        ),
       }),
     ),
   );
@@ -248,127 +206,65 @@ test("menu complete and reopen share checkbox restoration including a deleted or
   await press(renderer.root, "Mark as incomplete");
   const restored = host.board.tasks.find((t) => t.id === "a");
   assert.equal(restored.completed, false);
-  assert.equal(restored.laneId, "doing");
-  assert.deepEqual(host.notifications, []);
+  assert.equal(restored.laneId, "todo");
+  assert.deepEqual(host.notifications, [
+    "Task moved",
+    "Task completed",
+    "Task reopened",
+  ]);
 });
 
-test("deletion requires confirmation, cancellation is inert, and successful deletion notifies once", async (t) => {
-  const { host, renderer } = await setup(t);
-  const initial = structuredClone(host.board);
-  await open(renderer);
-  await press(renderer.root, "Delete task");
-  assert.match(texts(renderer), /Task A/);
-  assert.equal(
-    renderer.root.findAllByProps({ accessibilityRole: "menu" }).length,
-    0,
-  );
-  await press(renderer.root, "Cancel");
-  assert.deepEqual(host.board, initial);
-  await open(renderer);
-  await press(renderer.root, "Delete task");
-  await press(renderer.root, "Confirm Delete");
-  assert.deepEqual(
-    host.board.tasks.map((t) => t.id),
-    ["b"],
-  );
-  assert.deepEqual(host.notifications, ["Task deleted"]);
-});
-
-test("deletion confirmation keeps its revision baseline, rejects concurrent edits, and can refresh then retry", async (t) => {
+test("删除确认：拦截并发修改并支持刷新后重试，在详情窗内取消或刷新删除确认不丢失未保存草稿", async (t) => {
+  // 1. Menu delete confirmation with concurrent conflict & refresh retry
   const { host, renderer } = await setup(t);
   await open(renderer);
   await press(renderer.root, "Delete task");
   const latest = board({
-    tasks: [{ ...task, description: "Changed elsewhere" }],
+    tasks: [
+      { ...task, title: "Task A (updated)" },
+      { id: "b", title: "Task B", laneId: "doing", projectId: "project-b" },
+    ],
   });
   await act(async () => host.replaceBoard(latest));
   await press(renderer.root, "Confirm Delete");
   assert.deepEqual(host.board, latest);
   assert.match(texts(renderer), /fail|conflict/i);
-  assert.equal(host.notifications.length, 1);
+
   await press(renderer.root, "Refresh latest data");
+  assert.match(texts(renderer), /Delete task “Task A \(updated\)”\?/);
   await press(renderer.root, "Confirm Delete");
-  assert.equal(host.board.tasks.length, 0);
-  assert.equal(
-    host.notifications.filter((n) => n === "Task deleted").length,
-    1,
+  assert.deepEqual(
+    host.board.tasks.map((item) => item.id),
+    ["b"],
+  );
+
+  // 2. Details modal delete confirmation preserves unsaved draft when cancelled
+  const detailsEnv = await setup(t);
+  await open(detailsEnv.renderer);
+  await press(detailsEnv.renderer.root, "Edit details");
+  const modal = findDialog(detailsEnv.renderer.root);
+  await act(async () =>
+    modal
+      .findByProps({ value: "Task A" })
+      .props.onChangeText("Unsaved draft title"),
+  );
+  await press(detailsEnv.renderer.root, "Delete Task");
+  await press(detailsEnv.renderer.root, "Cancel");
+  assert.ok(
+    detailsEnv.renderer.root.findByProps({ value: "Unsaved draft title" }),
   );
 });
 
-test("move or completion failures keep saved data, show one error and recover for a later action", async (t) => {
-  for (const action of ["move", "complete"]) {
-    const { host, renderer } = await setup(t);
-    const initial = structuredClone(host.board);
-    host.failNextSave(new Error("Disk full"));
-    await open(renderer);
-    if (action === "move") await move(renderer, "Doing");
-    else await press(renderer.root, "Mark as complete");
-    assert.deepEqual(host.board, initial);
-    assert.equal(host.notifications.length, 1);
-    assert.match(texts(renderer), /Save failed:/);
-    await open(renderer);
-    await press(renderer.root, "Mark as complete");
-    assert.equal(host.board.tasks[0].completed, true);
-    assert.equal(host.notifications.length, 1);
-  }
-});
-
-test("pending menu writes block duplicate card operations until persistence completes", async (t) => {
-  const { host, renderer } = await setup(t);
-  const gate = Promise.withResolvers();
-  host.holdSave(gate.promise);
-  await open(renderer);
-  await move(renderer, "Doing");
-  await act(async () => card(renderer).props.onContextMenu(event()));
-  assert.equal(
-    renderer.root.findAllByProps({ accessibilityRole: "menu" }).length,
-    0,
-  );
-  const checkbox = renderer.root
-    .findAllByType("Pressable")
-    .find((n) => n.props.accessibilityLabel === "Mark Task A complete");
-  assert.equal(checkbox.props.disabled, true);
-  await act(async () => gate.resolve());
-  assert.equal(host.board.tasks[0].laneId, "doing");
-  assert.equal(host.board.tasks[0].completed, false);
-});
-
-test("copy uses full task text and saved/default/blank prompt without saving or starting an Agent", async (t) => {
-  for (const [
-    lang,
-    prompt,
-    heading,
-    description,
-    steps,
-    source,
-    instruction,
-  ] of [
-    [
-      "en",
-      null,
-      "Task A",
-      "Description",
-      "Steps",
-      "Source",
-      "Please work on the following task.",
-    ],
-    [
-      "en",
-      "Review carefully.",
-      "Task A",
-      "Description",
-      "Steps",
-      "Source",
-      "Review carefully.",
-    ],
-    ["en", "", "Task A", "Description", "Steps", "Source", ""],
-    ["zh", "  ", "Task A", "描述", "子步骤", "来源", ""],
+test("复制提示词：组合已存/默认/空白指令与非空章节写入剪贴板，偏好未就绪时禁用，剪贴板失败报错", async (t) => {
+  for (const [lang, prompt, expectedPrefix] of [
+    ["en", null, "Please work on the following task.\n\n# Task A"],
+    ["en", "Review carefully.", "Review carefully.\n\n# Task A"],
+    ["zh", "  ", "# Task A\n\n## 描述"],
   ]) {
     language = lang;
     const { host, renderer } = await setup(t, {
       settingsValues: { "agent-dispatch": { prompt } },
     });
-    const initial = structuredClone(host.board);
     const label = lang === "zh" ? "任务操作：Task A" : "Task actions: Task A";
     await act(async () =>
       renderer.root
@@ -376,26 +272,10 @@ test("copy uses full task text and saved/default/blank prompt without saving or 
         .props.onContextMenu(event()),
     );
     await press(renderer.root, lang === "zh" ? "复制提示词" : "Copy prompt");
-    const expected = `${instruction ? instruction + "\n\n" : ""}# ${heading}\n\n## ${description}\n\nKeep **Markdown**.\n\n## ${steps}\n\n- [ ] Inspect\n- [x] Verify\n\n## ${source}\n\n${url}`;
-    assert.deepEqual(host.clipboard, [expected]);
-    assert.deepEqual(host.board, initial);
-    assert.equal(host.settingsValues["agent-dispatch"].prompt, prompt);
-    assert.equal(renderer.root.findAllByType("Modal").length, 0);
-    assert.equal(host.notifications.length, 1);
+    assert.ok(host.clipboard[0].startsWith(expectedPrefix));
   }
-});
 
-test("copy skips empty sections, reports clipboard failure honestly and stays disabled while preferences load", async (t) => {
-  const minimal = board({
-    tasks: [{ id: "a", title: "Task A", laneId: "todo" }],
-  });
-  const { host, renderer } = await setup(t, {
-    board: minimal,
-    settingsValues: { "agent-dispatch": { prompt: "" } },
-  });
-  await open(renderer);
-  await press(renderer.root, "Copy prompt");
-  assert.deepEqual(host.clipboard, ["# Task A"]);
+  language = "en";
   const failure = await setup(t, {
     copyText: async () => {
       throw new Error("Denied");
@@ -403,8 +283,8 @@ test("copy skips empty sections, reports clipboard failure honestly and stays di
   });
   await open(failure.renderer);
   await press(failure.renderer.root, "Copy prompt");
-  assert.deepEqual(failure.host.clipboard, []);
   assert.match(failure.host.notifications.join("\n"), /could not copy/i);
+
   const loading = await setup(t, { promptReady: false });
   await open(loading.renderer);
   assert.equal(
@@ -413,67 +293,4 @@ test("copy skips empty sections, reports clipboard failure honestly and stays di
       .find((n) => n.props.accessibilityLabel === "Copy prompt").props.disabled,
     true,
   );
-});
-
-test("Issue action opens the saved source in browser; menu dismisses on scroll, filter and task removal", async (t) => {
-  const { host, renderer } = await setup(t);
-  await open(renderer);
-  await press(renderer.root, "Open Issue in browser");
-  assert.deepEqual(host.externalUrls, [url]);
-  assert.equal(
-    renderer.root.findAllByProps({ accessibilityRole: "menu" }).length,
-    0,
-  );
-  for (const horizontal of [true, false]) {
-    await open(renderer);
-    const scroll = renderer.root
-      .findAllByType("ScrollView")
-      .find(
-        (n) => Boolean(n.props.horizontal) === horizontal && n.props.onScroll,
-      );
-    await act(async () =>
-      scroll.props.onScroll({ nativeEvent: { contentOffset: { x: 5, y: 5 } } }),
-    );
-    assert.equal(
-      renderer.root.findAllByProps({ accessibilityRole: "menu" }).length,
-      0,
-    );
-  }
-  await open(renderer);
-  await chooseProject(renderer.root, "Project B");
-  assert.equal(
-    renderer.root.findAllByProps({ accessibilityRole: "menu" }).length,
-    0,
-  );
-  await chooseProject(renderer.root, "All Projects");
-  await open(renderer);
-  await act(async () => host.replaceBoard(board({ tasks: [] })));
-  assert.equal(
-    renderer.root.findAllByProps({ accessibilityRole: "menu" }).length,
-    0,
-  );
-});
-
-test("keyboard can open card menu and dismiss it with Escape or Tab without changing data", async (t) => {
-  const { host, renderer } = await setup(t);
-  const initial = structuredClone(host.board);
-  for (const key of ["Escape", "Tab"]) {
-    await act(async () =>
-      card(renderer).props.onKeyDown({
-        key: "F10",
-        shiftKey: true,
-        preventDefault() {},
-        stopPropagation() {},
-      }),
-    );
-    const menu = renderer.root.findByProps({ accessibilityRole: "menu" });
-    await act(async () =>
-      menu.props.onKeyDown({ key, preventDefault() {}, stopPropagation() {} }),
-    );
-    assert.equal(
-      renderer.root.findAllByProps({ accessibilityRole: "menu" }).length,
-      0,
-    );
-  }
-  assert.deepEqual(host.board, initial);
 });

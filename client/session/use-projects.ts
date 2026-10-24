@@ -8,6 +8,58 @@ export interface ProjectItem {
   projectKind?: "git" | "directory" | "non_git";
 }
 
+export interface ProjectOption {
+  value: string;
+  label: string;
+  projectId: string;
+  projectDisplayName: string;
+}
+
+export interface ProjectOptionsOptions {
+  retainIds?: (string | null | undefined)[];
+  language?: string;
+}
+
+export function getProjectOptions(
+  projects: ProjectItem[],
+  options?: ProjectOptionsOptions | (string | null | undefined)[],
+  languageParam?: string,
+): ProjectOption[] {
+  const retainIds = Array.isArray(options) ? options : options?.retainIds;
+  const language = Array.isArray(options)
+    ? languageParam
+    : (options?.language ?? languageParam);
+
+  const optionsMap = new Map<string, ProjectOption>();
+  for (const project of projects) {
+    if (!project.projectId) continue;
+    optionsMap.set(project.projectId, {
+      value: project.projectId,
+      label: project.projectDisplayName || project.projectId,
+      projectId: project.projectId,
+      projectDisplayName: project.projectDisplayName || project.projectId,
+    });
+  }
+
+  if (retainIds) {
+    for (const rawId of retainIds) {
+      if (!rawId || rawId === "all" || rawId === "unassigned") continue;
+      if (!optionsMap.has(rawId)) {
+        optionsMap.set(rawId, {
+          value: rawId,
+          label: rawId,
+          projectId: rawId,
+          projectDisplayName: rawId,
+        });
+      }
+    }
+  }
+
+  return Array.from(optionsMap.values()).sort((a, b) =>
+    a.label.localeCompare(b.label, language),
+  );
+}
+
 export type ProjectNameResolver = (
   projectId: string | null | undefined,
 ) => string | null;
@@ -23,18 +75,6 @@ export function createProjectNameResolver(
     if (!projectId) return null;
     return index.get(projectId) ?? projectId;
   };
-}
-
-export function getProjectDisplayName(
-  projectId: string | null | undefined,
-  projectsOrResolver: ProjectItem[] | ProjectNameResolver,
-): string | null {
-  if (!projectId) return null;
-  if (typeof projectsOrResolver === "function") {
-    return projectsOrResolver(projectId);
-  }
-  const match = projectsOrResolver.find((p) => p.projectId === projectId);
-  return match ? match.projectDisplayName : projectId;
 }
 
 export interface ProjectsState {

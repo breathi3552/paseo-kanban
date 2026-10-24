@@ -8,7 +8,7 @@ export default tseslint.config(
   {
     ignores: [
       "node_modules/",
-      "client/generated/",
+      "client/platform/generated/",
       "dist/",
       "build/",
       ".cache/",

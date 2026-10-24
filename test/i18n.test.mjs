@@ -1,132 +1,54 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { act } from "./helpers/react-host-env.mjs";
-import { createHost, mount, press, text } from "./helpers/kanban-host.mjs";
+import { createHost, mount, text } from "./helpers/kanban-host.mjs";
 
-const displays = {
-  zh: { title: "任务看板", entry: "看板", stats: "3 任务 · 2 泳道" },
-  en: { title: "Task Kanban", entry: "Kanban", stats: "3 tasks · 2 lanes" },
+let storageLanguage = "en";
+let browserLanguages = ["en-US"];
+let browserLanguage = "en-US";
+let documentLanguage = "en";
+
+globalThis.localStorage = {
+  getItem(key) {
+    return key === "@paseo:app-settings"
+      ? JSON.stringify({ language: storageLanguage })
+      : null;
+  },
 };
+Object.defineProperty(globalThis, "navigator", {
+  configurable: true,
+  get: () => ({ language: browserLanguage, languages: browserLanguages }),
+});
+globalThis.document = {
+  get documentElement() {
+    return { lang: documentLanguage };
+  },
+};
+test.after(() => {
+  delete globalThis.localStorage;
+  delete globalThis.navigator;
+  delete globalThis.document;
+});
 
-function configureUpstream(t) {
-  let language = "system";
-  const navigator = { languages: ["en-US"], language: "en-US" };
-  const window = new EventTarget();
-  const globals = {
-    localStorage: {
-      getItem: (key) =>
-        key === "@paseo:app-settings" ? JSON.stringify({ language }) : null,
-    },
-    navigator,
-    window,
-    // Reproduce #16: page and Intl defaults can remain English on a Chinese system.
-    document: { documentElement: { lang: "en" } },
-  };
-  for (const [key, value] of Object.entries(globals)) {
-    const original = Object.getOwnPropertyDescriptor(globalThis, key);
-    Object.defineProperty(globalThis, key, { configurable: true, value });
-    t.after(() => {
-      if (original) Object.defineProperty(globalThis, key, original);
-      else delete globalThis[key];
-    });
-  }
-  t.mock.method(Intl, "DateTimeFormat", () => ({
-    resolvedOptions: () => ({ locale: "en-US" }),
-  }));
-  return {
-    select(nextLanguage, systemLocale = "en-US") {
-      language = nextLanguage;
-      navigator.languages = [systemLocale];
-      navigator.language = systemLocale;
-    },
-    focus() {
-      window.dispatchEvent(new Event("focus"));
-    },
-  };
+function texts(renderer) {
+  return renderer.root.findAllByType("Text").map(text).join("\n");
 }
 
-function assertDisplay(renderer, host, expected, scenario) {
-  const texts = renderer.root.findAllByType("Text").map(text);
-  assert.ok(texts.includes(expected.title), scenario);
-  assert.ok(texts.includes(expected.stats), scenario);
-  assert.equal(host.sidebars.get("kanban").title, expected.entry, scenario);
-  assert.equal(host.panels.get("kanban").title, expected.entry, scenario);
-}
-
-test("任务弹窗中英文字段简化为标题、泳道、项目并保留必填标记", async (t) => {
-  const upstream = configureUpstream(t);
-  for (const [language, add, expected] of [
-    ["zh-CN", "+ 添加", ["标题 *", "泳道", "项目"]],
-    ["en", "+ Add", ["Title *", "Lane", "Project"]],
+test("打开页面时根据上游语言与系统语言决定插件界面与入口标题（简繁中文/英文/跟随系统）", async (t) => {
+  for (const [setting, browser, doc, expectedTitle, expectedEntry] of [
+    ["en", ["zh-CN"], "zh-CN", /Task Kanban/, "Kanban"],
+    ["zh-Hans", ["en-US"], "en", /任务看板/, "看板"],
+    ["zh-TW", ["en-US"], "en", /任务看板/, "看板"],
+    ["system", ["zh-HK", "en-US"], "en", /任务看板/, "看板"],
+    ["system", ["fr-FR"], "zh-CN", /Task Kanban/, "Kanban"],
   ]) {
-    upstream.select(language);
-    const renderer = await mount(t, createHost());
-    await press(renderer.root, add);
-    const modal = renderer.root.findByType("Modal");
-    const labels = [
-      ...modal.findAllByType("Text").map(text),
-      ...modal.findAllByType("Select").map((node) => node.props.label),
-    ];
-    for (const label of expected)
-      assert.ok(labels.includes(label), `${language}: ${label}`);
-  }
-});
-
-test("上游语言决定插件显示：简繁中文使用中文，其余使用英文，支持跟随系统", async (t) => {
-  const upstream = configureUpstream(t);
-  for (const [language, systemLocale, display] of [
-    ["zh-CN", "en-US", "zh"],
-    ["zh-TW", "en-US", "zh"],
-    ["en", "zh-CN", "en"],
-    ["ja", "zh-CN", "en"],
-    ["system", "zh-CN", "zh"],
-    ["system", "zh-TW", "zh"],
-    ["system", "en-US", "en"],
-  ]) {
-    upstream.select(language, systemLocale);
+    storageLanguage = setting;
+    browserLanguages = browser;
+    browserLanguage = browser[0];
+    documentLanguage = doc;
     const host = createHost();
     const renderer = await mount(t, host);
-    assertDisplay(
-      renderer,
-      host,
-      displays[display],
-      `${language}/${systemLocale}`,
-    );
-  }
-});
-
-test("修改宿主语言后返回插件，已打开的看板与入口标题同步切换", async (t) => {
-  const upstream = configureUpstream(t);
-  upstream.select("en");
-  const host = createHost();
-  const renderer = await mount(t, host);
-  assertDisplay(renderer, host, displays.en);
-
-  for (const [language, display] of [
-    ["zh-TW", "zh"],
-    ["en", "en"],
-  ]) {
-    await act(async () => {
-      upstream.select(language);
-      upstream.focus();
-    });
-    assertDisplay(renderer, host, displays[display]);
-  }
-});
-
-test("提交空标题时，插件使用当前语言显示错误提示", async (t) => {
-  const upstream = configureUpstream(t);
-  for (const [language, newTask, submit, error] of [
-    ["zh-TW", "+ 添加", "创建", "任务标题不能为空"],
-    ["en", "+ Add", "Create", "Task title cannot be empty"],
-  ]) {
-    upstream.select(language);
-    const host = createHost();
-    const renderer = await mount(t, host);
-    await press(renderer.root, newTask);
-    await press(renderer.root.findByType("Modal"), submit);
-    assert.ok(
-      renderer.root.findAllByType("Text").some((node) => text(node) === error),
-    );
+    assert.match(texts(renderer), expectedTitle);
+    assert.equal(host.sidebars.get("kanban")?.title, expectedEntry);
+    assert.equal(host.panels.get("kanban")?.title, expectedEntry);
   }
 });

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, createContext, useContext } from "react";
+import { useMemo, createContext, useContext } from "react";
 
 export type SupportedLanguage = "zh" | "en";
 
@@ -30,7 +30,7 @@ export const translations = {
     "dispatch.send": "发送",
     "dispatch.sending": "发送中…",
     "dispatch.defaultPrompt": "请处理以下任务。",
-    "dispatch.promptSaved": "prompt 已保存",
+    "dispatch.sent": "已发送到 Agent",
     "dispatch.failed": "发送失败，输入已保留，请核实后重试。",
     "import.title": "从 GitHub 导入",
     "import.project": "项目",
@@ -68,6 +68,9 @@ export const translations = {
     "notification.taskCreated": "任务已创建",
     "notification.taskUpdated": "任务已更新",
     "notification.taskDeleted": "任务已删除",
+    "notification.taskMoved": "任务已移动",
+    "notification.taskCompleted": "任务已完成",
+    "notification.taskReopened": "任务已重新打开",
     "notification.laneCreated": "泳道已创建",
     "notification.laneRenamed": "泳道已重命名",
     "notification.laneDeleted": "泳道已删除",
@@ -192,7 +195,7 @@ export const translations = {
     "dispatch.send": "Send",
     "dispatch.sending": "Sending…",
     "dispatch.defaultPrompt": "Please work on the following task.",
-    "dispatch.promptSaved": "prompt saved",
+    "dispatch.sent": "Sent to Agent",
     "dispatch.failed":
       "Sending failed. Your input is preserved; check before retrying.",
     "import.title": "Import from GitHub",
@@ -236,6 +239,9 @@ export const translations = {
     "notification.taskCreated": "Task created",
     "notification.taskUpdated": "Task updated",
     "notification.taskDeleted": "Task deleted",
+    "notification.taskMoved": "Task moved",
+    "notification.taskCompleted": "Task completed",
+    "notification.taskReopened": "Task reopened",
     "notification.laneCreated": "Lane created",
     "notification.laneRenamed": "Lane renamed",
     "notification.laneDeleted": "Lane deleted",
@@ -359,17 +365,6 @@ export function normalizeLanguage(locale?: string | null): SupportedLanguage {
   return locale.trim().toLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
-let languageOverride: SupportedLanguage | null = null;
-
-export function setLanguageOverride(lang: SupportedLanguage | null): void {
-  languageOverride = lang;
-  notifyLanguageChange();
-}
-
-export function getLanguageOverride(): SupportedLanguage | null {
-  return languageOverride;
-}
-
 export interface DetectLanguageOptions {
   locale?: string;
   language?: string;
@@ -394,12 +389,6 @@ interface EnvironmentGlobals {
     language?: string;
     languages?: readonly string[];
   };
-  window?: {
-    addEventListener(
-      event: string,
-      listener: (event: { key?: string }) => void,
-    ): void;
-  };
   i18n?: {
     language?: string;
   };
@@ -410,10 +399,6 @@ const env = globalThis as typeof globalThis & EnvironmentGlobals;
 export function detectPaseoLanguage(
   hostProps?: DetectLanguageOptions,
 ): SupportedLanguage {
-  if (languageOverride) {
-    return languageOverride;
-  }
-
   const propLocale =
     hostProps?.locale ??
     hostProps?.language ??
@@ -462,50 +447,10 @@ export function detectPaseoLanguage(
   return "en";
 }
 
-let currentLanguage: SupportedLanguage = detectPaseoLanguage();
-const listeners = new Set<(lang: SupportedLanguage) => void>();
-let globalListenersInitialized = false;
-
-function notifyLanguageChange() {
-  const next = detectPaseoLanguage();
-  if (next !== currentLanguage) {
-    currentLanguage = next;
-    listeners.forEach((fn) => fn(currentLanguage));
-  }
-}
-
-function ensureGlobalListeners() {
-  if (globalListenersInitialized) return;
-  globalListenersInitialized = true;
-
-  env.window?.addEventListener("storage", (e) => {
-    if (e.key === "@paseo:app-settings") {
-      notifyLanguageChange();
-    }
-  });
-
-  env.window?.addEventListener("focus", () => {
-    notifyLanguageChange();
-  });
-}
-
 export function getLanguage(
   hostProps?: DetectLanguageOptions,
 ): SupportedLanguage {
-  if (hostProps) {
-    return detectPaseoLanguage(hostProps);
-  }
-  return currentLanguage;
-}
-
-export function subscribeLanguage(
-  listener: (lang: SupportedLanguage) => void,
-): () => void {
-  listeners.add(listener);
-  ensureGlobalListeners();
-  return () => {
-    listeners.delete(listener);
-  };
+  return detectPaseoLanguage(hostProps);
 }
 
 export function formatString(
@@ -530,7 +475,7 @@ export function t(
     lang = langOrParams;
     finalParams = params;
   } else {
-    lang = currentLanguage;
+    lang = detectPaseoLanguage();
     finalParams = langOrParams;
   }
 
@@ -551,20 +496,8 @@ export function useI18n(hostProps?: DetectLanguageOptions): I18nContextValue {
     hostProps?.language ??
     hostProps?.host?.locale ??
     hostProps?.host?.language;
-  const [lang, setLang] = useState<SupportedLanguage>(() =>
-    detectPaseoLanguage(hostProps),
-  );
-
-  useEffect(() => {
-    ensureGlobalListeners();
-    const immediate = detectPaseoLanguage(hostProps);
-    setLang((prev) => (immediate !== prev ? immediate : prev));
-    return subscribeLanguage((newLang) => {
-      setLang(newLang);
-    });
-  }, [hostLocale, hostProps]);
-
-  const language = hostLocale ? lang : (inheritedLanguage ?? lang);
+  const detected = detectPaseoLanguage(hostProps);
+  const language = hostLocale ? detected : (inheritedLanguage ?? detected);
   const tBound = useMemo(
     () => (key: TranslationKey, params?: TranslationParams) =>
       t(key, language, params),

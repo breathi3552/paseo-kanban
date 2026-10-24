@@ -8,18 +8,17 @@ import {
   PanResponder,
 } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import type { KanbanLane, KanbanTask } from "../shared/kanban";
+import type { KanbanLane, KanbanTask } from "../../shared/kanban";
 import { KanbanCard, KanbanDropSpacer } from "./kanban-card";
-import { getProjectDisplayName, type ProjectItem } from "./use-projects";
-import type { LaneDragBinding } from "./kanban-drag";
-import { useI18n } from "./i18n";
+import type { ProjectNameResolver } from "../session/use-projects";
+import type { LaneDragBinding } from "./drag";
+import { useI18n } from "../platform/i18n";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 
 export interface KanbanLaneViewProps {
   lane: KanbanLane;
   tasks: KanbanTask[];
-  projects: ProjectItem[];
   theme: PluginTheme;
   layout: { compact: boolean; platform: "ios" | "android" | "web" };
   dragBinding: LaneDragBinding;
@@ -30,13 +29,12 @@ export interface KanbanLaneViewProps {
   onContextMenu?: (taskId: string, point: { x: number; y: number }) => void;
   onScrollCards?: () => void;
   completionPending?: boolean;
-  resolveProjectName?: (projectId: string | null) => string | null;
+  resolveProjectName: ProjectNameResolver;
 }
 
 function KanbanLaneViewInner({
   lane,
   tasks,
-  projects,
   theme,
   layout,
   dragBinding,
@@ -63,13 +61,10 @@ function KanbanLaneViewInner({
     bindCard,
   } = dragBinding;
 
-  // Sync card order to controller whenever tasks in this lane change
+  // Measurements and visible order share the lane-scoped binding.
   useLayoutEffect(() => {
-    setLaneCardOrder?.(
-      lane.id,
-      tasks.map((t) => t.id),
-    );
-  }, [lane.id, tasks, setLaneCardOrder]);
+    setLaneCardOrder(tasks.map((t) => t.id));
+  }, [tasks, setLaneCardOrder]);
 
   const wasHoveredRef = useRef(false);
   const wasDraggingInLaneRef = useRef(false);
@@ -147,94 +142,7 @@ function KanbanLaneViewInner({
   }, [isHovered, hasDraggingTask, targetIndex]);
 
   const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        laneColumn: {
-          width: layout.compact ? 270 : 300,
-          backgroundColor: theme.colors.surface1,
-          borderColor: theme.colors.border,
-          borderWidth: 2,
-          borderRadius: 10,
-          maxHeight: "100%",
-          padding: 10,
-          gap: 10,
-          userSelect: "none",
-        },
-        laneColumnHovered: {
-          borderColor: theme.colors.accent,
-          backgroundColor: theme.colors.surface2,
-        },
-        laneHeader: {
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingBottom: 8,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.colors.border,
-        },
-        laneTitleGroup: {
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 6,
-          flex: 1,
-        },
-        laneTitleText: {
-          fontSize: 14,
-          fontWeight: "700",
-          color: theme.colors.foreground,
-          userSelect: "none",
-        },
-        laneCountBadge: {
-          backgroundColor: theme.colors.surface2,
-          paddingHorizontal: 6,
-          paddingVertical: 2,
-          borderRadius: 10,
-        },
-        laneCountText: {
-          fontSize: 11,
-          color: theme.colors.foregroundMuted,
-          fontWeight: "600",
-        },
-        laneHeaderActions: {
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 4,
-        },
-        laneHeaderBtn: {
-          paddingHorizontal: 6,
-          paddingVertical: 3,
-          borderRadius: 4,
-          backgroundColor: theme.colors.surface2,
-        },
-        laneHeaderBtnText: {
-          fontSize: 11,
-          color: theme.colors.foreground,
-        },
-        cardsScroll: {
-          flex: 1,
-        },
-        cardsList: {
-          gap: 8,
-          paddingBottom: 8,
-        },
-        emptyLanePlaceholder: {
-          paddingVertical: 24,
-          alignItems: "center",
-          justifyContent: "center",
-          borderStyle: "dashed",
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-          borderRadius: 8,
-          marginVertical: 6,
-        },
-        emptyLaneText: {
-          fontSize: 12,
-          color: theme.colors.foregroundMuted,
-          textAlign: "center",
-          paddingHorizontal: 12,
-          userSelect: "none",
-        },
-      }),
+    () => createLaneStyles(theme, layout.compact),
     [theme, layout.compact],
   );
 
@@ -297,11 +205,7 @@ function KanbanLaneViewInner({
               )}
               <KanbanCard
                 task={task}
-                projectDisplayName={
-                  resolveProjectName
-                    ? resolveProjectName(task.projectId)
-                    : getProjectDisplayName(task.projectId, projects)
-                }
+                projectDisplayName={resolveProjectName(task.projectId)}
                 theme={theme}
                 layout={layout}
                 binding={bindCard(
@@ -314,7 +218,7 @@ function KanbanLaneViewInner({
                 onContextMenu={onContextMenu}
                 onSendToAgent={onSendToAgent}
                 completionDisabled={
-                  completionPending || (dragBinding.isDragLocked?.() ?? false)
+                  completionPending || dragBinding.isDragLocked()
                 }
                 interactionDisabled={completionPending}
               />
@@ -346,6 +250,96 @@ function KanbanLaneViewInner({
       </ScrollView>
     </View>
   );
+}
+
+function createLaneStyles(theme: PluginTheme, compact: boolean) {
+  return StyleSheet.create({
+    laneColumn: {
+      width: compact ? 270 : 300,
+      backgroundColor: theme.colors.surface1,
+      borderColor: theme.colors.border,
+      borderWidth: 2,
+      borderRadius: 10,
+      maxHeight: "100%",
+      padding: 10,
+      gap: 10,
+      userSelect: "none",
+    },
+    laneColumnHovered: {
+      borderColor: theme.colors.accent,
+      backgroundColor: theme.colors.surface2,
+    },
+    laneHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingBottom: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    laneTitleGroup: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      flex: 1,
+    },
+    laneTitleText: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: theme.colors.foreground,
+      userSelect: "none",
+    },
+    laneCountBadge: {
+      backgroundColor: theme.colors.surface2,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 10,
+    },
+    laneCountText: {
+      fontSize: 11,
+      color: theme.colors.foregroundMuted,
+      fontWeight: "600",
+    },
+    laneHeaderActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+    },
+    laneHeaderBtn: {
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+      borderRadius: 4,
+      backgroundColor: theme.colors.surface2,
+    },
+    laneHeaderBtnText: {
+      fontSize: 11,
+      color: theme.colors.foreground,
+    },
+    cardsScroll: {
+      flex: 1,
+    },
+    cardsList: {
+      gap: 8,
+      paddingBottom: 8,
+    },
+    emptyLanePlaceholder: {
+      paddingVertical: 24,
+      alignItems: "center",
+      justifyContent: "center",
+      borderStyle: "dashed",
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: 8,
+      marginVertical: 6,
+    },
+    emptyLaneText: {
+      fontSize: 12,
+      color: theme.colors.foregroundMuted,
+      textAlign: "center",
+      paddingHorizontal: 12,
+      userSelect: "none",
+    },
+  });
 }
 
 export const KanbanLaneView = memo(KanbanLaneViewInner);

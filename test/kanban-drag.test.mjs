@@ -1,81 +1,288 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { KanbanDragController } from "../client/kanban-drag.ts";
+import {
+  act,
+  loadClientModule,
+  mockReactNative,
+} from "./helpers/react-host-env.mjs";
+import {
+  createHost,
+  mount,
+  text,
+  chooseProject,
+} from "./helpers/kanban-host.mjs";
+import { KanbanBoardSchema } from "../shared/kanban.ts";
 
-// Focused geometry/scroll scenarios supply deterministic native measurements.
-// Connected card/lane/overlay behavior lives in kanban-card-drag.test.mjs;
-// native layout/touch still requires host acceptance.
-const mockContainer = { x: 20, y: 80, width: 800, height: 600 };
-const mockLanes = [
-  { id: "to-plan", rect: { x: 10, y: 10, width: 280, height: 550 } },
-  { id: "in-progress", rect: { x: 304, y: 10, width: 280, height: 550 } },
-  { id: "done", rect: { x: 598, y: 10, width: 280, height: 550 } },
-];
-const context = { taskId: "task-1", laneId: "to-plan" };
+const { KanbanDragController } = loadClientModule("board/drag");
 
-function setupController() {
-  const requests = [];
-  const controller = new KanbanDragController({
-    lanes: mockLanes.map(({ id }) => id),
-    onReorderTask: (...args) => requests.push(args),
-  });
-  controller.registerContainerBounds(mockContainer);
-  for (const { id, rect } of mockLanes) controller.registerLaneLayout(id, rect);
-  return { controller, requests };
+globalThis.localStorage = {
+  getItem: () => JSON.stringify({ language: "en" }),
+};
+test.after(() => delete globalThis.localStorage);
+
+function lane(renderer, title) {
+  let node = renderer.root
+    .findAllByType("Text")
+    .find((candidate) => text(candidate) === title);
+  assert.ok(node, `visible lane: ${title}`);
+  while (node && !(node.type === "View" && node.props.onLayout))
+    node = node.parent;
+  assert.ok(node, `measurable lane: ${title}`);
+  return node;
 }
 
-function registerCards(controller, laneId, cards) {
-  controller.setLaneCardOrder(
-    laneId,
-    cards.map(([id]) => id),
-  );
-  for (const [id, y, height] of cards) {
-    controller.registerCardLayout(laneId, id, { x: 10, y, width: 260, height });
-  }
-}
-
-const threeCards = [
-  ["task-1", 0, 64],
-  ["2", 80, 64],
-  ["3", 160, 64],
-];
-
-test("释放时重算落点：视口外、泳道间隙、内容外与已移除泳道均不提交且回弹回原槽位", async () => {
-  for (const [label, point, removedLane] of [
-    ["视口上方", { x: 340, y: 30 }],
-    ["泳道间隙", { x: 318, y: 130 }],
-    ["泳道内容下方", { x: 340, y: 660 }],
-    ["已移除泳道", { x: 340, y: 130 }, "in-progress"],
-  ]) {
-    const { controller, requests } = setupController();
-    registerCards(controller, "to-plan", threeCards);
-    controller.handlePointerDown(context, { x: 70, y: 130 }, "handle");
-    controller.handlePointerMove({ x: 340, y: 130 });
-    assert.equal(controller.getFeedback().hoveredLaneId, "in-progress", label);
-    if (removedLane) controller.setLanes(["to-plan", "done"]);
-    controller.handlePointerMove(point);
-    const drop = await controller.beginDropAnimation(point);
-    assert.equal(drop.isDrop, false, label);
-    assert.equal(
-      drop.targetIndex,
-      0,
-      `${label}: 回弹期间源泳道槽位保持在原位 0`,
+function card(renderer, title) {
+  let node = renderer.root
+    .findAllByProps({ accessibilityRole: "checkbox" })
+    .find((candidate) =>
+      [`Mark ${title} complete`, `Mark ${title} incomplete`].includes(
+        candidate.props.accessibilityLabel,
+      ),
     );
-    await controller.reportDropComplete(drop.operationId);
-    assert.deepEqual(requests, [], label);
-    assert.equal(controller.getFeedback().isDragging, false, label);
-    assert.equal(controller.getFeedback().hoveredLaneId, null, label);
+  while (node && !(node.type === "View" && node.props.onLayout))
+    node = node.parent;
+  assert.ok(node, `measurable card: ${title}`);
+  return node;
+}
+
+function laneTitles(renderer, title) {
+  return lane(renderer, title)
+    .findAllByProps({ accessibilityRole: "checkbox" })
+    .map((node) => node.props.accessibilityLabel);
+}
+
+async function setup(t, { tasks, project } = {}) {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+  const host = createHost({
+    board: KanbanBoardSchema.parse({
+      lanes: [
+        { id: "todo", title: "Todo", isCompletionLane: false },
+        { id: "doing", title: "Doing", isCompletionLane: false },
+        { id: "done", title: "Finished", isCompletionLane: true },
+      ],
+      tasks: tasks ?? [
+        { id: "a", title: "Task A", laneId: "todo" },
+        { id: "b", title: "Task B", laneId: "doing" },
+      ],
+    }),
+  });
+  const renderer = await mount(t, host);
+  if (project) await chooseProject(renderer.root, project);
+  await measureBoard(renderer);
+  return { host, renderer };
+}
+
+async function measureBoard(renderer) {
+  await act(async () => {
+    renderer.root
+      .findAllByType("ScrollView")
+      .find((node) => node.props.horizontal && node.props.onLayout)
+      .props.onLayout({
+        nativeEvent: { layout: { x: 0, y: 0, width: 1000, height: 600 } },
+      });
+    for (const [index, title] of ["Todo", "Doing", "Finished"].entries()) {
+      const column = lane(renderer, title);
+      column.props.onLayout({
+        nativeEvent: {
+          layout: { x: index * 320, y: 0, width: 300, height: 550 },
+        },
+      });
+      column.findByType("ScrollView").props.onLayout({
+        nativeEvent: { layout: { x: 0, y: 50, width: 280, height: 500 } },
+      });
+    }
+    for (const title of ["Task A", "Task B"])
+      card(renderer, title).props.onLayout({
+        nativeEvent: { layout: { x: 0, y: 0, width: 280, height: 64 } },
+      });
+  });
+}
+
+async function moveTaskA(renderer, { fromX = 20, toX = 340, toY = 180 } = {}) {
+  const body = card(renderer, "Task A")
+    .findAllByType("View")
+    .find((node) => node.props.onPanResponderGrant);
+  const event = {
+    nativeEvent: { pointerType: "mouse", pageX: fromX, pageY: 70 },
+  };
+  await act(async () => {
+    body.props.onPanResponderGrant(event, {
+      x0: fromX,
+      y0: 70,
+      dx: 0,
+      dy: 0,
+    });
+    body.props.onPanResponderMove(
+      { nativeEvent: { pointerType: "mouse", pageX: toX, pageY: toY } },
+      { moveX: toX, moveY: toY, dx: toX - fromX, dy: toY - 70 },
+    );
+  });
+  await act(async () => body.props.onPanResponderRelease());
+}
+
+test("真实看板拖拽：跨泳道落位持久化、项目筛选保留隐藏任务、落位合并最新外部编辑", async (t) => {
+  let finish;
+  t.mock.method(mockReactNative.Animated, "parallel", () => ({
+    start: (callback) => {
+      finish = callback;
+    },
+    stop() {},
+  }));
+  const { host, renderer } = await setup(t, {
+    project: "Project A",
+    tasks: [
+      { id: "a", title: "Task A", laneId: "todo", projectId: "project-a" },
+      { id: "h1", title: "Hidden 1", laneId: "doing", projectId: "project-b" },
+      { id: "b", title: "Task B", laneId: "doing", projectId: "project-a" },
+      { id: "h2", title: "Hidden 2", laneId: "doing", projectId: "project-b" },
+    ],
+  });
+  await moveTaskA(renderer);
+  await act(async () =>
+    host.replaceBoard(
+      KanbanBoardSchema.parse({
+        ...host.board,
+        tasks: [
+          { ...host.board.tasks[0], description: "External edit" },
+          ...host.board.tasks.slice(1),
+        ],
+      }),
+    ),
+  );
+  await act(async () => finish({ finished: true }));
+  assert.deepEqual(
+    host.board.tasks.map((task) => task.id),
+    ["h1", "b", "a", "h2"],
+  );
+  assert.equal(
+    host.board.tasks.find((task) => task.id === "a").description,
+    "External edit",
+  );
+  await act(async () => t.mock.timers.tick(60));
+  await chooseProject(renderer.root, "All Projects");
+  assert.deepEqual(laneTitles(renderer, "Doing"), [
+    "Mark Hidden 1 complete",
+    "Mark Task B complete",
+    "Mark Task A complete",
+    "Mark Hidden 2 complete",
+  ]);
+});
+
+test("拖入完成泳道保留原归属且不可内部重排，拖出按可见槽位恢复；保存失败回滚并可重试", async (t) => {
+  const { host, renderer } = await setup(t);
+  host.failNextSave(new Error("Disk full"));
+  await moveTaskA(renderer);
+  assert.equal(host.board.tasks.find((task) => task.id === "a").laneId, "todo");
+  assert.equal(host.notifications.length, 1);
+  await act(async () => t.mock.timers.tick(60));
+
+  await moveTaskA(renderer, { toX: 660 });
+  assert.deepEqual(laneTitles(renderer, "Finished"), [
+    "Mark Task A incomplete",
+  ]);
+  assert.equal(host.board.tasks.find((task) => task.id === "a").laneId, "todo");
+  const completed = host.board;
+  await act(async () => {
+    t.mock.timers.tick(60);
+    card(renderer, "Task A").props.onLayout({
+      nativeEvent: { layout: { x: 0, y: 0, width: 280, height: 64 } },
+    });
+  });
+  await moveTaskA(renderer, { fromX: 660, toX: 680 });
+  assert.equal(host.board, completed);
+  await act(async () => t.mock.timers.tick(60));
+  await moveTaskA(renderer, { fromX: 660, toX: 340, toY: 60 });
+  assert.deepEqual(laneTitles(renderer, "Finished"), []);
+  assert.deepEqual(laneTitles(renderer, "Doing"), [
+    "Mark Task A complete",
+    "Mark Task B complete",
+  ]);
+});
+
+test("落位动画中断、界外释放、手势取消或卸载均不产生写入，且隔离迟到回调", async (t) => {
+  for (const scenario of ["interrupted", "outside", "cancel", "unmount"]) {
+    await t.test(scenario, async (t) => {
+      const completions = [];
+      t.mock.method(mockReactNative.Animated, "parallel", () => ({
+        start: (callback) => completions.push(callback),
+        stop() {},
+      }));
+      const { host, renderer } = await setup(t);
+      const initial = structuredClone(host.board);
+      await moveTaskA(renderer, scenario === "outside" ? { toX: 1100 } : {});
+      if (scenario === "unmount") {
+        await act(async () => renderer.unmount());
+      } else if (scenario === "cancel") {
+        await act(async () =>
+          card(renderer, "Task A")
+            .findAllByType("View")
+            .find((node) => node.props.onPanResponderTerminate)
+            .props.onPanResponderTerminate(),
+        );
+      }
+      await act(async () => {
+        completions[0]({ finished: scenario !== "interrupted" });
+        t.mock.timers.tick(60);
+      });
+      assert.deepEqual(host.board, initial);
+      const activeRenderer =
+        scenario === "unmount" ? await mount(t, host) : renderer;
+      if (scenario === "unmount") await measureBoard(activeRenderer);
+      await moveTaskA(activeRenderer);
+      await act(async () => completions[1]({ finished: true }));
+      assert.deepEqual(laneTitles(activeRenderer, "Doing"), [
+        "Mark Task B complete",
+        "Mark Task A complete",
+      ]);
+    });
   }
 });
 
-test("卡片边界微颤保持占位槽，突破迟滞区后切换并提交最后槽位", async () => {
-  const { controller, requests } = setupController();
-  registerCards(controller, "in-progress", [
-    ["card-a", 20, 60],
-    ["card-b", 90, 60],
-  ]);
-  controller.handlePointerDown(context, { x: 70, y: 130 }, "handle");
-  // card-b 底部边界在窗口 y=244，迟滞区 236..252。
+test("卡片边界迟滞区防抖、横纵滚动动态更新命中槽位并在非法区域释放时取消提交", async () => {
+  const requests = [];
+  const controller = new KanbanDragController({
+    lanes: ["to-plan", "in-progress"],
+    onReorderTask: (...args) => requests.push(args),
+  });
+  controller.registerContainerBounds({ x: 20, y: 80, width: 800, height: 600 });
+  controller.registerLaneLayout("to-plan", {
+    x: 10,
+    y: 10,
+    width: 280,
+    height: 550,
+  });
+  controller.registerLaneLayout("in-progress", {
+    x: 304,
+    y: 10,
+    width: 280,
+    height: 550,
+  });
+  controller.setLaneCardOrder("to-plan", ["task-1"]);
+  controller.registerCardLayout("to-plan", "task-1", {
+    x: 10,
+    y: 20,
+    width: 260,
+    height: 60,
+  });
+  controller.setLaneCardOrder("in-progress", ["card-a", "card-b"]);
+  controller.registerCardLayout("in-progress", "card-a", {
+    x: 10,
+    y: 20,
+    width: 260,
+    height: 60,
+  });
+  controller.registerCardLayout("in-progress", "card-b", {
+    x: 10,
+    y: 90,
+    width: 260,
+    height: 60,
+  });
+
+  controller.handlePointerDown(
+    { taskId: "task-1", laneId: "to-plan" },
+    { x: 70, y: 130 },
+    "handle",
+  );
   for (const [y, index] of [
     [110, 0],
     [200, 1],
@@ -89,97 +296,46 @@ test("卡片边界微颤保持占位槽，突破迟滞区后切换并提交最�
   }
   await controller.handlePointerUp();
   assert.deepEqual(requests, [["task-1", "in-progress", 1]]);
-});
 
-test("列表顶部偏移与纵向滚动参与命中并提交可见落点", async () => {
-  const { controller, requests } = setupController();
-  controller.registerCardsViewportLayout("to-plan", {
-    x: 12,
-    y: 60,
-    width: 260,
-    height: 480,
+  // Releasing in inter-lane gap does not submit
+  const gapController = new KanbanDragController({
+    lanes: ["to-plan", "in-progress"],
+    onReorderTask: (...args) => requests.push(args),
   });
-  registerCards(controller, "to-plan", [
-    ["task-1", 0, 96],
-    ["2", 104, 60],
-    ["3", 172, 100],
-  ]);
-  controller.handlePointerDown(context, { x: 100, y: 180 }, "handle");
-  assert.equal(controller.getFeedback().draggedCardHeight, 96);
-  controller.handlePointerMove({ x: 100, y: 280 });
-  assert.equal(controller.getFeedback().targetIndex, 1);
-  controller.handleLaneScroll("to-plan", 100);
-  assert.equal(controller.getFeedback().targetIndex, 2);
-  await controller.handlePointerUp({ x: 100, y: 280 });
-  assert.deepEqual(requests, [["task-1", "to-plan", 2]]);
-});
-
-test("横向滚动使静止指针切换到空泳道，同时清除旧槽位", async () => {
-  const { controller, requests } = setupController();
-  registerCards(controller, "to-plan", threeCards);
-  controller.handlePointerDown(context, { x: 100, y: 110 }, "handle");
-  controller.handlePointerMove({ x: 100, y: 400 });
-  assert.equal(controller.getFeedback().targetIndex, 2);
-  controller.handleScroll(294);
-  assert.equal(controller.getFeedback().hoveredLaneId, "in-progress");
-  assert.equal(controller.getFeedback().targetIndex, 0);
-  await controller.handlePointerUp({ x: 100, y: 400 });
-  assert.deepEqual(requests, [["task-1", "in-progress", 0]]);
-});
-
-test("占位动画改变卡片布局时，同一指针保持槽位并按该槽位提交", async () => {
-  const { controller, requests } = setupController();
-  registerCards(controller, "to-plan", threeCards);
-  controller.handlePointerDown(context, { x: 100, y: 110 }, "handle");
-  controller.handlePointerMove({ x: 100, y: 190 });
-  assert.equal(controller.getFeedback().targetIndex, 1);
-  controller.registerCardLayout("to-plan", "2", {
+  gapController.registerContainerBounds({
+    x: 20,
+    y: 80,
+    width: 800,
+    height: 600,
+  });
+  gapController.registerLaneLayout("to-plan", {
     x: 10,
-    y: 160,
+    y: 10,
+    width: 280,
+    height: 550,
+  });
+  gapController.registerLaneLayout("in-progress", {
+    x: 304,
+    y: 10,
+    width: 280,
+    height: 550,
+  });
+  gapController.setLaneCardOrder("to-plan", ["task-1"]);
+  gapController.registerCardLayout("to-plan", "task-1", {
+    x: 10,
+    y: 0,
     width: 260,
     height: 64,
   });
-  controller.handlePointerMove({ x: 100, y: 190 });
-  assert.equal(controller.getFeedback().targetIndex, 1);
-  await controller.handlePointerUp();
-  assert.deepEqual(requests, [["task-1", "to-plan", 1]]);
-});
-
-test("分屏移动和缩窄后按新的窗口坐标与横向滚动定位落点", async () => {
-  const { controller, requests } = setupController();
-  const bounds = { x: 520, y: 80, width: 360, height: 600 };
-  controller.bindContainerRef({
-    measureInWindow(callback) {
-      callback(bounds.x, bounds.y, bounds.width, bounds.height);
-    },
-  });
-  controller.handleContainerLayout({ x: 0, y: 0, width: 360, height: 600 });
-  controller.registerLaneLayout("to-plan", {
-    x: 10,
-    y: 10,
-    width: 270,
-    height: 550,
-  });
-  controller.registerLaneLayout("in-progress", {
-    x: 290,
-    y: 10,
-    width: 270,
-    height: 550,
-  });
-  controller.registerCardLayout("to-plan", "task-1", {
-    x: 10,
-    y: 20,
-    width: 246,
-    height: 64,
-  });
-  controller.handleScroll(250);
-  controller.handlePointerDown(context, { x: 535, y: 130 }, "handle");
-  const feedback = controller.getFeedback();
-  controller.handlePointerMove({ x: 620, y: 130 });
-  const drop = await controller.beginDropAnimation({ x: 620, y: 130 });
-  assert.equal(drop.draggedCardWidth, 246);
-  assert.equal(drop.fromX, 620 - bounds.x - feedback.grabOffsetX);
-  assert.equal(drop.fromY, 130 - bounds.y - feedback.grabOffsetY);
-  await controller.reportDropComplete(drop.operationId);
-  assert.deepEqual(requests, [["task-1", "in-progress", 0]]);
+  requests.length = 0;
+  gapController.handlePointerDown(
+    { taskId: "task-1", laneId: "to-plan" },
+    { x: 70, y: 130 },
+    "handle",
+  );
+  gapController.handlePointerMove({ x: 318, y: 130 });
+  const drop = await gapController.beginDropAnimation({ x: 318, y: 130 });
+  assert.equal(drop.isDrop, false);
+  await gapController.reportDropComplete(drop.operationId);
+  assert.deepEqual(requests, []);
 });

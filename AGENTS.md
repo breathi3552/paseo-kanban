@@ -16,8 +16,8 @@
 
 ### Coding standards
 
-新增或修改操作反馈时，阅读并遵循 `docs/coding-standards.md`。
+编写或修改代码与测试时，阅读并遵循 `docs/coding-standards.md`。
 
 ### Development & verification
 
-本地开发环境要求、`npm run check` 统一质量护栏及宿主验收流程详见 `docs/development.md`。
+本地开发环境要求、`npm run check` 统一质量护栏、宿主调试与发布流程详见 `docs/development.md`。

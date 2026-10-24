@@ -1,9 +1,3 @@
-import {
-  useRef,
-  useSyncExternalStore,
-  useEffect,
-  useLayoutEffect,
-} from "react";
 import type {
   GestureResponderEvent,
   GestureResponderHandlers,
@@ -11,8 +5,8 @@ import type {
   PanResponderInstance,
   ViewProps,
 } from "react-native";
-import type { KanbanTask } from "../shared/kanban";
-import { isCardControl } from "./card-interaction.ts";
+import type { KanbanTask } from "../../../shared/kanban";
+import { isCardControl } from "../card-interaction";
 
 export interface Rect {
   x: number;
@@ -139,17 +133,15 @@ export interface CardDragBinding {
   readonly isDragging: boolean;
   readonly cardPanHandlers?: GestureResponderHandlers &
     Pick<ViewProps, "onTouchCancel">;
-  readonly handlePanHandlers?: GestureResponderHandlers;
   readonly onLayout: (rect: Rect) => void;
   readonly onUnmount: () => void;
 }
 
 export interface LaneDragBinding {
+  readonly draggedCardHeight?: number;
   readonly isHovered: boolean;
   readonly targetIndex: number;
   readonly isTaskDragging: (taskId: string) => boolean;
-  readonly draggedCardWidth?: number;
-  readonly draggedCardHeight?: number;
   readonly isDragLocked: () => boolean;
   readonly bindCard: (
     taskId: string,
@@ -159,23 +151,8 @@ export interface LaneDragBinding {
   readonly registerLaneLayout: (layout: Rect) => void;
   readonly registerCardsViewport: (layout: Rect) => void;
   readonly handleLaneScroll: (scrollY: number) => void;
-  readonly registerCardLayout: (taskId: string, layout: Rect) => void;
-  readonly unregisterCardLayout: (taskId: string) => void;
   readonly setDropSpacerY: (y: number | null) => void;
-  readonly setLaneCardOrder: (
-    laneIdOrTaskIds: string | string[],
-    taskIds?: string[],
-  ) => void;
-  readonly startGesture: (
-    taskId: string,
-    sourceLaneId: string,
-    pointerX: number,
-    pointerY: number,
-    immediate?: boolean,
-  ) => void;
-  readonly moveGesture: (pointerX: number, pointerY: number) => void;
-  readonly releaseGesture: (pointerX?: number, pointerY?: number) => void;
-  readonly cancelGesture: () => void;
+  readonly setLaneCardOrder: (taskIds: string[]) => void;
 }
 
 interface ActiveDragSession {
@@ -229,10 +206,8 @@ export class KanbanDragController {
   private cancelHandler?: () => void;
   private panResponderFactory: PanResponderFactory | null = null;
   private cardCallbacks: Map<string, () => void> = new Map();
-  private cardResponders: Map<
-    string,
-    { body: PanResponderInstance; handle: PanResponderInstance }
-  > = new Map();
+  private cardResponders: Map<string, { body: PanResponderInstance }> =
+    new Map();
   private pendingInputKind: "mouse" | "touch" = "mouse";
   private operationSeq: number = 0;
   private currentOperationId: string | null = null;
@@ -300,6 +275,9 @@ export class KanbanDragController {
   setGetTaskPreview = (fn?: (taskId: string) => TaskPreviewItem | null) => {
     this.getTaskPreview = fn;
   };
+
+  getTaskPreviewItem = (taskId: string) =>
+    this.getTaskPreview?.(taskId) ?? null;
 
   setLaneCardOrder = (laneId: string, taskIds: string[]) => {
     const prevOrder = this.laneCardOrders.get(laneId);
@@ -729,34 +707,13 @@ export class KanbanDragController {
 
       body.panHandlers = { ...body.panHandlers, ...touchHandlers };
 
-      const handle = factory.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (_e, gs) => {
-          const cb = this.cardCallbacks.get(key);
-          this.handlePointerDown(
-            { taskId, laneId, onPress: cb },
-            { x: gs.x0, y: gs.y0 },
-            "handle",
-          );
-        },
-        onPanResponderMove: (_e, gs) => {
-          this.handlePointerMove({ x: gs.moveX, y: gs.moveY });
-        },
-        onPanResponderRelease: () => this.handlePointerUp(),
-        onPanResponderTerminate: () => {
-          this.handlePointerCancel();
-        },
-      });
-
-      responders = { body, handle };
+      responders = { body };
       this.cardResponders.set(key, responders);
     }
 
     return {
       isDragging: this.isTaskDragging(taskId),
       cardPanHandlers: responders?.body?.panHandlers,
-      handlePanHandlers: responders?.handle?.panHandlers,
       onLayout: (rect: Rect) => this.registerCardLayout(laneId, taskId, rect),
       onUnmount: () => this.unregisterCard(laneId, taskId),
     };
@@ -1753,270 +1710,4 @@ export interface DroppingState {
   readonly releaseY?: number;
 }
 
-export interface UseKanbanDragReturn {
-  controller: KanbanDragController;
-  slotState: DragSlotState;
-  feedback: DragFeedback;
-  isDropping: boolean;
-  droppingTaskId: string | null;
-  droppingState: DroppingState | null;
-  commitDrop: () => Promise<void>;
-  abortDrop: () => void;
-  getTaskPreview?: (taskId: string) => TaskPreviewItem | null;
-  setGetTaskPreview?: (fn?: (taskId: string) => TaskPreviewItem | null) => void;
-  bindLane: (laneId: string) => LaneDragBinding;
-  bindContainerRef: (instance: ContainerRefTarget | null) => void;
-  handleContainerLayout: (layout: Rect) => void;
-  handleContainerScroll: (scrollX: number) => void;
-  getContainerBounds: () => Rect | null;
-  startGesture: KanbanDragController["startGesture"];
-  moveGesture: KanbanDragController["moveGesture"];
-  releaseGesture: (releaseX?: number, releaseY?: number) => Promise<void>;
-  cancelGesture: () => void;
-  registerContainerBounds: KanbanDragController["registerContainerBounds"];
-  handleScroll: KanbanDragController["handleScroll"];
-  registerLaneLayout: KanbanDragController["registerLaneLayout"];
-  registerCardsViewportLayout: KanbanDragController["registerCardsViewportLayout"];
-  handleLaneScroll: KanbanDragController["handleLaneScroll"];
-  registerCardLayout: KanbanDragController["registerCardLayout"];
-  unregisterCardLayout: KanbanDragController["unregisterCardLayout"];
-  setLaneCardOrder: KanbanDragController["setLaneCardOrder"];
-  isTaskDragging: (taskId: string) => boolean;
-  isLaneHovered: (laneId: string) => boolean;
-  isDragLocked: () => boolean;
-  getLaneLayout: KanbanDragController["getLaneLayout"];
-  getCardsViewportLayout: KanbanDragController["getCardsViewportLayout"];
-  getLaneScroll: KanbanDragController["getLaneScroll"];
-  getDropSlotPosition: KanbanDragController["getDropSlotPosition"];
-  teardown: () => void;
-}
-
-export function useKanbanDrag(
-  options: KanbanDragOptions = {},
-): UseKanbanDragReturn {
-  const { lanes = [], onReorderTask, getTaskPreview } = options;
-  const controllerRef = useRef<KanbanDragController | null>(null);
-  if (!controllerRef.current) {
-    controllerRef.current = new KanbanDragController({
-      lanes,
-      onReorderTask,
-    });
-  }
-  const controller = controllerRef.current;
-
-  useLayoutEffect(() => {
-    controller.setLanes(lanes);
-  }, [controller, lanes]);
-  if (onReorderTask) {
-    controller.setOnReorderTask(onReorderTask);
-  }
-  if (getTaskPreview) {
-    controller.setGetTaskPreview(getTaskPreview);
-  }
-
-  const slotState = useSyncExternalStore(
-    controller.subscribeSlot,
-    controller.getSlotState,
-    controller.getSlotState,
-  );
-
-  // Keep subscription lifecycle bound to the controller while avoiding board
-  // re-renders on high-frequency pointer coordinate updates.
-  useSyncExternalStore(
-    controller.subscribe,
-    controller.getSlotState,
-    controller.getSlotState,
-  );
-
-  const droppingState = useSyncExternalStore(
-    controller.subscribeDrop,
-    controller.getDroppingState,
-    controller.getDroppingState,
-  );
-
-  const containerScrollRef = useRef<ContainerRefTarget | null>(null);
-  const currentScrollX = useRef(0);
-
-  useEffect(() => {
-    return () => {
-      controller.teardown();
-    };
-  }, [controller]);
-
-  // Smooth edge auto-scroll when dragging near viewport boundaries
-  useEffect(() => {
-    if (!slotState.isDragging) return;
-
-    const timer = setInterval(() => {
-      const liveFeedback = controller.getFeedback();
-      const curVelocity = liveFeedback.autoScrollVelocity ?? 0;
-      if (
-        !curVelocity ||
-        !liveFeedback.isDragging ||
-        !containerScrollRef.current?.scrollTo
-      ) {
-        return;
-      }
-      const nextOffset = Math.max(0, currentScrollX.current + curVelocity * 14);
-      if (nextOffset === currentScrollX.current) return;
-      currentScrollX.current = nextOffset;
-      containerScrollRef.current.scrollTo({
-        x: nextOffset,
-        animated: false,
-      });
-      controller.handleScroll(nextOffset);
-    }, 16);
-
-    return () => clearInterval(timer);
-  }, [slotState.isDragging, controller]);
-
-  const handleContainerLayout = (layout: Rect) => {
-    controller.handleContainerLayout(layout);
-  };
-
-  const handleContainerScroll = (scrollX: number) => {
-    currentScrollX.current = scrollX;
-    controller.handleScroll(scrollX);
-  };
-
-  const bindContainerRef = (instance: ContainerRefTarget | null) => {
-    containerScrollRef.current = instance;
-    controller.bindContainerRef(instance);
-  };
-
-  const commitDrop = async () => {
-    const drop = controller.getDroppingState();
-    if (drop) {
-      await controller.reportDropComplete(drop.operationId);
-    }
-  };
-
-  const abortDrop = () => {
-    const drop = controller.getDroppingState();
-    if (drop) {
-      controller.abortDrop(drop.operationId);
-    }
-  };
-
-  const handleDragRelease = async (
-    releaseX?: number,
-    releaseY?: number,
-  ): Promise<void> => {
-    await controller.beginDropAnimation({ x: releaseX, y: releaseY });
-  };
-
-  const handleDragCancel = () => {
-    const drop = controller.getDroppingState();
-    if (drop) {
-      controller.abortDrop(drop.operationId);
-    } else {
-      controller.cancelGesture();
-    }
-  };
-
-  controller.setReleaseHandler(handleDragRelease);
-  controller.setCancelHandler(handleDragCancel);
-
-  const isTaskDragging = (taskId: string): boolean => {
-    if (droppingState?.taskId === taskId) return true;
-    return controller.isTaskDragging(taskId);
-  };
-
-  const isLaneHovered = (laneId: string): boolean => {
-    return controller.isLaneHovered(laneId);
-  };
-
-  const isDragLocked = (): boolean => {
-    return controller.isDragLocked() || droppingState !== null;
-  };
-
-  const bindLane = (laneId: string): LaneDragBinding => {
-    const isHovered = isLaneHovered(laneId);
-    const targetIndex = droppingState
-      ? droppingState.targetLaneId === laneId
-        ? droppingState.targetIndex
-        : -1
-      : isHovered
-        ? slotState.targetIndex
-        : -1;
-
-    return {
-      isHovered,
-      targetIndex,
-      isTaskDragging,
-      draggedCardWidth: slotState.draggedCardWidth,
-      draggedCardHeight: slotState.draggedCardHeight,
-      isDragLocked,
-      bindCard: (
-        taskId: string,
-        onSelectTask?: () => void,
-        factory?: PanResponderFactory,
-      ) => controller.bindCard(laneId, taskId, onSelectTask, factory),
-      registerLaneLayout: (layout: Rect) =>
-        controller.registerLaneLayout(laneId, layout),
-      registerCardsViewport: (layout: Rect) =>
-        controller.registerCardsViewportLayout(laneId, layout),
-      handleLaneScroll: (scrollY: number) =>
-        controller.handleLaneScroll(laneId, scrollY),
-      registerCardLayout: (taskId: string, layout: Rect) =>
-        controller.registerCardLayout(laneId, taskId, layout),
-      unregisterCardLayout: (taskId: string) =>
-        controller.unregisterCardLayout(laneId, taskId),
-      setDropSpacerY: (y: number | null) => controller.setDropSpacerY(y),
-      setLaneCardOrder: (
-        laneIdOrTaskIds: string | string[],
-        taskIds?: string[],
-      ) => {
-        if (Array.isArray(laneIdOrTaskIds)) {
-          controller.setLaneCardOrder(laneId, laneIdOrTaskIds);
-        } else if (taskIds) {
-          controller.setLaneCardOrder(laneIdOrTaskIds, taskIds);
-        }
-      },
-      startGesture: controller.startGesture,
-      moveGesture: controller.moveGesture,
-      releaseGesture: handleDragRelease,
-      cancelGesture: handleDragCancel,
-    };
-  };
-
-  return {
-    controller,
-    slotState,
-    get feedback() {
-      return controller.getFeedback();
-    },
-    isDropping: droppingState !== null,
-    droppingTaskId: droppingState?.taskId ?? null,
-    droppingState,
-    commitDrop,
-    abortDrop,
-    getTaskPreview,
-    setGetTaskPreview: controller.setGetTaskPreview,
-    bindLane,
-    bindContainerRef,
-    handleContainerLayout,
-    handleContainerScroll,
-    getContainerBounds: controller.getContainerBounds,
-    startGesture: controller.startGesture,
-    moveGesture: controller.moveGesture,
-    releaseGesture: handleDragRelease,
-    cancelGesture: handleDragCancel,
-    registerContainerBounds: controller.registerContainerBounds,
-    handleScroll: controller.handleScroll,
-    registerLaneLayout: controller.registerLaneLayout,
-    registerCardsViewportLayout: controller.registerCardsViewportLayout,
-    handleLaneScroll: controller.handleLaneScroll,
-    registerCardLayout: controller.registerCardLayout,
-    unregisterCardLayout: controller.unregisterCardLayout,
-    setLaneCardOrder: controller.setLaneCardOrder,
-    isTaskDragging,
-    isLaneHovered,
-    isDragLocked,
-    getLaneLayout: controller.getLaneLayout,
-    getCardsViewportLayout: controller.getCardsViewportLayout,
-    getLaneScroll: controller.getLaneScroll,
-    getDropSlotPosition: controller.getDropSlotPosition,
-    teardown: controller.teardown,
-  };
-}
+// Views consume visual state through useKanbanDragOverlay, never the controller

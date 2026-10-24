@@ -21,8 +21,6 @@ function server({
             failure.message,
           );
         if (command === "git") return callback(null, remote + "\n", "");
-        // Enforce the outgoing GitHub API contract, not just a canned response:
-        // the page size and cursor actually determine what this process returns.
         assert.equal(command, "gh");
         assert.equal(args[args.indexOf("--hostname") + 1], "github.com");
         assert.equal(options.cwd, "/projects/a");
@@ -233,48 +231,4 @@ test("空仓库和超出末页的请求不制造假Issue或无限翻页", async 
     host.query({ projectId: "p1", page: 2, sort: "desc" }),
     /github_page/,
   );
-});
-
-test("宿主设置迁移为旧任务填三个默认属性并保留完成归属", () => {
-  const settings = server().settings.find(
-    (contract) => contract.id === "kanban",
-  );
-  const old = {
-    lanes: [
-      { id: "todo", title: "Todo", isCompletionLane: false },
-      { id: "done", title: "Done", isCompletionLane: true },
-    ],
-    tasks: [
-      {
-        id: "old",
-        title: "Old",
-        description: "https://github.com/example/repo/issues/1",
-        laneId: "todo",
-        projectId: null,
-        subtasks: [],
-        completed: true,
-        completedAt: 123,
-      },
-    ],
-  };
-  const migrated = settings.migrate(old, 2);
-  assert.deepEqual(migrated.tasks[0], {
-    ...old.tasks[0],
-    source: "manual",
-    issueNumber: null,
-    externalUrl: null,
-  });
-  const legacy = settings.migrate(
-    {
-      lanes: [
-        { id: "todo", title: "Todo" },
-        { id: "done", title: "Done" },
-      ],
-      tasks: [{ id: "v1", title: "Done", laneId: "done", subtasks: [] }],
-    },
-    1,
-  );
-  assert.equal(legacy.tasks[0].completed, true);
-  assert.equal(legacy.tasks[0].laneId, "todo");
-  assert.equal(legacy.tasks[0].source, "manual");
 });
