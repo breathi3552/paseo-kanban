@@ -86,11 +86,6 @@ jobs:
           set -euo pipefail
           node scripts/verify-release.mjs > "$RUNNER_TEMP/release-verification.md"
           cat "$RUNNER_TEMP/release-verification.md"
-          {
-            node scripts/extract-release-notes.mjs "$VERSION"
-            printf '\n## Verified artifact\n\n'
-            cat "$RUNNER_TEMP/release-verification.md"
-          } > "$RUNNER_TEMP/release-notes.md"
 
       - name: Verify npm registry and provenance signatures
         env:
@@ -100,7 +95,19 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/release-audit" --ignore-scripts --omit=dev --no-audit --no-fund --registry=https://registry.npmjs.org "paseo-kanban@$VERSION"
           cd "$RUNNER_TEMP/release-audit"
           npm audit signatures --registry=https://registry.npmjs.org
-          printf '\n- Registry and provenance signatures: verified with `npm audit signatures`.\n' >> "$RUNNER_TEMP/release-notes.md"
+          echo "- **Signatures**: verified with \`npm audit signatures\`." >> "$RUNNER_TEMP/release-verification.md"
+
+      - name: Assemble release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          {
+            node scripts/extract-release-notes.mjs "$VERSION"
+            printf '\n<details>\n<summary>Verified artifact</summary>\n\n'
+            cat "$RUNNER_TEMP/release-verification.md"
+            printf '\n</details>\n'
+          } > "$RUNNER_TEMP/release-notes.md"
 
       - name: Create GitHub Release with the verified npm tarball
         env:

@@ -140,16 +140,15 @@ try {
     );
   }
   console.log(
-    `- npm package: [\`${name}@${version}\`](${metadata.dist.tarball})`,
+    `- **Package**: [\`${name}@${version}\`](${metadata.dist.tarball})`,
   );
-  console.log(`- Source tag: [\`${tag}\`](${repository}/tree/${tag})`);
-  console.log(`- Source commit: \`${commit}\``);
-  console.log(`- SHA-512 integrity: \`${metadata.dist.integrity}\``);
+  console.log(`- **Integrity**: \`${metadata.dist.integrity}\``);
   console.log(
-    `- Source match: all ${publishedFiles.length} published files match byte for byte.`,
+    `- **Source match**: all ${publishedFiles.length} published files match byte for byte ([\`${commit.slice(0, 7)}\`](${repository}/commit/${commit})).`,
   );
-  console.log(`- Provenance source: \`${commit}\` at \`refs/tags/${tag}\`.`);
-  console.log(`- [npm attestations](${metadata.dist.attestations.url})`);
+  console.log(
+    `- **Provenance**: [npm attestations](${metadata.dist.attestations.url})`,
+  );
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });
 }
