@@ -8,7 +8,6 @@ import {
 } from "react-native";
 import { useRpc, type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import {
-  Modal,
   Icon,
   ScrollView,
   useToast,
@@ -19,6 +18,7 @@ import type { KanbanBoard } from "../shared/kanban";
 import { executeIssueImport, type SaveFn } from "./kanban-session";
 import type { ProjectItem } from "./use-projects";
 import { useI18n, type TranslationKey } from "./i18n";
+import { BusinessDialog } from "./business-dialog";
 
 interface Props {
   board: KanbanBoard;
@@ -142,66 +142,6 @@ export function GitHubImportModal(props: Props) {
     selectable.length > 0 && chosen.length === selectable.length;
   const disabled = saving || !ready || !props.settingsReady;
   const colors = props.theme.colors;
-  const containerRef = useRef<View>(null);
-
-  useEffect(() => {
-    const doc = (
-      globalThis as unknown as {
-        document?: {
-          getElementById?: (id: string) => { remove: () => void } | null;
-          createElement?: (tag: string) => {
-            id: string;
-            textContent: string;
-          };
-          head?: { appendChild: (child: unknown) => void };
-        };
-      }
-    ).document;
-    if (
-      !doc ||
-      typeof doc.getElementById !== "function" ||
-      typeof doc.createElement !== "function" ||
-      !doc.head
-    )
-      return;
-
-    const styleId = "github-import-dialog-style";
-    const existing = doc.getElementById(styleId);
-    if (!existing) {
-      const created = doc.createElement("style");
-      created.id = styleId;
-      created.textContent = `
-        [role="dialog"]:has(#github-import-dialog) {
-          max-width: 840px !important;
-          width: 90vw !important;
-        }
-      `;
-      doc.head.appendChild(created);
-    }
-
-    const el = containerRef.current as unknown as {
-      closest?: (selector: string) => {
-        style?: { maxWidth?: string; width?: string };
-      } | null;
-    } | null;
-    const dialog = el?.closest?.('[role="dialog"]');
-    const prevMaxWidth = dialog?.style?.maxWidth ?? "";
-    const prevWidth = dialog?.style?.width ?? "";
-
-    if (dialog?.style && !props.compact) {
-      dialog.style.maxWidth = "840px";
-      dialog.style.width = "90vw";
-    }
-
-    return () => {
-      if (dialog?.style) {
-        dialog.style.maxWidth = prevMaxWidth;
-        dialog.style.width = prevWidth;
-      }
-      doc.getElementById?.(styleId)?.remove();
-    };
-  }, [props.compact]);
-
   const styles = useMemo(
     () =>
       StyleSheet.create({
@@ -310,312 +250,305 @@ export function GitHubImportModal(props: Props) {
   }
 
   return (
-    <Modal
-      open
+    <BusinessDialog
       title={t("import.title")}
+      theme={props.theme}
+      compact={props.compact}
+      maxWidth={840}
+      viewportWidth={90}
+      scroll="contained"
+      contentStyle={styles.body}
+      canClose={() => !savingRef.current}
       onOpenChange={(open) => {
-        if (!open && !savingRef.current) props.onClose();
+        if (!open) props.onClose();
       }}
     >
-      <Modal.Content
-        scrollable={false}
-        style={{ backgroundColor: colors.surface0 }}
-        contentContainerStyle={styles.body}
+      <View
+        nativeID="github-import-dialog"
+        testID="github-import-dialog"
+        style={styles.selectors}
       >
-        <View
-          ref={containerRef}
-          nativeID="github-import-dialog"
-          testID="github-import-dialog"
-          style={styles.selectors}
-        >
-          <View style={[styles.select, styles.selectProject]}>
-            <SettingsSelect
-              label={t("import.project")}
-              value={projectId}
-              disabled={saving}
-              options={[
-                { label: t("import.selectProject"), value: "" },
-                ...props.projects.map((project) => ({
-                  label: project.projectDisplayName,
-                  value: project.projectId,
-                })),
-              ]}
-              onValueChange={(id) => {
-                if (savingRef.current) return;
+        <View style={[styles.select, styles.selectProject]}>
+          <SettingsSelect
+            label={t("import.project")}
+            value={projectId}
+            disabled={saving}
+            options={[
+              { label: t("import.selectProject"), value: "" },
+              ...props.projects.map((project) => ({
+                label: project.projectDisplayName,
+                value: project.projectId,
+              })),
+            ]}
+            onValueChange={(id) => {
+              if (savingRef.current) return;
+              clear();
+              setPage(1);
+              setProjectId(id);
+            }}
+          />
+        </View>
+        <View style={[styles.select, styles.selectLane]}>
+          <SettingsSelect
+            label={t("import.lane")}
+            value={laneId}
+            disabled={saving}
+            options={props.board.lanes
+              .filter((lane) => !lane.isCompletionLane)
+              .map((lane) => ({ label: lane.title, value: lane.id }))}
+            onValueChange={(id) => {
+              if (!savingRef.current) setLaneId(id);
+            }}
+          />
+        </View>
+      </View>
+      {data && <Text style={styles.secondary}>{data.repository}</Text>}
+      {!projectId ? (
+        <Text style={styles.secondary}>{t("import.selectProject")}</Text>
+      ) : loading ? (
+        <View style={styles.row}>
+          <ActivityIndicator color={colors.accent} />
+          <Text style={styles.secondary}>{t("import.loading")}</Text>
+        </View>
+      ) : error ? (
+        <View>
+          <Text style={styles.error}>
+            {t(`import.${error}` as TranslationKey)}
+          </Text>
+          <Pressable
+            style={styles.button}
+            onPress={() => {
+              if (error === "github_page") {
                 clear();
                 setPage(1);
-                setProjectId(id);
-              }}
-            />
-          </View>
-          <View style={[styles.select, styles.selectLane]}>
-            <SettingsSelect
-              label={t("import.lane")}
-              value={laneId}
-              disabled={saving}
-              options={props.board.lanes
-                .filter((lane) => !lane.isCompletionLane)
-                .map((lane) => ({ label: lane.title, value: lane.id }))}
-              onValueChange={(id) => {
-                if (!savingRef.current) setLaneId(id);
-              }}
-            />
-          </View>
+              }
+              setRetry((value) => value + 1);
+            }}
+          >
+            <Text style={styles.title}>{t("import.retry")}</Text>
+          </Pressable>
         </View>
-        {data && <Text style={styles.secondary}>{data.repository}</Text>}
-        {!projectId ? (
-          <Text style={styles.secondary}>{t("import.selectProject")}</Text>
-        ) : loading ? (
-          <View style={styles.row}>
-            <ActivityIndicator color={colors.accent} />
-            <Text style={styles.secondary}>{t("import.loading")}</Text>
-          </View>
-        ) : error ? (
-          <View>
-            <Text style={styles.error}>
-              {t(`import.${error}` as TranslationKey)}
-            </Text>
-            <Pressable
-              style={styles.button}
-              onPress={() => {
-                if (error === "github_page") {
+      ) : (
+        ready && (
+          <>
+            <View style={styles.row}>
+              <Pressable
+                style={styles.checkbox}
+                accessibilityRole="checkbox"
+                accessibilityLabel={t("import.selectAll")}
+                accessibilityState={{
+                  checked: allSelected ? true : chosen.length ? "mixed" : false,
+                  disabled: disabled || !selectable.length,
+                }}
+                disabled={disabled || !selectable.length}
+                onPress={() =>
+                  setSelected(
+                    allSelected
+                      ? new Set()
+                      : new Set(selectable.map((issue) => issue.number)),
+                  )
+                }
+              >
+                <Icon
+                  name={
+                    allSelected
+                      ? "SquareCheck"
+                      : chosen.length
+                        ? "SquareMinus"
+                        : "Square"
+                  }
+                  size={20}
+                  color={colors.foregroundMuted}
+                />
+              </Pressable>
+              <Text style={styles.title}>{t("import.issue")}</Text>
+              <Pressable
+                style={styles.button}
+                accessibilityRole="button"
+                accessibilityLabel={t(
+                  sort === "desc" ? "import.oldest" : "import.newest",
+                )}
+                accessibilityState={{ disabled }}
+                disabled={disabled}
+                onPress={() => {
                   clear();
                   setPage(1);
-                }
-                setRetry((value) => value + 1);
+                  setSort(sort === "desc" ? "asc" : "desc");
+                }}
+              >
+                <Icon
+                  name={
+                    sort === "desc"
+                      ? "ArrowDownWideNarrow"
+                      : "ArrowUpWideNarrow"
+                  }
+                  size={18}
+                  color={colors.foreground}
+                />
+              </Pressable>
+            </View>
+            <ScrollView style={styles.list}>
+              {!data.issues.length && (
+                <Text style={styles.secondary}>{t("import.empty")}</Text>
+              )}
+              {data.issues.map((issue) => {
+                const imported = existing.has(issue.number);
+                const checked = !imported && selected.has(issue.number);
+                return (
+                  <Pressable
+                    key={issue.number}
+                    style={[styles.row, imported && { opacity: 0.4 }]}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={t("import.selectIssue", {
+                      number: issue.number,
+                    })}
+                    accessibilityState={{
+                      checked,
+                      disabled: disabled || imported,
+                    }}
+                    disabled={disabled || imported}
+                    onPress={() =>
+                      setSelected((previous) => {
+                        const next = new Set(previous);
+                        if (next.has(issue.number)) next.delete(issue.number);
+                        else next.add(issue.number);
+                        return next;
+                      })
+                    }
+                  >
+                    <View style={styles.checkbox}>
+                      <Icon
+                        name={checked ? "SquareCheck" : "Square"}
+                        size={20}
+                        color={colors.foregroundMuted}
+                      />
+                    </View>
+                    <View style={{ flex: 1, gap: 4 }}>
+                      <Text style={styles.title} numberOfLines={2}>
+                        {issue.title}
+                      </Text>
+                      <Text style={styles.secondary}>
+                        {t("import.subtitle", {
+                          number: issue.number,
+                          author: issue.author,
+                          time: relativeTime(issue.createdAt, language),
+                        })}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.footer}>
+              <Pressable
+                style={styles.button}
+                accessibilityRole="button"
+                accessibilityLabel={t("import.previous")}
+                disabled={disabled || page <= 1}
+                onPress={() => goTo(page - 1)}
+              >
+                <Text style={styles.secondary}>{t("import.previous")}</Text>
+              </Pressable>
+              {props.compact ? (
+                <Text style={styles.secondary}>
+                  {t("import.page", { page, pages })}
+                </Text>
+              ) : (
+                Array.from(
+                  new Set([
+                    1,
+                    ...[page - 1, page, page + 1].filter(
+                      (number) => number > 0 && number <= pages,
+                    ),
+                    pages,
+                  ]),
+                )
+                  .sort((a, b) => a - b)
+                  .map((number) => (
+                    <Pressable
+                      key={number}
+                      style={styles.button}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: number === page }}
+                      disabled={disabled || page === number}
+                      onPress={() => goTo(number)}
+                    >
+                      <Text
+                        style={[
+                          styles.title,
+                          number === page && { color: colors.accent },
+                        ]}
+                      >
+                        {number}
+                      </Text>
+                    </Pressable>
+                  ))
+              )}
+              <Pressable
+                style={styles.button}
+                accessibilityRole="button"
+                accessibilityLabel={t("import.next")}
+                disabled={disabled || page >= pages}
+                onPress={() => goTo(page + 1)}
+              >
+                <Text style={styles.secondary}>{t("import.next")}</Text>
+              </Pressable>
+            </View>
+          </>
+        )
+      )}
+      {!validLane && <Text style={styles.error}>{t("import.target")}</Text>}
+      {(saveError || !props.settingsReady) && (
+        <View>
+          <Text style={styles.error}>{t("import.error")}</Text>
+          {!props.settingsReady && (
+            <Pressable
+              style={styles.button}
+              disabled={saving}
+              onPress={async () => {
+                if (savingRef.current) return;
+                savingRef.current = true;
+                setSaving(true);
+                await props.reload().catch(() => {});
+                savingRef.current = false;
+                setSaving(false);
               }}
             >
               <Text style={styles.title}>{t("import.retry")}</Text>
             </Pressable>
-          </View>
-        ) : (
-          ready && (
-            <>
-              <View style={styles.row}>
-                <Pressable
-                  style={styles.checkbox}
-                  accessibilityRole="checkbox"
-                  accessibilityLabel={t("import.selectAll")}
-                  accessibilityState={{
-                    checked: allSelected
-                      ? true
-                      : chosen.length
-                        ? "mixed"
-                        : false,
-                    disabled: disabled || !selectable.length,
-                  }}
-                  disabled={disabled || !selectable.length}
-                  onPress={() =>
-                    setSelected(
-                      allSelected
-                        ? new Set()
-                        : new Set(selectable.map((issue) => issue.number)),
-                    )
-                  }
-                >
-                  <Icon
-                    name={
-                      allSelected
-                        ? "SquareCheck"
-                        : chosen.length
-                          ? "SquareMinus"
-                          : "Square"
-                    }
-                    size={20}
-                    color={colors.foregroundMuted}
-                  />
-                </Pressable>
-                <Text style={styles.title}>{t("import.issue")}</Text>
-                <Pressable
-                  style={styles.button}
-                  accessibilityRole="button"
-                  accessibilityLabel={t(
-                    sort === "desc" ? "import.oldest" : "import.newest",
-                  )}
-                  accessibilityState={{ disabled }}
-                  disabled={disabled}
-                  onPress={() => {
-                    clear();
-                    setPage(1);
-                    setSort(sort === "desc" ? "asc" : "desc");
-                  }}
-                >
-                  <Icon
-                    name={
-                      sort === "desc"
-                        ? "ArrowDownWideNarrow"
-                        : "ArrowUpWideNarrow"
-                    }
-                    size={18}
-                    color={colors.foreground}
-                  />
-                </Pressable>
-              </View>
-              <ScrollView style={styles.list}>
-                {!data.issues.length && (
-                  <Text style={styles.secondary}>{t("import.empty")}</Text>
-                )}
-                {data.issues.map((issue) => {
-                  const imported = existing.has(issue.number);
-                  const checked = !imported && selected.has(issue.number);
-                  return (
-                    <Pressable
-                      key={issue.number}
-                      style={[styles.row, imported && { opacity: 0.4 }]}
-                      accessibilityRole="checkbox"
-                      accessibilityLabel={t("import.selectIssue", {
-                        number: issue.number,
-                      })}
-                      accessibilityState={{
-                        checked,
-                        disabled: disabled || imported,
-                      }}
-                      disabled={disabled || imported}
-                      onPress={() =>
-                        setSelected((previous) => {
-                          const next = new Set(previous);
-                          if (next.has(issue.number)) next.delete(issue.number);
-                          else next.add(issue.number);
-                          return next;
-                        })
-                      }
-                    >
-                      <View style={styles.checkbox}>
-                        <Icon
-                          name={checked ? "SquareCheck" : "Square"}
-                          size={20}
-                          color={colors.foregroundMuted}
-                        />
-                      </View>
-                      <View style={{ flex: 1, gap: 4 }}>
-                        <Text style={styles.title} numberOfLines={2}>
-                          {issue.title}
-                        </Text>
-                        <Text style={styles.secondary}>
-                          {t("import.subtitle", {
-                            number: issue.number,
-                            author: issue.author,
-                            time: relativeTime(issue.createdAt, language),
-                          })}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-              <View style={styles.footer}>
-                <Pressable
-                  style={styles.button}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("import.previous")}
-                  disabled={disabled || page <= 1}
-                  onPress={() => goTo(page - 1)}
-                >
-                  <Text style={styles.secondary}>{t("import.previous")}</Text>
-                </Pressable>
-                {props.compact ? (
-                  <Text style={styles.secondary}>
-                    {t("import.page", { page, pages })}
-                  </Text>
-                ) : (
-                  Array.from(
-                    new Set([
-                      1,
-                      ...[page - 1, page, page + 1].filter(
-                        (number) => number > 0 && number <= pages,
-                      ),
-                      pages,
-                    ]),
-                  )
-                    .sort((a, b) => a - b)
-                    .map((number) => (
-                      <Pressable
-                        key={number}
-                        style={styles.button}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: number === page }}
-                        disabled={disabled || page === number}
-                        onPress={() => goTo(number)}
-                      >
-                        <Text
-                          style={[
-                            styles.title,
-                            number === page && { color: colors.accent },
-                          ]}
-                        >
-                          {number}
-                        </Text>
-                      </Pressable>
-                    ))
-                )}
-                <Pressable
-                  style={styles.button}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("import.next")}
-                  disabled={disabled || page >= pages}
-                  onPress={() => goTo(page + 1)}
-                >
-                  <Text style={styles.secondary}>{t("import.next")}</Text>
-                </Pressable>
-              </View>
-            </>
-          )
-        )}
-        {!validLane && <Text style={styles.error}>{t("import.target")}</Text>}
-        {(saveError || !props.settingsReady) && (
-          <View>
-            <Text style={styles.error}>{t("import.error")}</Text>
-            {!props.settingsReady && (
-              <Pressable
-                style={styles.button}
-                disabled={saving}
-                onPress={async () => {
-                  if (savingRef.current) return;
-                  savingRef.current = true;
-                  setSaving(true);
-                  await props.reload().catch(() => {});
-                  savingRef.current = false;
-                  setSaving(false);
-                }}
-              >
-                <Text style={styles.title}>{t("import.retry")}</Text>
-              </Pressable>
-            )}
-          </View>
-        )}
-        <View style={[styles.footer, { marginTop: "auto" }]}>
-          <Text style={styles.secondary}>
-            {t("import.selected", { count: chosen.length })}
-          </Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <Pressable
-              style={styles.button}
-              disabled={saving}
-              onPress={props.onClose}
-            >
-              <Text style={styles.title}>{t("import.cancel")}</Text>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.button,
-                styles.primary,
-                (disabled || !validProject || !validLane || !chosen.length) && {
-                  opacity: 0.4,
-                },
-              ]}
-              disabled={
-                disabled || !validProject || !validLane || !chosen.length
-              }
-              onPress={submit}
-            >
-              {saving && <ActivityIndicator color={colors.accentForeground} />}
-              <Text style={{ color: colors.accentForeground }}>
-                {t("import.submit")}
-              </Text>
-            </Pressable>
-          </View>
+          )}
         </View>
-      </Modal.Content>
-    </Modal>
+      )}
+      <View style={[styles.footer, { marginTop: "auto" }]}>
+        <Text style={styles.secondary}>
+          {t("import.selected", { count: chosen.length })}
+        </Text>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Pressable
+            style={styles.button}
+            disabled={saving}
+            onPress={props.onClose}
+          >
+            <Text style={styles.title}>{t("import.cancel")}</Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.button,
+              styles.primary,
+              (disabled || !validProject || !validLane || !chosen.length) && {
+                opacity: 0.4,
+              },
+            ]}
+            disabled={disabled || !validProject || !validLane || !chosen.length}
+            onPress={submit}
+          >
+            {saving && <ActivityIndicator color={colors.accentForeground} />}
+            <Text style={{ color: colors.accentForeground }}>
+              {t("import.submit")}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </BusinessDialog>
   );
 }

@@ -21,6 +21,7 @@
 ### 2. 宽屏 Web Portal 与层级隔离
 
 - 桌面端（Web 平台且非 compact 视图）使用独立打包的 React DOM 19.1.0 `createPortal` 产物（`client/web.ts`），将弹窗直接挂载至 `document.body`，突破宿主 520px 宽度限制，提供最大 1120px 视口；窄屏与移动端回退至宿主原生 Modal。
+- [#39](https://github.com/breathi3552/paseo-kanban/issues/39) 将该包装扩充为 `client/business-dialog.tsx`：任务编辑、Issue 导入与泳道管理声明各自尺寸、滚动、关闭条件及内容，平台层拥有容器和独立样式生命周期。导入最大宽 840px、宽度 90vw；任务编辑最大宽 520px，编辑态保留 57vh、描述调整及输入焦点高亮。窄屏和原生尺寸继续由宿主拥有，不查改宿主私有 DOM。
 - Portal 容器层级固定为 `z=0`，位于普通应用内容之上，但在宿主 overlay plane（`z=1`）之下。该设计保证宿主全局 Toast 和命令面板正常覆盖在管理弹窗之上，不遮挡操作反馈。
 - 实现完整的桌面键盘与焦点生命周期：Esc 键关闭、Tab 键焦点圈定（Focus Trap）、以及弹窗卸载后的焦点恢复。
 - [#25](https://github.com/breathi3552/paseo-kanban/issues/25) 的任务右键菜单沿用相同层级与公开 Portal 渲染，但使用独立非模态生命周期：不铺阻挡层、不圈定焦点；Tab 从来源卡片继续导航，外部点击与看板滚动关闭菜单，菜单内部滚动保留。
@@ -57,6 +58,6 @@
 ## 实现与兼容
 
 - 状态转换函数集中在 `shared/kanban.ts`（`reorderLanes`、`deleteLane`、`requireLaneTitle` 及 `LaneTitleError`）。
-- 交互与生命周期由 `client/lane-management-modal.tsx`、`client/lane-management-dialog.tsx` 与 `client/use-lane-reorder.ts` 承载。
+- 交互与生命周期由 `client/lane-management-modal.tsx`、`client/business-dialog.tsx` 与 `client/use-lane-reorder.ts` 承载。
 - Portal 打包构建由 `scripts/build-portal.mjs` 支持，通过 `npm run check:portal` 作为本地与 CI 质量护栏。
 - 看板存储 schema 保持不变（版本 3），无需数据迁移。

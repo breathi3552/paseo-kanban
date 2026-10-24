@@ -1,3 +1,4 @@
+import { findDialog, findDialogs } from "./helpers/kanban-host.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { act } from "./helpers/react-host-env.mjs";
@@ -125,7 +126,7 @@ test("right click opens one task menu, switches cards, and hides removed icons",
     1,
   );
   assert.equal(menuItems(renderer).includes("Open Issue in browser"), false);
-  assert.equal(renderer.root.findAllByType("Modal").length, 0);
+  assert.equal(findDialogs(renderer.root).length, 0);
 });
 
 test("menu edit persists task changes; card mouse click and non-primary buttons do not open details", async (t) => {
@@ -142,17 +143,51 @@ test("menu edit persists task changes; card mouse click and non-primary buttons 
       assert.equal(c.props.onMoveShouldSetPanResponder(e), false);
     }
   }
-  assert.equal(renderer.root.findAllByType("Modal").length, 0);
+  assert.equal(findDialogs(renderer.root).length, 0);
   assert.deepEqual(host.board, initial);
   await open(renderer);
   await press(renderer.root, "Edit details");
-  const modal = renderer.root.findByType("Modal");
+  const modal = findDialog(renderer.root);
   await act(async () =>
     modal.findByProps({ value: "Task A" }).props.onChangeText("Edited task"),
   );
   await press(modal, "Save Changes");
   assert.equal(host.board.tasks[0].title, "Edited task");
   assert.deepEqual(host.notifications, ["Task updated"]);
+});
+
+test("task save protects its draft from dismissal, persists once, and can close after reopening", async (t) => {
+  const { host, renderer } = await setup(t);
+  await open(renderer);
+  await press(renderer.root, "Edit details");
+  await act(async () =>
+    findDialog(renderer.root)
+      .findByProps({ value: "Task A" })
+      .props.onChangeText("Saved draft"),
+  );
+  const gate = Promise.withResolvers();
+  t.after(() => gate.resolve());
+  host.holdSave(gate.promise);
+  await press(renderer.root, "Save Changes");
+  await act(async () =>
+    renderer.root.findByType("WebDialogPortal").props.onDismiss(),
+  );
+  await press(findDialog(renderer.root), "Close");
+  assert.equal(
+    findDialog(renderer.root).findByProps({ value: "Saved draft" }).props.value,
+    "Saved draft",
+  );
+  assert.equal(host.board.tasks[0].title, "Task A");
+  await act(async () => gate.resolve());
+  assert.equal(findDialogs(renderer.root).length, 0);
+  assert.equal(host.board.tasks[0].title, "Saved draft");
+  assert.deepEqual(host.notifications, ["Task updated"]);
+  await open(renderer, "Saved draft");
+  await press(renderer.root, "Edit details");
+  await act(async () =>
+    renderer.root.findByType("WebDialogPortal").props.onDismiss(),
+  );
+  assert.equal(findDialogs(renderer.root).length, 0);
 });
 
 test("card controls are excluded from capture, movement and context menu; their own actions remain available", async (t) => {
@@ -264,7 +299,7 @@ async function openDeleteConfirm(renderer, entry, draftTitle) {
   }
   await press(renderer.root, "Edit details");
   if (draftTitle) {
-    const modal = renderer.root.findByType("Modal");
+    const modal = findDialog(renderer.root);
     await act(async () =>
       modal.findByProps({ value: "Task A" }).props.onChangeText(draftTitle),
     );
@@ -296,7 +331,7 @@ test("deletion requires confirmation, cancellation is inert, and successful dele
     await press(renderer.root, "Confirm Delete");
     await press(renderer.root, "Cancel");
     assert.equal(host.notifications.length, 0, entry);
-    assert.ok(renderer.root.findAllByType("Modal").length > 0, entry);
+    assert.ok(findDialogs(renderer.root).length > 0, entry);
     await act(async () => gate.resolve());
     assert.deepEqual(
       host.board.tasks.map((item) => item.id),
@@ -314,7 +349,7 @@ test("deletion confirmation keeps its revision baseline, rejects concurrent edit
     if (entry === "details") {
       await open(renderer);
       await press(renderer.root, "Edit details");
-      const modal = renderer.root.findByType("Modal");
+      const modal = findDialog(renderer.root);
       await act(async () =>
         modal
           .findByProps({ value: "Task A" })
@@ -513,7 +548,7 @@ test("copy uses full task text and saved/default/blank prompt without saving or 
     assert.deepEqual(host.clipboard, [expected]);
     assert.deepEqual(host.board, initial);
     assert.equal(host.settingsValues["agent-dispatch"].prompt, prompt);
-    assert.equal(renderer.root.findAllByType("Modal").length, 0);
+    assert.equal(findDialogs(renderer.root).length, 0);
     assert.equal(host.notifications.length, 1);
   }
 });

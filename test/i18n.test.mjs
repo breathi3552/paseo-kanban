@@ -1,3 +1,4 @@
+import { findDialog } from "./helpers/kanban-host.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { act } from "./helpers/react-host-env.mjs";
@@ -62,7 +63,7 @@ test("任务弹窗中英文字段简化为标题、泳道、项目并保留必�
     upstream.select(language);
     const renderer = await mount(t, createHost());
     await press(renderer.root, add);
-    const modal = renderer.root.findByType("Modal");
+    const modal = findDialog(renderer.root);
     const labels = [
       ...modal.findAllByType("Text").map(text),
       ...modal.findAllByType("Select").map((node) => node.props.label),
@@ -124,7 +125,7 @@ test("提交空标题时，插件使用当前语言显示错误提示", async (t
     const host = createHost();
     const renderer = await mount(t, host);
     await press(renderer.root, newTask);
-    await press(renderer.root.findByType("Modal"), submit);
+    await press(findDialog(renderer.root), submit);
     assert.ok(
       renderer.root.findAllByType("Text").some((node) => text(node) === error),
     );

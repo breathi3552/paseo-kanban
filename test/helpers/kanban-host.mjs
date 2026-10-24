@@ -31,6 +31,21 @@ export function text(node) {
   return node.children.filter((child) => typeof child === "string").join("");
 }
 
+// Query the visible dialog contract, independent of host Modal vs Web rendering.
+export function findDialogs(root) {
+  return root.findAll(
+    (node) =>
+      node.type === "Modal" ||
+      (node.type === "View" && node.props.role === "dialog"),
+  );
+}
+
+export function findDialog(root) {
+  const dialogs = findDialogs(root);
+  assert.equal(dialogs.length, 1, "one visible dialog");
+  return dialogs[0];
+}
+
 export async function press(root, label) {
   const button = root
     .findAllByType("Pressable")
@@ -195,7 +210,11 @@ export function createHost({
     },
   };
   function Modal(props) {
-    return React.createElement("Modal", props, props.children);
+    return React.createElement(
+      "Modal",
+      { ...props, accessibilityLabel: props.title },
+      props.children,
+    );
   }
   Modal.Content = "ModalContent";
   const surfaces = new Map();
@@ -216,8 +235,9 @@ export function createHost({
   const { default: contribute } = loadClientModule("../index.client", {
     "./web": {
       useProjectFilterLayout: () => {},
-      WebDialogPortal: ({ children }) =>
-        React.createElement("WebDialogPortal", {}, children),
+      useDialogInputFocus: () => undefined,
+      WebDialogPortal: ({ children, ...props }) =>
+        React.createElement("WebDialogPortal", props, children),
       WebMenuPortal: ({ children, ...props }) =>
         React.createElement("WebMenuPortal", props, children),
     },

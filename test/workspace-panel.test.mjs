@@ -1,3 +1,4 @@
+import { findDialog } from "./helpers/kanban-host.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { act } from "./helpers/react-host-env.mjs";
@@ -118,7 +119,7 @@ test("新任务关联跟随项目筛选，All Projects 和 No Project 默认不�
   ]) {
     await chooseProject(panel.root, filter);
     await press(panel.root, "+ Add");
-    const modal = panel.root.findByType("Modal");
+    const modal = findDialog(panel.root);
     await act(async () =>
       modal
         .findByProps({ placeholder: "Enter task title" })

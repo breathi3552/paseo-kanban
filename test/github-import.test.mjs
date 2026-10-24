@@ -1,3 +1,4 @@
+import { findDialog, findDialogs } from "./helpers/kanban-host.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { act } from "./helpers/react-host-env.mjs";
@@ -42,7 +43,7 @@ const page = (start = 1, count = 25, totalCount = 51) => ({
   totalCount,
 });
 const texts = (root) => root.findAllByType("Text").map(text).join("\n");
-const modal = (renderer) => renderer.root.findByType("Modal");
+const modal = (renderer) => findDialog(renderer.root);
 const control = (root, label) => {
   const node = root
     .findAllByType("Pressable")
@@ -110,11 +111,11 @@ test("看板入口到持久任务：选择泳道、25项批量导入、来源摘
   );
   assert.match(first.description, /2026-10-14/);
   assert.doesNotMatch(first.description, /ago/);
-  assert.equal(renderer.root.findAllByType("Modal").length, 0);
+  assert.equal(findDialogs(renderer.root).length, 0);
   assert.equal(host.notifications.length, 1);
   assert.doesNotMatch(texts(renderer.root), /alice|opened|Created at/);
   await press(renderer.root, "+ Add");
-  assert.equal(modal(renderer).props.title, "Create Task");
+  assert.equal(modal(renderer).props.accessibilityLabel, "Create Task");
 });
 
 test("分页与全仓库排序通过真实控件清空选择，泳道切换保留选择", async (t) => {
@@ -228,8 +229,21 @@ test("保存失败保留选择、重试后一次保存，保存中不重复提�
     control(modal(renderer), "Select Issue #1").props.disabled,
     true,
   );
+  // The rendering facility delivers Escape/backdrop dismissal, not business save logic.
+  await act(async () =>
+    renderer.root.findByType("WebDialogPortal").props.onDismiss(),
+  );
+  await press(modal(renderer), "Close");
+  assert.match(texts(modal(renderer)), /1 selected/);
+  assert.equal(host.board.tasks.length, 0);
   await act(async () => gate.resolve());
   assert.equal(host.board.tasks.length, 1);
+  assert.equal(findDialogs(renderer.root).length, 0);
+  await press(renderer.root, "Import from GitHub");
+  await act(async () =>
+    renderer.root.findByType("WebDialogPortal").props.onDismiss(),
+  );
+  assert.equal(findDialogs(renderer.root).length, 0);
 });
 
 test("多会话更新重新去重，目标泳道删除不回退到其他泳道", async (t) => {
@@ -325,7 +339,7 @@ test("右键菜单外链与详情完整网址打开同一网页，详情锁定�
   await openMenu();
   await click(renderer.root, "Open Issue in browser");
   assert.deepEqual(host.externalUrls, [issue(1).url]);
-  assert.equal(renderer.root.findAllByType("Modal").length, 0);
+  assert.equal(findDialogs(renderer.root).length, 0);
   await openMenu();
   await press(renderer.root, "Edit details");
   const project = modal(renderer).findByType("Select");
@@ -474,7 +488,7 @@ test("保存冲突且宿主刷新失败时弹窗及选择仍保留，刷新重�
   host.failNextSave();
   host.failNextReload();
   await press(modal(renderer), "Import");
-  assert.equal(modal(renderer).props.title, "Import from GitHub");
+  assert.equal(modal(renderer).props.accessibilityLabel, "Import from GitHub");
   assert.match(texts(modal(renderer)), /1 selected/);
   assert.equal(modal(renderer).findAllByType("Select")[1].props.value, "doing");
   await press(modal(renderer), "Retry");

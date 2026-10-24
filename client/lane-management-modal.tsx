@@ -16,7 +16,7 @@ import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { LaneEditSession } from "./lane-edit-session";
 import { useI18n } from "./i18n";
 import { useLaneReorder } from "./use-lane-reorder";
-import { LaneManagementDialog } from "./lane-management-dialog";
+import { BusinessDialog } from "./business-dialog";
 
 interface Props {
   session: LaneEditSession;
@@ -150,13 +150,17 @@ export function LaneManagementModal(props: Props) {
       {action(t("laneManagement.reload"), session.reload)}
     </View>
   );
-  const dialogProps = { theme: props.theme, compact: props.compact };
+  const dialogProps = {
+    theme: props.theme,
+    compact: props.compact,
+    contentStyle: { padding: props.compact ? 12 : 20, gap: 12 },
+  };
   return (
     <>
-      <LaneManagementDialog
+      <BusinessDialog
         {...dialogProps}
         title={t("laneManagement.title")}
-        wide
+        maxWidth={1120}
         onOpenChange={(open) => {
           if (!open) props.onClose();
         }}
@@ -386,9 +390,9 @@ export function LaneManagementModal(props: Props) {
             </View>
           </>
         )}
-      </LaneManagementDialog>
+      </BusinessDialog>
       {deleteId && (
-        <LaneManagementDialog
+        <BusinessDialog
           {...dialogProps}
           title={t("laneManagement.deleteTitle")}
           onOpenChange={(open) => {
@@ -409,7 +413,7 @@ export function LaneManagementModal(props: Props) {
               "destructive",
             )}
           </View>
-        </LaneManagementDialog>
+        </BusinessDialog>
       )}
     </>
   );
