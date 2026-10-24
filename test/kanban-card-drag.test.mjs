@@ -4,15 +4,25 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { useKanbanDrag } from "../client/kanban-drag.ts";
 import {
   React,
   TestRenderer,
   act,
   loadClientComponent,
+  loadClientModule,
 } from "./helpers/react-host-env.mjs";
 
+const dragModule = loadClientModule("kanban-drag");
+const { useKanbanDrag } = dragModule;
 const KanbanCard = loadClientComponent("kanban-card", "KanbanCard");
+// Share the actual module instance (and its opaque binding) across test loaders.
+const KanbanDragOverlay = loadClientComponent(
+  "kanban-overlay",
+  "KanbanDragOverlay",
+  {
+    "./kanban-drag": dragModule,
+  },
+);
 const theme = { colors: {} };
 const nativePanResponder = {
   create: (handlers) => ({ panHandlers: handlers }),
@@ -47,8 +57,18 @@ function mountCards(
   let drag;
   let currentIds = ids;
   function Board({ ids }) {
-    drag = useKanbanDrag({ lanes, onReorderTask });
+    drag = useKanbanDrag({
+      lanes,
+      onReorderTask,
+      getTaskPreview: (id) => ({
+        task: { id, laneId: "lane", title: id, subtasks: [] },
+        projectDisplayName: null,
+      }),
+    });
     const lane = drag.bindLane("lane");
+    React.useLayoutEffect(() => {
+      lane.setLaneCardOrder(ids);
+    }, [ids, lane.setLaneCardOrder]);
     return React.createElement(
       "View",
       null,
@@ -66,6 +86,11 @@ function mountCards(
           ),
         }),
       ),
+      React.createElement(KanbanDragOverlay, {
+        binding: drag.overlay,
+        theme,
+        layout: { compact: false },
+      }),
     );
   }
   const element = () => React.createElement(Board, { ids: currentIds });
@@ -74,22 +99,20 @@ function mountCards(
     root = TestRenderer.create(element());
   });
   t.after(() => act(() => root.unmount()));
-  const controller = drag.controller;
-  controller.registerContainerBounds({
+  drag.container.onLayout({
     x: 0,
     y: 0,
     width: viewportWidth,
     height: 600,
   });
   lanes.forEach((lane, index) =>
-    controller.registerLaneLayout(lane, {
+    drag.bindLane(lane).registerLaneLayout({
       x: index * 320,
       y: 0,
       width: 300,
       height: 600,
     }),
   );
-  controller.setLaneCardOrder("lane", ids);
   root.toJSON().children.forEach((card, index) =>
     card.props.onLayout({
       nativeEvent: { layout: { x: 0, y: index * 80, width: 280, height: 64 } },
@@ -97,37 +120,25 @@ function mountCards(
   );
   return {
     root,
-    controller,
     get drag() {
       return drag;
     },
     card: (id) => root.toJSON().children[currentIds.indexOf(id)],
-    handlers: (id, source = "body") =>
-      source === "body"
-        ? cardBodyProps(root.toJSON().children[currentIds.indexOf(id)])
-        : root.root.findAllByProps({ accessibilityRole: "button" })[
-            currentIds.indexOf(id)
-          ].props,
+    handlers: (id) =>
+      cardBodyProps(root.toJSON().children[currentIds.indexOf(id)]),
     update: (ids = currentIds) => {
       currentIds = ids;
       act(() => {
         root.update(element());
-        controller.setLaneCardOrder("lane", ids);
       });
     },
     unmount: () => act(() => root.unmount()),
   };
 }
 
-async function release(board, id, gesture = press, source = "body") {
+async function release(board, id, gesture = press) {
   await act(async () => {
-    await board.handlers(id, source).onPanResponderRelease(event, gesture);
-  });
-}
-
-async function commit(board) {
-  await act(async () => {
-    await board.drag.commitDrop();
+    await board.handlers(id).onPanResponderRelease(event, gesture);
   });
 }
 
@@ -141,7 +152,7 @@ test("moving a mouse-held card into another lane auto-scrolls at the viewport ed
     viewportWidth: 360,
     onReorderTask: (...args) => reorders.push(args),
   });
-  board.drag.bindContainerRef({
+  board.drag.container.bindRef({
     scrollTo: ({ x }) => {
       assert.ok(
         x >= 0 && x <= 640 - 360,
@@ -185,7 +196,6 @@ test("moving a mouse-held card into another lane auto-scrolls at the viewport ed
   assert.equal(board.drag.bindLane("other").isHovered, true);
   assert.equal(board.card("task").props.style.opacity, 0);
   await release(board, "task");
-  await commit(board);
   assert.deepEqual(reorders, [["task", "other", 0]]);
   assert.equal(board.card("task").props.style?.opacity ?? 1, 1);
 });
@@ -273,7 +283,6 @@ test("native and web touch taps select once, quick swipes scroll, and long press
       handlers().onPanResponderMove(touch, { moveX: 120, moveY: 50 });
     });
     await release(board, "task");
-    await commit(board);
     assert.deepEqual(requests, [["task", "lane", 0]]);
     assert.deepEqual(selections, ["task"]);
     board.unmount();
