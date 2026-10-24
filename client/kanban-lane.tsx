@@ -62,13 +62,10 @@ function KanbanLaneViewInner({
     bindCard,
   } = dragBinding;
 
-  // Sync card order to controller whenever tasks in this lane change
+  // Measurements and visible order share the lane-scoped binding.
   useLayoutEffect(() => {
-    setLaneCardOrder?.(
-      lane.id,
-      tasks.map((t) => t.id),
-    );
-  }, [lane.id, tasks, setLaneCardOrder]);
+    setLaneCardOrder(tasks.map((t) => t.id));
+  }, [tasks, setLaneCardOrder]);
 
   const wasHoveredRef = useRef(false);
   const wasDraggingInLaneRef = useRef(false);
@@ -309,7 +306,7 @@ function KanbanLaneViewInner({
                 onContextMenu={onContextMenu}
                 onSendToAgent={onSendToAgent}
                 completionDisabled={
-                  completionPending || (dragBinding.isDragLocked?.() ?? false)
+                  completionPending || dragBinding.isDragLocked()
                 }
                 interactionDisabled={completionPending}
               />

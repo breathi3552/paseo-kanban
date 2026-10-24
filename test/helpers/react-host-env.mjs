@@ -105,6 +105,7 @@ export const mockReactNative = {
       },
     }),
     parallel: (anims) => ({
+      stop() {},
       start: (cb) => {
         anims?.forEach?.((a) => a?.start?.());
         cb?.({ finished: true });
