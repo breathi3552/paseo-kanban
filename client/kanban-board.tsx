@@ -29,7 +29,7 @@ import {
   type KanbanBoard,
   type KanbanTask,
 } from "../shared/kanban";
-import { useProjects } from "./use-projects";
+import { useProjects, getProjectOptions } from "./use-projects";
 import { TaskModal } from "./task-modal";
 import { SettingsSelect } from "@getpaseo/plugin/client/ui";
 import { GitHubImportModal } from "./github-import-modal";
@@ -125,21 +125,14 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   const [completionPending, setCompletionPending] = useState(false);
   const completionPendingRef = useRef(false);
 
-  const selectableProjects = useMemo(() => {
-    const missingIds = new Set([props.initialProjectId, selectedProjectId]);
-    const missingProjects = [...missingIds]
-      .filter(
-        (id): id is string =>
-          !!id &&
-          id !== "all" &&
-          id !== "unassigned" &&
-          !projects.some((project) => project.projectId === id),
-      )
-      .map((id) => ({ projectId: id, projectDisplayName: id }));
-    return [...projects, ...missingProjects].sort((a, b) =>
-      a.projectDisplayName.localeCompare(b.projectDisplayName, language),
-    );
-  }, [projects, props.initialProjectId, selectedProjectId, language]);
+  const selectableProjects = useMemo(
+    () =>
+      getProjectOptions(projects, {
+        retainIds: [props.initialProjectId, selectedProjectId],
+        language,
+      }),
+    [projects, props.initialProjectId, selectedProjectId, language],
+  );
 
   const isReady = settings.status === "ready";
   // Keep the open import draft mounted if a conflict refresh fails. The retained
@@ -749,7 +742,6 @@ function KanbanBoardContent(props: KanbanBoardProps) {
                 key={lane.id}
                 lane={lane}
                 tasks={laneTasks}
-                projects={projects}
                 resolveProjectName={resolveProjectName}
                 theme={theme}
                 layout={layout}
@@ -859,7 +851,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
           open={activeTaskSession !== null}
           onClose={() => setActiveTaskSession(null)}
           session={activeTaskSession}
-          projects={selectableProjects}
+          projects={projects}
           theme={theme}
           layout={layout}
         />
