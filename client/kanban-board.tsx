@@ -8,7 +8,8 @@ import {
   ActivityIndicator,
   type LayoutChangeEvent,
 } from "react-native";
-import { useSettings, openExternalUrl } from "@getpaseo/plugin/client";
+import { useSettings, useRpc, openExternalUrl } from "@getpaseo/plugin/client";
+import { settingsRpc } from "@getpaseo/plugin";
 import { useToast, copyText } from "@getpaseo/plugin/client/react-native";
 import { agentDispatchSettings } from "../shared/agent-dispatch";
 import { taskPrompt } from "./agent-dispatch";
@@ -21,18 +22,20 @@ import { TaskDeleteDialog } from "./task-delete-dialog";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import {
   kanbanSettings,
+  KanbanBoardSchema,
   getLaneTasks,
   isTaskMatchingFilter,
   updateTask,
   type KanbanBoard,
   type KanbanTask,
 } from "../shared/kanban";
-import { useProjects } from "./use-projects";
+import { useProjects, getProjectOptions } from "./use-projects";
 import { TaskModal } from "./task-modal";
 import { SettingsSelect } from "@getpaseo/plugin/client/ui";
 import { GitHubImportModal } from "./github-import-modal";
 import { AgentDispatchModal } from "./agent-dispatch-modal";
 import { LaneManagementModal } from "./lane-management-modal";
+import { openLaneEditSession, type LaneEditSession } from "./lane-edit-session";
 import { useKanbanDrag } from "./kanban-drag";
 import { KanbanLaneView } from "./kanban-lane";
 import { KanbanDragOverlay } from "./kanban-overlay";
@@ -45,8 +48,16 @@ import {
   type TaskDeleteSession,
   type TaskEditSession,
 } from "./kanban-session";
-import { useI18n, I18nLanguageContext } from "./i18n";
+import {
+  useI18n,
+  I18nLanguageContext,
+  detectPaseoLanguage,
+  t as translate,
+  type TranslationKey,
+} from "./i18n";
 import { useProjectFilterLayout } from "./web";
+
+const laneSettingsRead = settingsRpc(kanbanSettings.id).read;
 
 interface KanbanBoardProps extends PluginSurfaceProps {
   initialProjectId?: string | null;
@@ -77,6 +88,9 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   };
   const { t, language } = useI18n();
   const settings = useSettings(kanbanSettings);
+  const readLaneSettings = useRpc(laneSettingsRead);
+  const currentSettings = useRef(settings);
+  currentSettings.current = settings;
   const promptSettings = useSettings(agentDispatchSettings);
   const [menuTarget, setMenuTarget] = useState<TaskMenuTarget | null>(null);
   const [deleteSession, setDeleteSession] = useState<TaskDeleteSession | null>(
@@ -87,8 +101,8 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   feedbackText.current = t;
   const feedbackLanguage = useRef(language);
   feedbackLanguage.current = language;
-  const settingsRef = useRef(settings);
-  settingsRef.current = settings;
+  const laneFeedback = useRef({ props, toast });
+  laneFeedback.current = { props, toast };
   const reloadWaiters = useRef<Array<() => void>>([]);
   useEffect(() => {
     for (const resolve of reloadWaiters.current.splice(0)) {
@@ -101,7 +115,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
     });
     await settings.reload();
     await rendered;
-    const latest = settingsRef.current;
+    const latest = currentSettings.current;
     return latest.status === "ready"
       ? {
           status: "ready",
@@ -130,28 +144,23 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   } | null>(null);
   const [activeTaskSession, setActiveTaskSession] =
     useState<TaskEditSession | null>(null);
-  const [laneManagement, setLaneManagement] = useState(false);
+  const [laneManagement, setLaneManagement] = useState<LaneEditSession | null>(
+    null,
+  );
   const [taskOperationError, setTaskOperationError] = useState<string | null>(
     null,
   );
   const [completionPending, setCompletionPending] = useState(false);
   const completionPendingRef = useRef(false);
 
-  const selectableProjects = useMemo(() => {
-    const missingIds = new Set([props.initialProjectId, selectedProjectId]);
-    const missingProjects = [...missingIds]
-      .filter(
-        (id): id is string =>
-          !!id &&
-          id !== "all" &&
-          id !== "unassigned" &&
-          !projects.some((project) => project.projectId === id),
-      )
-      .map((id) => ({ projectId: id, projectDisplayName: id }));
-    return [...projects, ...missingProjects].sort((a, b) =>
-      a.projectDisplayName.localeCompare(b.projectDisplayName, language),
-    );
-  }, [projects, props.initialProjectId, selectedProjectId, language]);
+  const selectableProjects = useMemo(
+    () =>
+      getProjectOptions(projects, {
+        retainIds: [props.initialProjectId, selectedProjectId],
+        language,
+      }),
+    [projects, props.initialProjectId, selectedProjectId, language],
+  );
 
   const isReady = settings.status === "ready";
   // Keep the open import draft mounted if a conflict refresh fails. The retained
@@ -281,7 +290,40 @@ function KanbanBoardContent(props: KanbanBoardProps) {
 
   const openLaneManagement = () => {
     if (completionPendingRef.current || drag.isDragLocked() || !board) return;
-    setLaneManagement(true);
+    const laneText = (key: TranslationKey) =>
+      translate(key, detectPaseoLanguage(laneFeedback.current.props));
+    setLaneManagement(
+      openLaneEditSession({
+        initial: { board, revision },
+        current: () => {
+          const latest = currentSettings.current;
+          return latest.status === "ready"
+            ? { board: latest.values, revision: latest.revision }
+            : null;
+        },
+        load: async () => {
+          // reload() returns void: read through the public RPC to obtain a usable
+          // snapshot even when this view has unmounted. Reload also refreshes the
+          // mounted board, but no continuation depends on React rendering it.
+          const result = await readLaneSettings({});
+          if (result.status !== "ready")
+            throw new Error(laneText("notification.laneSaveFailed"));
+          const snapshot = {
+            board: KanbanBoardSchema.parse(result.values),
+            revision: result.revision,
+          };
+          await settings.reload();
+          return snapshot;
+        },
+        save: (next, expected) => settings.save(next, expected),
+        translate: laneText,
+        notify: (key, success) => {
+          const latestToast = laneFeedback.current.toast;
+          if (success) latestToast.show(laneText(key), { variant: "success" });
+          else latestToast.error(laneText(key));
+        },
+      }),
+    );
   };
 
   const menuTask = menuTarget
@@ -694,14 +736,14 @@ function KanbanBoardContent(props: KanbanBoardProps) {
       {/* Main Board Lanes */}
       <View style={styles.lanesWrapper}>
         <ScrollView
-          ref={drag.bindContainerRef}
+          ref={drag.container.bindRef}
           horizontal
           style={styles.lanesContainer}
           contentContainerStyle={styles.lanesContent}
-          onLayout={(e) => drag.handleContainerLayout(e.nativeEvent.layout)}
+          onLayout={(e) => drag.container.onLayout(e.nativeEvent.layout)}
           onScroll={(e) => {
             setMenuTarget(null);
-            drag.handleContainerScroll(e.nativeEvent.contentOffset.x);
+            drag.container.onScroll(e.nativeEvent.contentOffset.x);
           }}
           scrollEventThrottle={16}
         >
@@ -712,7 +754,6 @@ function KanbanBoardContent(props: KanbanBoardProps) {
                 key={lane.id}
                 lane={lane}
                 tasks={laneTasks}
-                projects={projects}
                 resolveProjectName={resolveProjectName}
                 theme={theme}
                 layout={layout}
@@ -739,7 +780,11 @@ function KanbanBoardContent(props: KanbanBoardProps) {
           })}
         </ScrollView>
 
-        <KanbanDragOverlay drag={drag} theme={theme} layout={layout} />
+        <KanbanDragOverlay
+          binding={drag.overlay}
+          theme={theme}
+          layout={layout}
+        />
       </View>
 
       {menuTarget && menuTask && (
@@ -815,7 +860,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
           session={activeTaskSession}
           save={(b, r) => settings.save(b, r)}
           reload={reloadBoard}
-          projects={selectableProjects}
+          projects={projects}
           theme={theme}
           layout={layout}
         />
@@ -823,12 +868,8 @@ function KanbanBoardContent(props: KanbanBoardProps) {
 
       {laneManagement && (
         <LaneManagementModal
-          board={board}
-          revision={revision}
-          settingsReady={isReady}
-          save={(next, expected) => settings.save(next, expected)}
-          reload={() => settings.reload()}
-          onClose={() => setLaneManagement(false)}
+          session={laneManagement}
+          onClose={() => setLaneManagement(null)}
           theme={theme}
           compact={compact}
         />

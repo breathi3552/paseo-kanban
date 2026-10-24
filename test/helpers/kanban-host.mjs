@@ -112,10 +112,21 @@ export function createHost({
     usePaseo: () => paseo,
     useRpc: (contract) =>
       React.useCallback(
-        async (input) =>
-          contract.output.parse(
-            await rpc(contract.input.parse(input), contract.name),
-          ),
+        async (input) => {
+          const parsed = contract.input.parse(input);
+          if (contract.name === "settings.kanban.read") {
+            if (failReload) {
+              failReload = false;
+              throw new Error("Lane save failed");
+            }
+            return contract.output.parse({
+              status: "ready",
+              values,
+              revision: String(revision),
+            });
+          }
+          return contract.output.parse(await rpc(parsed, contract.name));
+        },
         [contract],
       ),
     openExternalUrl: async (url) => externalUrls.push(url),

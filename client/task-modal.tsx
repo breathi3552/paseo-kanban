@@ -16,7 +16,7 @@ import {
 } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanLane } from "../shared/kanban";
-import type { ProjectItem } from "./use-projects";
+import { getProjectOptions, type ProjectItem } from "./use-projects";
 import {
   openTaskDeleteSession,
   type ReloadBoardFn,
@@ -65,19 +65,14 @@ export function TaskModal({
     session.getSnapshot,
   );
 
-  const projectOptions = useMemo(() => {
-    const available = projects.map((project) => ({
-      value: project.projectId,
-      label: project.projectDisplayName,
-    }));
-    if (
-      snapshot.projectId &&
-      !available.some((option) => option.value === snapshot.projectId)
-    ) {
-      available.push({ value: snapshot.projectId, label: snapshot.projectId });
-    }
-    return available.sort((a, b) => a.label.localeCompare(b.label, language));
-  }, [projects, snapshot.projectId, language]);
+  const projectOptions = useMemo(
+    () =>
+      getProjectOptions(projects, {
+        retainIds: [session.initialValues.projectId, snapshot.projectId],
+        language,
+      }),
+    [projects, session.initialValues.projectId, snapshot.projectId, language],
+  );
 
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
   const [deleteSession, setDeleteSession] = useState<TaskDeleteSession | null>(
