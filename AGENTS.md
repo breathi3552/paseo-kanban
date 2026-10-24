@@ -20,4 +20,4 @@
 
 ### Development & verification
 
-本地开发环境要求、`npm run check` 统一质量护栏及宿主验收流程详见 `docs/development.md`。
+本地开发环境要求、`npm run check` 统一质量护栏、宿主调试与发布流程详见 `docs/development.md`。
