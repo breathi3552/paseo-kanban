@@ -680,14 +680,14 @@ function KanbanBoardContent(props: KanbanBoardProps) {
       {/* Main Board Lanes */}
       <View style={styles.lanesWrapper}>
         <ScrollView
-          ref={drag.bindContainerRef}
+          ref={drag.container.bindRef}
           horizontal
           style={styles.lanesContainer}
           contentContainerStyle={styles.lanesContent}
-          onLayout={(e) => drag.handleContainerLayout(e.nativeEvent.layout)}
+          onLayout={(e) => drag.container.onLayout(e.nativeEvent.layout)}
           onScroll={(e) => {
             setMenuTarget(null);
-            drag.handleContainerScroll(e.nativeEvent.contentOffset.x);
+            drag.container.onScroll(e.nativeEvent.contentOffset.x);
           }}
           scrollEventThrottle={16}
         >
@@ -725,7 +725,11 @@ function KanbanBoardContent(props: KanbanBoardProps) {
           })}
         </ScrollView>
 
-        <KanbanDragOverlay drag={drag} theme={theme} layout={layout} />
+        <KanbanDragOverlay
+          binding={drag.overlay}
+          theme={theme}
+          layout={layout}
+        />
       </View>
 
       {menuTarget && menuTask && (

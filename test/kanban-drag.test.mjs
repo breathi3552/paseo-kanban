@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { KanbanDragController } from "../client/kanban-drag.ts";
+import { loadClientModule } from "./helpers/react-host-env.mjs";
+
+const { KanbanDragController } = loadClientModule("kanban-drag");
 
 // Focused geometry/scroll scenarios supply deterministic native measurements.
 // Connected card/lane/overlay behavior lives in kanban-card-drag.test.mjs;
