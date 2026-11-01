@@ -46,12 +46,21 @@
 
 - 维持 `role="dialog"`、`aria-modal` 与 `accessibilityLabel` 无障碍契约；测试套件统一通过 `findDialog(renderer.root)` 进行弹窗断言，对齐 `test/agent-dispatch.test.mjs` 中的私有查询 helper，消除对特定底层类型命名的脆弱依赖。
 
-### 7. 自研 Select 原子组件与全站下拉收敛
+### 7. 自研 Select 原子组件、浮层 Portal 与防闪退遮罩
 
-- 彻底替换宿主原生 `SettingsSelect`，自研源码级 `Select` 原子组件，采用 Paseo 规范的紧凑胶囊 Trigger（32px 高度、圆角 6、细边框与 `surface2` 实心底色），解决原生组件强行将 Trigger 推至最右侧导致的向左对齐布局割裂。
-- 消除在 `ScrollView` 容器中浮层被兄弟元素遮挡与层叠上下文断裂缺陷：展开时容器动态提升至 `zIndex: 1000`，浮层具备实心不透明背景及悬浮阴影。
+- 彻底替换宿主原生 `SettingsSelect`，自研源码级 `Select` 原子组件，采用符合 Paseo 规范的紧凑胶囊 Trigger（32px 高度、圆角 6、细边框与 `surface2` 实心底色），支持向左对齐与撑满两种布局。
+- 突破滚动容器裁剪与层叠上下文遮挡：浮层通过 `WebSelectPortal` 挂载至 `document.body`（`zIndex: 100`），彻底摆脱外层 `ScrollView` 的 `overflow: hidden` 与兄弟表单字段的层叠上下文遮挡。
+- 视口坐标测量与智能翻转：通过多级兼容的 `findDOMNode` 获取 Trigger 视口矩形（`getBoundingClientRect`），当视口下方剩余可用空间小于 220px 时自动向上翻转展开。
+- 透明 Backdrop 遮罩与防闪退机制：摒弃脆弱的全局 `document` 捕获阶段 `pointerdown` / `scroll` 监听，改为在 Portal 容器内渲染全屏透明遮罩层（`zIndex: 100`），浮层置于其上（`zIndex: 101`）；外部点击直接命中透明遮罩触发平稳收起，彻底杜绝输入聚焦或微小滚动触发的瞬退缺陷；保留键盘 `Escape` 事件消费关闭。
 - 引入按需搜索过滤：短列表（< 10 项）保持极简清爽无搜索栏；长列表（≥ 10 项）自动在下拉框顶部提供实时输入过滤框。
 - 全站（看板顶部项目筛选、任务详情、Agent 派发、GitHub 导入）全量收敛至 `Select` 原子组件，彻底删除遗留的 `useProjectFilterLayout` 全局 CSS 注入 Hack。
+
+### 8. 桌面端全状态矩阵与微原子规范 (Button / Badge / Checkbox)
+
+- **按钮全状态矩阵与微触感反馈**：统一 `<Button>` 完整支持桌面端 `hovered`（次要按钮高亮至 `surface2`，主要按钮轻度提亮）、`focused`（标准清晰 Focus Ring 聚焦环）与 `pressed`（触感微缩放 `transform: [{ scale: 0.98 }]`），并全量替换看板顶栏、泳道操作、卡片派发与弹窗内散落的裸写 `Pressable`。
+- **微型徽标 `<Badge>`**：沉淀统一的 40 行轻量纯函数徽标，支持 `default`、`secondary`、`outline`，全量收敛全局统计徽标、泳道卡片计数、卡片项目归属与子步骤进度标签，杜绝手写内边距与圆角。
+- **复选框 `<Checkbox>`**：沉淀轻量受控勾选框，支持 `boolean` 与 `"mixed"` 状态，内置标准 `accessibilityRole="checkbox"`，统一看板卡片完成指示器（淘汰私有 `CompletionIndicator`）、任务子步骤勾选与 GitHub Issue 列表选择。
+- **上游标准能力复用**：废弃手写 URL 跳转与私有 Hover 监听，全面改用 Paseo SDK 官方 `@getpaseo/plugin/client/ui` 的 `<ExternalLink>`。
 
 ## 备选方案
 
@@ -59,6 +68,7 @@
 2. **任务详情保留底栏内联展开确认**：虽然避免了双层弹窗，但造成系统内删除确认交互规则割裂，心智模型不一致，故否决。
 3. **通过容器全局状态守卫（isInlineEditing）拦截 Esc**：强行将子页面临时内部状态耦合至顶层容器，增加了容器抽象泄漏，劣于标准的 DOM/React 事件分层阻止冒泡机制。
 4. **维护移动/窄屏双模回退（退回宿主 Modal）**：当前阶段明确不支持移动端窄屏，强行维护双模分支增加了不必要的平台判断与宿主 Modal 历史包袱，故否决。
+5. **Select 下拉浮层使用局部绝对定位或 document 全局捕获监听**：局部定位容易被父级 `ScrollView` 裁剪及兄弟组件层叠上下文遮挡；全局捕获 `pointerdown` / `scroll` 监听则极易因微时序与输入法/焦点转移误判导致浮层闪退。故确立基于 `document.body` 的 `WebSelectPortal` 配合全屏透明 `Backdrop` 遮罩的稳健架构。
 
 ## 影响
 
