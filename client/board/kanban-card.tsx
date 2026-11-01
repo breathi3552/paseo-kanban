@@ -2,6 +2,7 @@ import { useMemo, useEffect, useRef, type ReactNode } from "react";
 import {
   View,
   Text,
+  Pressable,
   StyleSheet,
   Animated,
   Platform,
@@ -206,16 +207,8 @@ export function KanbanCard({
             : undefined,
         ]}
       >
-        <Checkbox
-          theme={theme}
-          checked={Boolean(task.completed)}
-          size={18}
-          disabled={disabled || !onSetCompleted}
-          accessibilityLabel={t(
-            task.completed ? "card.reopenTask" : "card.completeTask",
-            { title: task.title },
-          )}
-          dataSet={{ kanbanControl: "true" }}
+        <Pressable
+          {...{ dataSet: { kanbanControl: "true" } }}
           onTouchStart={(event) => {
             binding.cardPanHandlers?.onTouchCancel?.(event);
             event.stopPropagation();
@@ -225,11 +218,30 @@ export function KanbanCard({
             styles.checkboxControl,
             completionDisabled && styles.checkboxControlDisabled,
           ]}
+          accessibilityRole="checkbox"
+          accessibilityLabel={t(
+            task.completed ? "card.reopenTask" : "card.completeTask",
+            { title: task.title },
+          )}
+          accessibilityState={{
+            checked: Boolean(task.completed),
+            disabled: disabled || !onSetCompleted,
+          }}
+          disabled={disabled || !onSetCompleted}
           onPress={(event) => {
             event.stopPropagation();
             if (!disabled) onSetCompleted?.(task.id, !task.completed);
           }}
-        />
+        >
+          <Checkbox
+            theme={theme}
+            checked={Boolean(task.completed)}
+            size={18}
+            disabled={disabled || !onSetCompleted}
+            pointerEvents="none"
+            accessibilityRole="none"
+          />
+        </Pressable>
         <CardBody
           task={task}
           projectDisplayName={projectDisplayName}

@@ -388,16 +388,19 @@ export function TaskModal({
             </View>
           </View>
 
-          <SettingsSelect
-            label={t("taskModal.projectLabel")}
-            value={snapshot.projectId ?? ""}
-            options={[
-              { value: "", label: t("taskModal.noProject") },
-              ...projectOptions,
-            ]}
-            onValueChange={(id) => session.setProjectId(id || null)}
-            disabled={isBusy || snapshot.source === "github_issue"}
-          />
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>{t("taskModal.projectLabel")}</Text>
+            <SettingsSelect
+              label=""
+              value={snapshot.projectId ?? ""}
+              options={[
+                { value: "", label: t("taskModal.noProject") },
+                ...projectOptions,
+              ]}
+              onValueChange={(id) => session.setProjectId(id || null)}
+              disabled={isBusy || snapshot.source === "github_issue"}
+            />
+          </View>
 
           {snapshot.source === "github_issue" && snapshot.externalUrl && (
             <IssueLink url={snapshot.externalUrl} theme={theme} />

@@ -144,7 +144,7 @@ test("右键或快捷键打开单实例菜单并区分普通任务与 Issue，�
   const gate = Promise.withResolvers();
   t.after(() => gate.resolve());
   host.holdSave(gate.promise);
-  await press(renderer.root, "Save Changes");
+  await press(renderer.root, "Save");
   await act(async () =>
     renderer.root.findByType("WebDialogPortal").props.onDismiss(),
   );
@@ -248,7 +248,7 @@ test("删除确认：拦截并发修改并支持刷新后重试，在详情窗�
       .findByProps({ value: "Task A" })
       .props.onChangeText("Unsaved draft title"),
   );
-  await press(detailsEnv.renderer.root, "Delete Task");
+  await press(detailsEnv.renderer.root, "Delete");
   await press(detailsEnv.renderer.root, "Cancel");
   assert.ok(
     detailsEnv.renderer.root.findByProps({ value: "Unsaved draft title" }),

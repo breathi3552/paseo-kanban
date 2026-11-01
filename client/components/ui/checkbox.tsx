@@ -26,6 +26,7 @@ export interface CheckboxProps extends Omit<
   size?: number;
   style?: StyleProp<ViewStyle>;
   dataSet?: Record<string, string>;
+  accessibilityRole?: "checkbox" | "none";
 }
 
 export function Checkbox({
@@ -50,12 +51,16 @@ export function Checkbox({
     onCheckedChange?.(!isChecked);
   };
 
-  const iconSize = Math.max(12, Math.round(size * 0.75));
+  const iconSize = Math.max(12, Math.round(size * 0.78));
 
   return (
     <Pressable
       {...props}
-      accessibilityRole="checkbox"
+      accessibilityRole={
+        props.accessibilityRole === "none"
+          ? undefined
+          : (props.accessibilityRole ?? "checkbox")
+      }
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{
         checked,
@@ -69,16 +74,17 @@ export function Checkbox({
           width: size,
           height: size,
           borderRadius: 4,
+          borderWidth: 1,
           borderColor: isActive
             ? colors.accent
             : state.focused
               ? colors.accent
-              : colors.border,
+              : colors.foregroundMuted,
           backgroundColor: isActive
             ? colors.accent
             : state.hovered
               ? colors.surface2
-              : colors.surface1,
+              : "transparent",
           opacity: disabled ? 0.45 : 1,
         },
         style,
@@ -96,7 +102,7 @@ export function Checkbox({
 
 const styles = StyleSheet.create({
   box: {
-    borderWidth: 1.5,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
