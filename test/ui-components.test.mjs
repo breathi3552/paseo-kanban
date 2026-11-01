@@ -321,7 +321,7 @@ test("Select 基础行为：Trigger 呈现、展开选中与层级提升", async
 
   // 选项少于 10 项，不显示搜索框
   assert.equal(
-    renderer.root.findAll((n) => n.props.placeholder === "搜索选项...").length,
+    renderer.root.findAll((n) => n.props.autoFocus === true).length,
     0,
   );
 
@@ -367,10 +367,14 @@ test("Select 搜索过滤：当选项数量达到阈值（>= 10）时启用搜�
 
   // 选项达到 12 项，展示搜索框
   const searchInput = renderer.root.findByProps({
-    placeholder: "搜索选项...",
+    autoFocus: true,
   });
   assert.ok(searchInput, "search input is displayed");
-
+  assert.ok(
+    ["搜索选项...", "Search options..."].includes(
+      searchInput.props.placeholder,
+    ),
+  );
   // 过滤输入
   await act(async () => {
     searchInput.props.onChangeText("Project B");
