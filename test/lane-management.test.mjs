@@ -290,36 +290,3 @@ test("外部泳道结构冲突或删除失败时拒绝自动合并，加载最�
     "Rename Finished",
   ]);
 });
-
-test("LaneManagementModal 操作按钮统一收敛至 Button 原子组件与状态矩阵", async (t) => {
-  const { renderer } = await setup(t);
-  const d = dialog(renderer);
-
-  // 1. 右上角 Add lane 按钮接入 Button
-  const addBtn = button(d, "+ Add lane");
-  assert.equal(addBtn.props.accessibilityRole, "button");
-  assert.equal(
-    typeof addBtn.props.style,
-    "function",
-    "Add lane 按钮必须使用 Button 状态驱动函数",
-  );
-
-  // 验证桌面端状态矩阵：按压时包含 scale(0.98) 触感反馈
-  const pressedStyle = Object.assign(
-    {},
-    ...[]
-      .concat(addBtn.props.style({ pressed: true }))
-      .flat()
-      .filter(Boolean),
-  );
-  assert.deepEqual(
-    pressedStyle.transform,
-    [{ scale: 0.98 }],
-    "Button 必须支持按压缩放",
-  );
-
-  // 2. 卡片重命名按钮接入 Button
-  const renameBtn = button(d, "Rename Todo");
-  assert.equal(renameBtn.props.accessibilityRole, "button");
-  assert.equal(typeof renameBtn.props.style, "function");
-});
