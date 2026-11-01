@@ -270,7 +270,8 @@ export function Select({
               backgroundColor: state.hovered
                 ? colors.surface1
                 : colors.surface2,
-              opacity: disabled ? 0.45 : 1,
+              opacity: disabled ? 0.45 : state.pressed ? 0.85 : 1,
+              ...(state.pressed ? { transform: [{ scale: 0.98 }] } : {}),
             },
             triggerStyle,
           ]}
@@ -314,7 +315,12 @@ export function Select({
               ]}
             >
               {isSearchable && (
-                <View style={styles.searchWrapper}>
+                <View
+                  style={[
+                    styles.searchWrapper,
+                    { borderBottomColor: colors.border },
+                  ]}
+                >
                   <Input
                     theme={theme}
                     value={searchQuery}

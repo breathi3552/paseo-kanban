@@ -471,16 +471,20 @@ export function TaskModal({
                   placeholder={t("taskModal.subtaskPlaceholder")}
                 />
 
-                <Pressable
+                <Button
+                  theme={theme}
+                  size="icon"
+                  variant="ghost"
+                  accessibilityLabel={t("taskModal.removeSubtask")}
                   onPress={() => session.removeSubtask(subtask.id)}
-                  hitSlop={8}
+                  style={styles.subtaskDeleteBtn}
                 >
                   <Icon
                     name="Trash2"
                     size={14}
                     color={theme.colors.statusDanger}
                   />
-                </Pressable>
+                </Button>
               </View>
             ))}
 
@@ -683,6 +687,10 @@ function createTaskModalStyles(theme: PluginTheme, compact: boolean) {
     subtaskInputCompleted: {
       textDecorationLine: "line-through",
       color: theme.colors.foregroundMuted,
+    },
+    subtaskDeleteBtn: {
+      width: 28,
+      height: 28,
     },
     newSubtaskRow: {
       flexDirection: "row",
