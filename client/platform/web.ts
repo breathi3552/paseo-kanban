@@ -295,3 +295,67 @@ export function WebMenuPortal({
     ? createPortal(children, container)
     : null;
 }
+
+/** Dropdown select popover portal: elevated above dialogs (z=100) and unconstrained by ScrollView overflow. */
+export function WebSelectPortal({
+  children,
+  onDismiss,
+}: {
+  children: ReactNode;
+  onDismiss: () => void;
+}) {
+  const dismiss = useRef(onDismiss);
+  dismiss.current = onDismiss;
+  const [container, setContainer] = useState<WebElement | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const node = document.createElement("div");
+    node.setAttribute("data-kanban-select-portal", "");
+    Object.assign(node.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: "100",
+      pointerEvents: "none",
+    });
+    document.body.appendChild(node);
+    setContainer(node);
+
+    const outside = (event: MenuDocumentEvent) => {
+      if (!node.contains(event.target)) {
+        dismiss.current();
+      }
+    };
+    const resize = () => dismiss.current();
+    const scroll = (event: MenuDocumentEvent) => {
+      if (!node.contains(event.target)) {
+        dismiss.current();
+      }
+    };
+    const keydown = (event: MenuDocumentEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        dismiss.current();
+      }
+    };
+
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("scroll", scroll, true);
+    document.addEventListener("keydown", keydown, true);
+    window.addEventListener("resize", resize);
+
+    return () => {
+      document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("scroll", scroll, true);
+      document.removeEventListener("keydown", keydown, true);
+      window.removeEventListener("resize", resize);
+      node.remove();
+    };
+  }, []);
+
+  if (Platform.OS === "web" && container) {
+    return createPortal(children, container);
+  }
+  return children;
+}

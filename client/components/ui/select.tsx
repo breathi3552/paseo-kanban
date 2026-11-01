@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { useI18n } from "../../platform/i18n";
 import { Input } from "./input";
+import { WebSelectPortal } from "../../platform/web";
 
 export interface SelectOption {
   value: string;
@@ -35,26 +36,31 @@ export interface SelectProps {
   align?: "left" | "fill";
   searchThreshold?: number;
 }
-declare const document: {
-  addEventListener(
-    type: string,
-    listener: (event: {
-      key?: string;
-      stopPropagation(): void;
-      preventDefault(): void;
-    }) => void,
-    capture?: boolean,
-  ): void;
-  removeEventListener(
-    type: string,
-    listener: (event: {
-      key?: string;
-      stopPropagation(): void;
-      preventDefault(): void;
-    }) => void,
-    capture?: boolean,
-  ): void;
+
+declare const window: {
+  innerWidth?: number;
+  innerHeight?: number;
 };
+
+interface TriggerRect {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+  width: number;
+  height: number;
+}
+
+interface DOMElement {
+  getBoundingClientRect?(): {
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+    width: number;
+    height: number;
+  };
+}
 
 interface SelectInteractionState {
   pressed: boolean;
@@ -65,6 +71,7 @@ interface SelectInteractionState {
 const SelectMarker = "Select" as unknown as React.ComponentType<
   Record<string, unknown>
 >;
+
 export function Select({
   label,
   value,
@@ -85,6 +92,8 @@ export function Select({
   const colors = theme.colors;
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [triggerRect, setTriggerRect] = useState<TriggerRect | null>(null);
+  const triggerRef = useRef<View | null>(null);
 
   const selectedOption = useMemo(
     () => options.find((opt) => opt.value === value),
@@ -102,35 +111,32 @@ export function Select({
     return options.filter((opt) => opt.label.toLowerCase().includes(query));
   }, [options, isSearchable, searchQuery]);
 
-  // Escape key handler on Web
-  useEffect(() => {
-    if (!isOpen || Platform.OS !== "web" || typeof document === "undefined") {
+  const updateTriggerRect = () => {
+    if (Platform.OS !== "web" || typeof window === "undefined") {
       return;
     }
-
-    const handleKeyDown = (event: {
-      key?: string;
-      stopPropagation(): void;
-      preventDefault(): void;
-    }) => {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        event.preventDefault();
-        setIsOpen(false);
+    const el = triggerRef.current as unknown as DOMElement | null;
+    if (el && typeof el.getBoundingClientRect === "function") {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 || r.height > 0) {
+        setTriggerRect({
+          top: r.top,
+          bottom: r.bottom,
+          left: r.left,
+          right: r.right,
+          width: r.width,
+          height: r.height,
+        });
       }
-    };
-
-    document.addEventListener("keydown", handleKeyDown, true);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown, true);
-    };
-  }, [isOpen]);
+    }
+  };
 
   const handleToggle = () => {
     if (disabled) return;
     setIsOpen((prev) => {
       if (!prev) {
         setSearchQuery("");
+        updateTriggerRect();
       }
       return !prev;
     });
@@ -143,6 +149,51 @@ export function Select({
 
   const showLabel = Boolean(label);
   const shouldAlignLeft = align === "left" || (!align && !showLabel);
+
+  const popoverPositionStyle = useMemo<ViewStyle>(() => {
+    if (
+      !triggerRect ||
+      Platform.OS !== "web" ||
+      typeof window === "undefined"
+    ) {
+      return {
+        position: "absolute",
+        top: "100%",
+        left: 0,
+        marginTop: 4,
+        minWidth: "100%",
+      };
+    }
+
+    const viewportHeight = window.innerHeight || 800;
+    const viewportWidth = window.innerWidth || 1200;
+    const popoverMaxHeight = 220;
+
+    const spaceBelow = viewportHeight - triggerRect.bottom;
+    const placeAbove =
+      spaceBelow < popoverMaxHeight && triggerRect.top > popoverMaxHeight;
+
+    const top = placeAbove
+      ? Math.max(8, triggerRect.top - popoverMaxHeight - 4)
+      : triggerRect.bottom + 4;
+
+    const targetWidth =
+      align === "fill" ? triggerRect.width : Math.max(triggerRect.width, 180);
+
+    const left = Math.min(
+      triggerRect.left,
+      Math.max(8, viewportWidth - targetWidth - 8),
+    );
+
+    return {
+      position: "fixed" as unknown as "absolute",
+      top,
+      left,
+      width: align === "fill" ? triggerRect.width : undefined,
+      minWidth: Math.max(triggerRect.width, 180),
+      maxWidth: 360,
+    };
+  }, [triggerRect, align]);
 
   return (
     <View
@@ -183,6 +234,7 @@ export function Select({
         ]}
       >
         <Pressable
+          ref={triggerRef}
           testID={testID}
           accessibilityRole="button"
           accessibilityLabel={accessibilityLabel ?? label ?? displayText}
@@ -227,15 +279,12 @@ export function Select({
         </Pressable>
 
         {isOpen && (
-          <>
-            <Pressable
-              style={styles.backdrop}
-              onPress={() => setIsOpen(false)}
-              accessibilityRole="none"
-            />
+          <WebSelectPortal onDismiss={() => setIsOpen(false)}>
             <View
+              pointerEvents="auto"
               style={[
                 styles.popover,
+                popoverPositionStyle,
                 {
                   backgroundColor: colors.surface2,
                   borderColor: colors.border,
@@ -314,7 +363,7 @@ export function Select({
                 )}
               </ScrollView>
             </View>
-          </>
+          </WebSelectPortal>
         )}
       </View>
     </View>
@@ -375,34 +424,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     flex: 1,
   },
-  backdrop: {
-    ...Platform.select({
-      web: {
-        position: "fixed" as unknown as "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 999,
-        backgroundColor: "transparent",
-      },
-      default: {
-        position: "absolute" as const,
-        top: -1000,
-        left: -1000,
-        right: -1000,
-        bottom: -1000,
-        zIndex: 999,
-        backgroundColor: "transparent",
-      },
-    }),
-  },
   popover: {
-    position: "absolute",
-    top: "100%",
-    left: 0,
-    marginTop: 4,
-    minWidth: "100%",
     maxHeight: 220,
     borderRadius: 6,
     borderWidth: 1,
@@ -410,7 +432,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     ...Platform.select({
       web: {
-        boxShadow: "0 4px 14px rgba(0, 0, 0, 0.16)",
+        boxShadow: "0 6px 20px rgba(0, 0, 0, 0.25)",
       },
       default: {
         elevation: 8,

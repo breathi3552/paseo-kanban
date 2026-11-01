@@ -240,6 +240,8 @@ export function createHost({
         React.createElement("WebDialogPortal", props, children),
       WebMenuPortal: ({ children, ...props }) =>
         React.createElement("WebMenuPortal", props, children),
+      WebSelectPortal: ({ children, ...props }) =>
+        React.createElement("WebSelectPortal", props, children),
     },
     "@getpaseo/plugin/client": sdk,
     "@getpaseo/plugin/client/react-native": {
