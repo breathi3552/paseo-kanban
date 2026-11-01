@@ -20,7 +20,6 @@ export type ButtonSize = "default" | "sm" | "icon";
 interface ButtonInteractionState {
   pressed: boolean;
   hovered?: boolean;
-  focused?: boolean;
 }
 
 export interface ButtonProps extends Omit<
@@ -102,15 +101,9 @@ export function Button({
       }}
       style={(state: ButtonInteractionState) => {
         const isHovered = Boolean(state.hovered && !blocked);
-        const isFocused = Boolean(state.focused && !blocked);
         const isPressed = Boolean(state.pressed && !blocked);
         let activeBg = backgroundColor;
-        let activeBorder = borderColor;
-
-        if (isFocused) {
-          activeBorder = colors.accent;
-        }
-
+        const activeBorder = borderColor;
         if (isHovered) {
           if (isGhost || isOutline || variant === "secondary") {
             activeBg = colors.surface2;

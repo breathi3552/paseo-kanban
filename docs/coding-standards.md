@@ -14,7 +14,7 @@
    - 任何新增的通用控件必须在原子层沉淀为纯净受控组件，供全站统一聚合导出消费。
 3. **严禁在业务代码中裸写原生控件**：
    - 严禁在看板视图、泳道、卡片或 5 个业务弹窗中直接使用裸 `<Pressable>` 充当操作按钮，必须统一使用 `<Button>`；
-   - 严禁直接使用裸 `<TextInput>`，表单输入必须统一使用 `<Input>`，以保证内置的 Escape 防穿透、边框聚焦环与 IME 输入法保护生效；
+   - 严禁直接使用裸 `<TextInput>`，表单输入必须统一使用 `<Input>`，以保证内置的 Escape 防穿透与 IME 输入法保护生效；
    - 严禁就地使用 `View + Text + borderRadius` 手写拼凑临时标签（统一使用 `<Badge>`）；
    - 严禁使用自定义图标切换模拟复选框（统一使用 `<Checkbox>`）；
    - 严禁手写私有下拉浮层或直接拼装菜单（统一使用 `<Select>`）。
@@ -23,12 +23,12 @@
 
 - 严禁硬编码静态颜色（如写死 `#3b82f6`、`#ffffff`、`rgba(...)` 等魔数），所有前景色、背景色、边框色与高亮色必须纯粹由宿主动态注入的 `theme.colors`（如 `colors.surface1`、`colors.surface2`、`colors.border`、`colors.accent`、`colors.foreground` 等）驱动，以无缝兼容日间、夜间及第三方自定义主题。
 
-### 1.3 桌面端全状态矩阵
+### 1.3 桌面端交互反馈矩阵
 
-- 交互型控件（尤其是 `Button` 和 `Select` Trigger）必须完整支持桌面端交互矩阵：
+- 交互型控件（尤其是 `Button` 和 `Select` Trigger）统一支持桌面端微交互反馈：
   - `hovered`：鼠标悬停平滑提亮或着色反馈；
-  - `focused`：键盘 Tab 导航时呈现清晰的 Focus Ring 聚焦环高亮（`colors.accent`）；
   - `pressed`：按压时提供触感微缩放（`transform: [{ scale: 0.98 }]`）。
+- 明确全看板不支持 Tab 键切换焦点，原子组件内部不维护 `focused` 状态，严禁引入外层 Focus Ring 轮廓。
 
 ### 1.4 样式组织
 

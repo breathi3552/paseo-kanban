@@ -12,7 +12,6 @@ import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 interface CheckboxInteractionState {
   pressed: boolean;
   hovered?: boolean;
-  focused?: boolean;
 }
 
 export interface CheckboxProps extends Omit<
@@ -76,11 +75,7 @@ export function Checkbox({
           height: size,
           borderRadius: 4,
           borderWidth: 1,
-          borderColor: isActive
-            ? colors.accent
-            : state.focused
-              ? colors.accent
-              : colors.foregroundMuted,
+          borderColor: isActive ? colors.accent : colors.foregroundMuted,
           backgroundColor: isActive
             ? colors.accent
             : state.hovered

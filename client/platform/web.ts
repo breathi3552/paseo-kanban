@@ -184,27 +184,7 @@ export function WebDialogPortal({
         event.stopPropagation();
         dismiss.current();
       } else if (event.key === "Tab") {
-        const targets = focusable(container);
-        const first = targets[0];
-        const last = targets[targets.length - 1];
-        if (!first) {
-          event.preventDefault();
-          container.focus();
-        } else if (
-          event.shiftKey &&
-          (document.activeElement === first ||
-            document.activeElement === container)
-        ) {
-          event.preventDefault();
-          last.focus();
-        } else if (
-          !event.shiftKey &&
-          (document.activeElement === last ||
-            document.activeElement === container)
-        ) {
-          event.preventDefault();
-          first.focus();
-        }
+        event.preventDefault();
       }
     };
     const rememberFocus = () => {

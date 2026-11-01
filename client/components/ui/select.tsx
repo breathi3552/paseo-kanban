@@ -86,7 +86,6 @@ function findDOMNode(refCurrent: unknown): DOMElement | null {
 interface SelectInteractionState {
   pressed: boolean;
   hovered?: boolean;
-  focused?: boolean;
 }
 
 const SelectMarker = "Select" as unknown as React.ComponentType<
@@ -267,11 +266,7 @@ export function Select({
             styles.trigger,
             {
               borderColor:
-                isOpen || state.focused
-                  ? colors.accent
-                  : state.hovered
-                    ? colors.accent
-                    : colors.border,
+                isOpen || state.hovered ? colors.accent : colors.border,
               backgroundColor: state.hovered
                 ? colors.surface1
                 : colors.surface2,
