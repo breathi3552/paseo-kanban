@@ -116,9 +116,13 @@ export function useDialogInputFocus(color?: string) {
     const scope = `[id="${id}"]`;
     style.textContent = `
       ${scope} input:focus, ${scope} textarea:focus {
-        outline: 2px solid ${color} !important;
-        outline-offset: 1px !important;
+        outline: none !important;
+        box-shadow: none !important;
         border-color: ${color} !important;
+      }
+      ${scope} button:focus, ${scope} [role="button"]:focus {
+        outline: none !important;
+        box-shadow: none !important;
       }
     `;
     document.body.appendChild(style);

@@ -2,6 +2,7 @@ import type { ComponentProps } from "react";
 import {
   Pressable,
   StyleSheet,
+  Platform,
   type StyleProp,
   type ViewStyle,
   type GestureResponderEvent,
@@ -105,5 +106,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
+    ...Platform.select({
+      web: {
+        outlineWidth: 0,
+      },
+    }),
   },
 });

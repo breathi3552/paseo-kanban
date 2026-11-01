@@ -1,6 +1,7 @@
 import { useState, type ComponentProps } from "react";
 import {
   StyleSheet,
+  Platform,
   type StyleProp,
   type TextStyle,
   type NativeSyntheticEvent,
@@ -101,6 +102,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     fontSize: 14,
     minHeight: 36,
+    ...Platform.select({
+      web: {
+        outlineWidth: 0,
+      },
+    }),
   },
   multiline: {
     minHeight: 80,

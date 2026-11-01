@@ -3,6 +3,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  Platform,
   ActivityIndicator,
   type StyleProp,
   type ViewStyle,
@@ -173,6 +174,11 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     minHeight: 34,
+    ...Platform.select({
+      web: {
+        outlineWidth: 0,
+      },
+    }),
   },
   sizeSm: {
     paddingHorizontal: 10,

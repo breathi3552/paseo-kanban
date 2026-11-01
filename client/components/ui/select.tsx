@@ -446,6 +446,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
+    ...Platform.select({
+      web: {
+        outlineWidth: 0,
+      },
+    }),
   },
   triggerText: {
     fontSize: 13,
@@ -485,6 +490,11 @@ const styles = StyleSheet.create({
     minHeight: 28,
     fontSize: 12,
     paddingHorizontal: 8,
+    ...Platform.select({
+      web: {
+        outlineWidth: 0,
+      },
+    }),
   },
   optionsList: {
     maxHeight: 180,
