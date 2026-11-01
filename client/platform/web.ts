@@ -131,6 +131,22 @@ export function useDialogInputFocus(color?: string) {
   return id;
 }
 
+/** Strips all browser focus outlines from board-owned elements on Web. */
+export function useWebBoardOutlineReset() {
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const style = document.createElement("style");
+    style.setAttribute("data-kanban-board-style", "");
+    style.textContent = `
+      [data-kanban-board], [data-kanban-board] * {
+        outline: none !important;
+      }
+    `;
+    document.body.appendChild(style);
+    return () => style.remove();
+  }, []);
+}
+
 /** Own web surface, never a selector or mutation of the host's private DOM.
  * z=0 sits above app content by insertion order, below the host overlay plane
  * (z=1), leaving host Toasts and command dialogs visible and interactive. */
@@ -158,7 +174,16 @@ export function WebDialogPortal({
       zIndex: "0",
       display: "flex",
       flexDirection: "column",
+      outline: "none",
     });
+    const resetStyle = document.createElement("style");
+    resetStyle.textContent = `
+      [data-kanban-dialog], [data-kanban-dialog] * {
+        outline: none !important;
+        box-shadow: none !important;
+      }
+    `;
+    node.appendChild(resetStyle);
     document.body.appendChild(node);
     setContainer(node);
     return () => {
@@ -233,12 +258,22 @@ export function WebMenuPortal({
     if (Platform.OS !== "web" || typeof document === "undefined") return;
     const previous = document.activeElement;
     const node = document.createElement("div");
+    node.setAttribute("data-kanban-menu-portal", "");
     Object.assign(node.style, {
       position: "fixed",
       inset: "0",
       zIndex: "0",
       pointerEvents: "none",
+      outline: "none",
     });
+    const menuReset = document.createElement("style");
+    menuReset.textContent = `
+      [data-kanban-menu-portal], [data-kanban-menu-portal] * {
+        outline: none !important;
+        box-shadow: none !important;
+      }
+    `;
+    node.appendChild(menuReset);
     document.body.appendChild(node);
     setContainer(node);
     const outside = (event: MenuDocumentEvent) => {
@@ -301,7 +336,16 @@ export function WebSelectPortal({
       inset: "0",
       zIndex: "100",
       pointerEvents: "auto",
+      outline: "none",
     });
+    const selectReset = document.createElement("style");
+    selectReset.textContent = `
+      [data-kanban-select-portal], [data-kanban-select-portal] * {
+        outline: none !important;
+        box-shadow: none !important;
+      }
+    `;
+    node.appendChild(selectReset);
     document.body.appendChild(node);
     setContainer(node);
 

@@ -5,6 +5,7 @@ import {
   Text,
   View,
   ScrollView,
+  Platform,
   type DimensionValue,
   type StyleProp,
   type ViewStyle,
@@ -169,6 +170,11 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 8,
     overflow: "hidden",
+    ...Platform.select({
+      web: {
+        outlineWidth: 0,
+      },
+    }),
   },
   header: {
     flexDirection: "row",

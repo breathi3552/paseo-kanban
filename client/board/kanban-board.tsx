@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   ActivityIndicator,
+  Platform,
   type LayoutChangeEvent,
 } from "react-native";
 import { useSettings, useRpc, openExternalUrl } from "@getpaseo/plugin/client";
@@ -12,6 +13,7 @@ import { settingsRpc } from "@getpaseo/plugin";
 import { useToast, copyText } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { Button, Badge, Select } from "../components/ui";
+import { useWebBoardOutlineReset } from "../platform/web";
 import { agentDispatchSettings } from "../../shared/agent-dispatch";
 import {
   kanbanSettings,
@@ -427,6 +429,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
     () => createBoardStyles(theme, layout.compact),
     [theme, layout.compact],
   );
+  useWebBoardOutlineReset();
 
   if (settings.status === "loading" && !preserveImport) {
     return (
@@ -486,7 +489,11 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   if (!board) return null;
 
   return (
-    <View style={styles.container} onLayout={handleLayout}>
+    <View
+      style={styles.container}
+      onLayout={handleLayout}
+      {...({ dataSet: { kanbanBoard: "" } } as Record<string, unknown>)}
+    >
       {/* Top Header */}
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
@@ -725,6 +732,11 @@ function createBoardStyles(
       minHeight: 0,
       backgroundColor: theme.colors.surface0,
       userSelect: "none",
+      ...Platform.select({
+        web: {
+          outlineWidth: 0,
+        },
+      }),
     },
     header: {
       paddingHorizontal: compact ? 12 : 20,

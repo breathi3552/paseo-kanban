@@ -330,6 +330,11 @@ function createContextMenuStyles(
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
+      ...Platform.select({
+        web: {
+          outlineWidth: 0,
+        },
+      }),
     },
     menuItemText: {
       flex: 1,

@@ -160,7 +160,10 @@ export function KanbanCard({
   return (
     <View
       ref={cardRef}
-      style={binding.isDragging ? styles.cardDraggingHidden : undefined}
+      style={[
+        styles.cardOuter,
+        binding.isDragging ? styles.cardDraggingHidden : undefined,
+      ]}
       {...(interactionDisabled ? {} : binding.cardPanHandlers)}
       {...(Platform.OS === "web"
         ? {
@@ -412,6 +415,13 @@ function createCardStyles(theme: PluginTheme, compact: boolean) {
     subtaskBadgeTextCompleted: {
       color: theme.colors.statusSuccess ?? theme.colors.accent,
     },
+    cardOuter: {
+      ...Platform.select({
+        web: {
+          outlineWidth: 0,
+        },
+      }),
+    },
     cardDraggingHidden: {
       position: "absolute",
       left: 0,
@@ -428,6 +438,11 @@ function createCardStyles(theme: PluginTheme, compact: boolean) {
       gap: 8,
       flexDirection: "row",
       alignItems: "flex-start",
+      ...Platform.select({
+        web: {
+          outlineWidth: 0,
+        },
+      }),
     },
     checkboxControl: {
       padding: 8,

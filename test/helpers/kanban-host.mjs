@@ -236,6 +236,7 @@ export function createHost({
     "../platform/web": {
       useProjectFilterLayout: () => {},
       useDialogInputFocus: () => undefined,
+      useWebBoardOutlineReset: () => {},
       WebDialogPortal: ({ children, ...props }) =>
         React.createElement("WebDialogPortal", props, children),
       WebMenuPortal: ({ children, ...props }) =>
