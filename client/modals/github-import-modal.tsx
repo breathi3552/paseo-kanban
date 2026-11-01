@@ -18,7 +18,7 @@ import type { KanbanBoard } from "../../shared/kanban";
 import { executeIssueImport, type SaveFn } from "../session/kanban-session";
 import type { ProjectItem } from "../session/use-projects";
 import { useI18n, type TranslationKey } from "../platform/i18n";
-import { BusinessDialog } from "./business-dialog";
+import { Dialog } from "../components/ui/dialog";
 
 interface Props {
   board: KanbanBoard;
@@ -194,10 +194,9 @@ export function GitHubImportModal(props: Props) {
   }
 
   return (
-    <BusinessDialog
+    <Dialog
       title={t("import.title")}
       theme={props.theme}
-      compact={props.compact}
       maxWidth={840}
       viewportWidth={90}
       scroll="contained"
@@ -490,7 +489,7 @@ export function GitHubImportModal(props: Props) {
           </Pressable>
         </View>
       </View>
-    </BusinessDialog>
+    </Dialog>
   );
 }
 

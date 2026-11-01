@@ -1,19 +1,11 @@
 import { useMemo, useState } from "react";
-import {
-  View,
-  Text,
-  Pressable,
-  ActivityIndicator,
-  StyleSheet,
-} from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import {
-  Modal,
-  ScrollView,
-  TextInput,
-  useToast,
-} from "@getpaseo/plugin/client/react-native";
+import { ScrollView, useToast } from "@getpaseo/plugin/client/react-native";
 import { SettingsSelect } from "@getpaseo/plugin/client/ui";
+import { Dialog } from "../components/ui/dialog";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import type { KanbanBoard, KanbanTask } from "../../shared/kanban";
 import type { SaveFn } from "../session/kanban-session";
 import type { ProjectItem } from "../session/use-projects";
@@ -87,141 +79,136 @@ export function AgentDispatchModal({
     }
   }
   return (
-    <Modal
+    <Dialog
       open
       title={t("dispatch.title")}
+      theme={theme}
+      maxWidth={580}
+      scroll="contained"
+      canClose={dispatch.canClose}
       onOpenChange={(open) => {
         if (!open && dispatch.canClose()) onClose();
       }}
+      contentStyle={styles.modalContent}
     >
-      <Modal.Content
-        scrollable={false}
-        style={styles.modalSurface}
-        contentContainerStyle={styles.modalContent}
+      <ScrollView
+        style={styles.scrollArea}
+        // Leave room inside the scroll viewport for the input focus outline.
+        contentContainerStyle={styles.scrollContent}
       >
-        <ScrollView
-          style={styles.scrollArea}
-          // Leave room inside the scroll viewport for the input focus outline.
-          contentContainerStyle={styles.scrollContent}
-        >
-          <Text style={styles.taskTitle}>{task.title}</Text>
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>prompt</Text>
-            <TextInput
-              accessibilityLabel="prompt"
-              multiline
-              value={prompt}
-              editable={!disabled}
-              onChangeText={setPromptDraft}
-              style={styles.promptInput}
-            />
-          </View>
-          <SettingsSelect
-            label={t("dispatch.project")}
-            value={projectId}
-            disabled={disabled || task.source === "github_issue"}
-            options={[
-              { label: t("dispatch.selectProject"), value: "" },
-              ...projects.map((item) => ({
-                label: item.projectDisplayName,
-                value: item.projectId,
-              })),
-            ]}
-            onValueChange={(id) => {
-              setProjectId(id);
-              setWorkspaceId("new-directory");
-              dispatch.clearErrors();
-            }}
+        <Text style={styles.taskTitle}>{task.title}</Text>
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>prompt</Text>
+          <Input
+            theme={theme}
+            accessibilityLabel="prompt"
+            multiline
+            value={prompt}
+            editable={!disabled}
+            onChangeText={setPromptDraft}
+            style={styles.promptInput}
           />
-          {errors.project && (
-            <Text style={styles.errorText}>{t("dispatch.selectProject")}</Text>
-          )}
-          <SettingsSelect
-            label={t("dispatch.workspace")}
-            value={workspaceId}
-            disabled={disabled}
-            options={[
-              ...projectWorkspaces.map((item) => ({
-                label: item.name,
-                value: item.id,
-              })),
-              { label: t("dispatch.newDirectory"), value: "new-directory" },
-              ...(project?.projectKind === "git"
-                ? [{ label: t("dispatch.newWorktree"), value: "new-worktree" }]
-                : []),
-            ]}
-            onValueChange={setWorkspaceId}
-          />
-          {errors.workspace && (
-            <Text style={styles.errorText}>
-              {t("dispatch.selectWorkspace")}
-            </Text>
-          )}
-          {workspaceId === "new-worktree" && (
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>{t("dispatch.branchName")}</Text>
-              <TextInput
-                accessibilityLabel={t("dispatch.branchName")}
-                placeholder={t("dispatch.branchName")}
-                value={branchName}
-                editable={!disabled}
-                onChangeText={setBranchName}
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={styles.textInput}
-              />
-            </View>
-          )}
-          {workspaceId === "new-worktree" && errors.branch && (
-            <Text style={styles.errorText}>{t("dispatch.invalidBranch")}</Text>
-          )}
-          <SettingsSelect
-            label={t("dispatch.profile")}
-            value={profileId}
-            disabled={disabled}
-            options={profiles.map((item) => ({
+        </View>
+        <SettingsSelect
+          label={t("dispatch.project")}
+          value={projectId}
+          disabled={disabled || task.source === "github_issue"}
+          options={[
+            { label: t("dispatch.selectProject"), value: "" },
+            ...projects.map((item) => ({
+              label: item.projectDisplayName,
+              value: item.projectId,
+            })),
+          ]}
+          onValueChange={(id) => {
+            setProjectId(id);
+            setWorkspaceId("new-directory");
+            dispatch.clearErrors();
+          }}
+        />
+        {errors.project && (
+          <Text style={styles.errorText}>{t("dispatch.selectProject")}</Text>
+        )}
+        <SettingsSelect
+          label={t("dispatch.workspace")}
+          value={workspaceId}
+          disabled={disabled}
+          options={[
+            ...projectWorkspaces.map((item) => ({
               label: item.name,
               value: item.id,
-            }))}
-            onValueChange={setProfileId}
-          />
-          {errors.profile && (
-            <Text style={styles.errorText}>{t("dispatch.selectProfile")}</Text>
-          )}
-          <Text style={styles.hintText}>{t("dispatch.manageProfiles")}</Text>
-        </ScrollView>
-        <View style={styles.footerRow}>
-          <Pressable
-            disabled={sending}
-            onPress={onClose}
-            style={styles.cancelButton}
-          >
-            <Text style={styles.fieldLabel}>{t("dispatch.cancel")}</Text>
-          </Pressable>
-          <Pressable
-            disabled={disabled}
-            onPress={submit}
-            style={[
-              styles.submitButton,
-              disabled && !sending && styles.submitButtonDisabled,
-            ]}
-          >
-            {sending && <ActivityIndicator color={colors.accentForeground} />}
-            <Text style={styles.submitButtonText}>
-              {t(sending ? "dispatch.sending" : "dispatch.send")}
-            </Text>
-          </Pressable>
-        </View>
-      </Modal.Content>
-    </Modal>
+            })),
+            { label: t("dispatch.newDirectory"), value: "new-directory" },
+            ...(project?.projectKind === "git"
+              ? [{ label: t("dispatch.newWorktree"), value: "new-worktree" }]
+              : []),
+          ]}
+          onValueChange={setWorkspaceId}
+        />
+        {errors.workspace && (
+          <Text style={styles.errorText}>{t("dispatch.selectWorkspace")}</Text>
+        )}
+        {workspaceId === "new-worktree" && (
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>{t("dispatch.branchName")}</Text>
+            <Input
+              theme={theme}
+              accessibilityLabel={t("dispatch.branchName")}
+              placeholder={t("dispatch.branchName")}
+              value={branchName}
+              editable={!disabled}
+              onChangeText={setBranchName}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={styles.textInput}
+            />
+          </View>
+        )}
+        {workspaceId === "new-worktree" && errors.branch && (
+          <Text style={styles.errorText}>{t("dispatch.invalidBranch")}</Text>
+        )}
+        <SettingsSelect
+          label={t("dispatch.profile")}
+          value={profileId}
+          disabled={disabled}
+          options={profiles.map((item) => ({
+            label: item.name,
+            value: item.id,
+          }))}
+          onValueChange={setProfileId}
+        />
+        {errors.profile && (
+          <Text style={styles.errorText}>{t("dispatch.selectProfile")}</Text>
+        )}
+        <Text style={styles.hintText}>{t("dispatch.manageProfiles")}</Text>
+      </ScrollView>
+      <View style={styles.footerRow}>
+        <Button
+          theme={theme}
+          variant="secondary"
+          disabled={sending}
+          accessibilityLabel={t("dispatch.cancel")}
+          onPress={onClose}
+        >
+          {t("dispatch.cancel")}
+        </Button>
+        <Button
+          theme={theme}
+          variant="primary"
+          loading={sending}
+          disabled={disabled}
+          accessibilityLabel={t("dispatch.send")}
+          onPress={submit}
+        >
+          {t(sending ? "dispatch.sending" : "dispatch.send")}
+        </Button>
+      </View>
+    </Dialog>
   );
 }
 
 function createDispatchStyles(colors: PluginSurfaceProps["theme"]["colors"]) {
   return StyleSheet.create({
-    modalSurface: {
-      backgroundColor: colors.surface0,
-    },
     modalContent: {
       flexShrink: 1,
       minHeight: 0,
@@ -275,24 +262,6 @@ function createDispatchStyles(colors: PluginSurfaceProps["theme"]["colors"]) {
       flexDirection: "row",
       justifyContent: "flex-end",
       gap: 12,
-    },
-    cancelButton: {
-      padding: 10,
-    },
-    submitButton: {
-      padding: 10,
-      borderRadius: 6,
-      backgroundColor: colors.accent,
-      opacity: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-    },
-    submitButtonDisabled: {
-      opacity: 0.4,
-    },
-    submitButtonText: {
-      color: colors.accentForeground,
     },
   });
 }

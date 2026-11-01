@@ -12,16 +12,14 @@ import {
   Animated,
   type ScrollView as NativeScrollView,
 } from "react-native";
-import {
-  Icon,
-  TextInput,
-  ScrollView,
-} from "@getpaseo/plugin/client/react-native";
+import { Icon, ScrollView } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { LaneEditSession } from "../session/lane-edit-session";
 import { useI18n } from "../platform/i18n";
 import { useLaneReorder } from "../session/use-lane-reorder";
-import { BusinessDialog } from "./business-dialog";
+import { Dialog } from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 
 interface Props {
   session: LaneEditSession;
@@ -115,12 +113,14 @@ export function LaneManagementModal(props: Props) {
   };
   const adding = editing?.kind === "add";
   const editor = (
-    <TextInput
+    <Input
       autoFocus
       accessibilityLabel={t("laneModal.nameLabel")}
       value={title}
       editable={!isSaving}
       onChangeText={session.setTitle}
+      onEscape={session.cancelName}
+      theme={props.theme}
       style={styles.nameInput}
     />
   );
@@ -152,17 +152,14 @@ export function LaneManagementModal(props: Props) {
       {action(t("laneManagement.reload"), session.reload)}
     </View>
   );
-  const dialogProps = {
-    theme: props.theme,
-    compact: props.compact,
-    contentStyle: styles.dialogContent,
-  };
   return (
     <>
-      <BusinessDialog
-        {...dialogProps}
+      <Dialog
+        theme={props.theme}
         title={t("laneManagement.title")}
         maxWidth={1120}
+        contentStyle={styles.dialogContent}
+        scroll="contained"
         onOpenChange={(open) => {
           if (!open) props.onClose();
         }}
@@ -358,30 +355,26 @@ export function LaneManagementModal(props: Props) {
             </View>
           </>
         )}
-      </BusinessDialog>
+      </Dialog>
       {deleteId && (
-        <BusinessDialog
-          {...dialogProps}
+        <ConfirmDialog
+          open
           title={t("laneManagement.deleteTitle")}
-          onOpenChange={(open) => {
-            if (!open) session.cancelDelete();
-          }}
-        >
-          <Text style={styles.foregroundText}>
-            {t("laneManagement.deletePrompt")}
-          </Text>
-          {errorPanel}
-          <View style={styles.footer}>
-            {action(t("laneModal.cancel"), session.cancelDelete)}
-            {action(
-              t("laneManagement.confirmDelete"),
-              session.confirmDelete,
-              false,
-              undefined,
-              "destructive",
-            )}
-          </View>
-        </BusinessDialog>
+          description={
+            <View style={styles.deleteConfirmWrap}>
+              <Text style={styles.foregroundText}>
+                {t("laneManagement.deletePrompt")}
+              </Text>
+              {errorPanel}
+            </View>
+          }
+          theme={props.theme}
+          confirmLabel={t("laneManagement.confirmDelete")}
+          cancelLabel={t("laneModal.cancel")}
+          loading={isSaving}
+          onConfirm={session.confirmDelete}
+          onCancel={session.cancelDelete}
+        />
       )}
     </>
   );
@@ -508,6 +501,9 @@ function createLaneModalStyles(
     },
     foregroundText: {
       color: colors.foreground,
+    },
+    deleteConfirmWrap: {
+      gap: 12,
     },
   });
 }

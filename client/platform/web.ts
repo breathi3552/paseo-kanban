@@ -98,6 +98,24 @@ const focusable = (root: WebElement) =>
       node.getClientRects().length > 0,
   );
 
+const initialFocusTarget = (root: WebElement): WebElement => {
+  const inputs = Array.from(
+    root.querySelectorAll('input:not([type="hidden"]), textarea, select'),
+  ).filter(
+    (node) =>
+      node.getAttribute("disabled") === null &&
+      node.getAttribute("aria-disabled") !== "true" &&
+      node.getClientRects().length > 0,
+  );
+  if (inputs.length > 0) return inputs[0];
+
+  const all = focusable(root);
+  const nonClose = all.filter(
+    (node) => node.getAttribute("data-dialog-close") === null,
+  );
+  return nonClose[0] ?? all[0] ?? root;
+};
+
 /** Focus styling targets only this dialog's owned content, including host sheets. */
 export function useDialogInputFocus(color?: string) {
   const id = `kanban-dialog-${useId()}`;
@@ -163,7 +181,7 @@ export function WebDialogPortal({
   useEffect(() => {
     if (!container) return;
     if (!container.contains(document.activeElement))
-      (focusable(container)[0] ?? container).focus();
+      initialFocusTarget(container).focus();
     const onKeyDown = (event: KeyEvent) => {
       if (event.defaultPrevented || event.isComposing || event.keyCode === 229)
         return;
@@ -218,7 +236,7 @@ export function WebDialogPortal({
     const target =
       previous?.isConnected && container.contains(previous)
         ? previous
-        : (focusable(container)[0] ?? container);
+        : initialFocusTarget(container);
     target.focus();
   });
   return Platform.OS === "web" && container

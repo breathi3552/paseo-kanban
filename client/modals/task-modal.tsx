@@ -27,7 +27,9 @@ import {
 import { useI18n } from "../platform/i18n";
 import { useTaskDelete } from "./task-delete-dialog";
 import { IssueLink } from "./issue-link";
-import { BusinessDialog } from "./business-dialog";
+import { Dialog } from "../components/ui/dialog";
+import { Button } from "../components/ui/button";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 
@@ -281,302 +283,283 @@ export function TaskModal({
   };
 
   return (
-    <BusinessDialog
-      theme={theme}
-      compact={layout.compact}
-      viewportHeight={session.mode === "edit" ? 57 : undefined}
-      scroll="contained"
-      contentStyle={styles.modalBody}
-      inputFocus
-      canClose={() =>
-        !session.getSnapshot().isSaving && !deleteSession?.getSnapshot().isBusy
-      }
-      title={
-        session.mode === "edit"
-          ? t("taskModal.titleEdit")
-          : t("taskModal.titleCreate")
-      }
-      icon={
-        <Icon name="PanelsTopLeft" size={18} color={theme.colors.foreground} />
-      }
-      open={open}
-      onOpenChange={(next) => {
-        if (!next && !isBusy) {
-          onClose();
-        }
-      }}
-    >
-      <ScrollView
-        nativeID="task-modal-root"
-        testID="task-modal-root"
-        style={styles.scrollBody}
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-      >
-        {errorMessage && (
-          <View style={styles.errorBanner}>
-            <Text style={styles.errorText}>{errorMessage}</Text>
-          </View>
-        )}
-
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>{t("taskModal.titleLabel")}</Text>
-          <TextInput
-            style={styles.input}
-            placeholder={t("taskModal.titlePlaceholder")}
-            placeholderTextColor={theme.colors.foregroundMuted}
-            value={snapshot.title}
-            onChangeText={(txt) => session.setTitle(txt)}
-          />
-        </View>
-
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>{t("taskModal.laneLabel")}</Text>
-          <View style={styles.selectorRow}>
-            {lanes.map((lane) => {
-              const isSelected = lane.id === snapshot.laneId;
-              return (
-                <Pressable
-                  key={lane.id}
-                  onPress={() => session.setLaneId(lane.id)}
-                  style={[
-                    styles.optionChip,
-                    isSelected && styles.optionChipSelected,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.optionChipText,
-                      isSelected && styles.optionChipTextSelected,
-                    ]}
-                  >
-                    {lane.title}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        <SettingsSelect
-          label={t("taskModal.projectLabel")}
-          value={snapshot.projectId ?? ""}
-          options={[
-            { value: "", label: t("taskModal.noProject") },
-            ...projectOptions,
-          ]}
-          onValueChange={(id) => session.setProjectId(id || null)}
-          disabled={isBusy || snapshot.source === "github_issue"}
+    <>
+      {deleteSnapshot && (
+        <ConfirmDialog
+          open
+          title={t("contextMenu.delete")}
+          description={t("contextMenu.deleteConfirm", {
+            title: deleteSnapshot.title,
+          })}
+          theme={theme}
+          confirmLabel={t("taskModal.confirmDelete")}
+          cancelLabel={t("taskModal.cancel")}
+          loading={isDeleteBusy}
+          error={deleteSnapshot.error}
+          retryLabel={t("kanban.refresh")}
+          onRetry={() => {
+            void handleRefreshDelete();
+          }}
+          onConfirm={handleDelete}
+          onCancel={handleCancelDelete}
         />
-
-        {snapshot.source === "github_issue" && snapshot.externalUrl && (
-          <IssueLink url={snapshot.externalUrl} theme={theme} />
-        )}
-
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>{t("taskModal.descLabel")}</Text>
-          <View style={styles.descWrapper}>
-            <TextInput
-              style={[
-                styles.multilineInput,
-                { height: descHeight, paddingBottom: 22 },
-              ]}
-              multiline
-              numberOfLines={3}
-              placeholder={t("taskModal.descPlaceholder")}
-              placeholderTextColor={theme.colors.foregroundMuted}
-              value={snapshot.description}
-              onChangeText={(txt) => session.setDescription(txt)}
-            />
-            <View
-              style={styles.resizeHandle}
-              {...resizeResponder.panHandlers}
-              accessibilityRole="adjustable"
-              accessibilityLabel="Resize description"
-            >
-              <View style={styles.resizeGripOuter}>
-                <View style={styles.resizeGripInner} />
-              </View>
+      )}
+      <Dialog
+        theme={theme}
+        viewportHeight={session.mode === "edit" ? 57 : undefined}
+        scroll="contained"
+        contentStyle={styles.modalBody}
+        inputFocus
+        canClose={() =>
+          !session.getSnapshot().isSaving &&
+          !deleteSession?.getSnapshot().isBusy
+        }
+        title={
+          session.mode === "edit"
+            ? t("taskModal.titleEdit")
+            : t("taskModal.titleCreate")
+        }
+        icon={
+          <Icon
+            name="PanelsTopLeft"
+            size={18}
+            color={theme.colors.foreground}
+          />
+        }
+        open={open}
+        onOpenChange={(next) => {
+          if (!next && !isBusy) {
+            onClose();
+          }
+        }}
+      >
+        <ScrollView
+          nativeID="task-modal-root"
+          testID="task-modal-root"
+          style={styles.scrollBody}
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+        >
+          {errorMessage && (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorText}>{errorMessage}</Text>
             </View>
-          </View>
-        </View>
+          )}
 
-        {/* Subtasks Section */}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>
-            {t("taskModal.subtasksLabel", {
-              completed: snapshot.subtasks.filter((s) => s.completed).length,
-              total: snapshot.subtasks.length,
-            })}
-          </Text>
-
-          {snapshot.subtasks.map((subtask) => (
-            <View key={subtask.id} style={styles.subtaskItem}>
-              <Pressable
-                onPress={() =>
-                  session.updateSubtask(subtask.id, {
-                    completed: !subtask.completed,
-                  })
-                }
-                style={[
-                  styles.subtaskCheck,
-                  subtask.completed && styles.subtaskCheckCompleted,
-                ]}
-              >
-                {subtask.completed && (
-                  <Icon
-                    name="Check"
-                    size={14}
-                    color={theme.colors.accentForeground}
-                  />
-                )}
-              </Pressable>
-
-              <TextInput
-                style={[
-                  styles.subtaskInput,
-                  subtask.completed && styles.subtaskInputCompleted,
-                ]}
-                value={subtask.title}
-                onChangeText={(txt) =>
-                  session.updateSubtask(subtask.id, { title: txt })
-                }
-                placeholder={t("taskModal.subtaskPlaceholder")}
-                placeholderTextColor={theme.colors.foregroundMuted}
-              />
-
-              <Pressable
-                onPress={() => session.removeSubtask(subtask.id)}
-                hitSlop={8}
-              >
-                <Icon
-                  name="Trash2"
-                  size={14}
-                  color={theme.colors.statusDanger}
-                />
-              </Pressable>
-            </View>
-          ))}
-
-          <View style={styles.newSubtaskRow}>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>{t("taskModal.titleLabel")}</Text>
             <TextInput
-              style={[styles.input, styles.newSubtaskInput]}
-              placeholder={t("taskModal.newSubtaskPlaceholder")}
+              style={styles.input}
+              placeholder={t("taskModal.titlePlaceholder")}
               placeholderTextColor={theme.colors.foregroundMuted}
-              value={newSubtaskTitle}
-              onChangeText={(txt) => setNewSubtaskTitle(txt)}
-              onSubmitEditing={handleAddSubtask}
+              value={snapshot.title}
+              onChangeText={(txt) => session.setTitle(txt)}
             />
-            <Pressable
-              onPress={handleAddSubtask}
-              style={[styles.optionChip, styles.addStepButton]}
-            >
-              <Text style={styles.optionChipText}>
-                {t("taskModal.addStep")}
-              </Text>
-            </Pressable>
           </View>
-        </View>
-      </ScrollView>
 
-      <View style={styles.footer}>
-        {/* Delete Task Section for Edit Mode */}
-        {session.mode === "edit" && (
-          <View style={styles.deleteSection}>
-            {!deleteSnapshot ? (
-              <Pressable
-                onPress={handleOpenDeleteConfirm}
-                style={styles.deleteButton}
-                disabled={isBusy}
-              >
-                <Text style={styles.deleteButtonText}>
-                  {t("taskModal.deleteTask")}
-                </Text>
-              </Pressable>
-            ) : (
-              <View style={styles.deleteConfirmBox}>
-                <View style={styles.deleteConfirmRow}>
-                  <Text style={styles.errorText}>
-                    {t("contextMenu.deleteConfirm", {
-                      title: deleteSnapshot.title,
-                    })}
-                  </Text>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>{t("taskModal.laneLabel")}</Text>
+            <View style={styles.selectorRow}>
+              {lanes.map((lane) => {
+                const isSelected = lane.id === snapshot.laneId;
+                return (
                   <Pressable
-                    onPress={() => {
-                      void handleDelete();
-                    }}
-                    style={[styles.deleteButton, styles.confirmDeleteButton]}
-                    disabled={isBusy}
+                    key={lane.id}
+                    onPress={() => session.setLaneId(lane.id)}
+                    style={[
+                      styles.optionChip,
+                      isSelected && styles.optionChipSelected,
+                    ]}
                   >
                     <Text
                       style={[
-                        styles.deleteButtonText,
-                        styles.confirmDeleteButtonText,
+                        styles.optionChipText,
+                        isSelected && styles.optionChipTextSelected,
                       ]}
                     >
-                      {t("taskModal.confirmDelete")}
+                      {lane.title}
                     </Text>
                   </Pressable>
-                  <Pressable
-                    onPress={handleCancelDelete}
-                    disabled={isBusy}
-                    style={[styles.optionChip, styles.cancelDeleteButton]}
-                  >
-                    <Text style={styles.optionChipText}>
-                      {t("taskModal.cancel")}
-                    </Text>
-                  </Pressable>
-                </View>
-                {deleteSnapshot.error && (
-                  <View style={styles.deleteConfirmRow}>
-                    <Text style={styles.errorText}>{deleteSnapshot.error}</Text>
-                    <Pressable
-                      disabled={isBusy}
-                      onPress={() => {
-                        void handleRefreshDelete();
-                      }}
-                    >
-                      <Text style={styles.refreshLinkText}>
-                        {t("kanban.refresh")}
-                      </Text>
-                    </Pressable>
-                  </View>
-                )}
-              </View>
-            )}
+                );
+              })}
+            </View>
           </View>
-        )}
 
-        {/* Action Buttons */}
-        <View style={styles.buttonRow}>
-          <Pressable
-            onPress={() => {
-              if (!isBusy) onClose();
-            }}
-            style={styles.cancelButton}
-            disabled={isBusy}
-          >
-            <Text style={styles.cancelButtonText}>{t("taskModal.cancel")}</Text>
-          </Pressable>
+          <SettingsSelect
+            label={t("taskModal.projectLabel")}
+            value={snapshot.projectId ?? ""}
+            options={[
+              { value: "", label: t("taskModal.noProject") },
+              ...projectOptions,
+            ]}
+            onValueChange={(id) => session.setProjectId(id || null)}
+            disabled={isBusy || snapshot.source === "github_issue"}
+          />
 
-          <Pressable
-            onPress={() => {
-              void handleSave();
-            }}
-            style={[styles.saveButton, isBusy && styles.saveButtonDisabled]}
-            disabled={isBusy}
-          >
-            <Text style={styles.saveButtonText}>
+          {snapshot.source === "github_issue" && snapshot.externalUrl && (
+            <IssueLink url={snapshot.externalUrl} theme={theme} />
+          )}
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>{t("taskModal.descLabel")}</Text>
+            <View style={styles.descWrapper}>
+              <TextInput
+                style={[
+                  styles.multilineInput,
+                  { height: descHeight, paddingBottom: 22 },
+                ]}
+                multiline
+                numberOfLines={3}
+                placeholder={t("taskModal.descPlaceholder")}
+                placeholderTextColor={theme.colors.foregroundMuted}
+                value={snapshot.description}
+                onChangeText={(txt) => session.setDescription(txt)}
+              />
+              <View
+                style={styles.resizeHandle}
+                {...resizeResponder.panHandlers}
+                accessibilityRole="adjustable"
+                accessibilityLabel="Resize description"
+              >
+                <View style={styles.resizeGripOuter}>
+                  <View style={styles.resizeGripInner} />
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* Subtasks Section */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>
+              {t("taskModal.subtasksLabel", {
+                completed: snapshot.subtasks.filter((s) => s.completed).length,
+                total: snapshot.subtasks.length,
+              })}
+            </Text>
+
+            {snapshot.subtasks.map((subtask) => (
+              <View key={subtask.id} style={styles.subtaskItem}>
+                <Pressable
+                  onPress={() =>
+                    session.updateSubtask(subtask.id, {
+                      completed: !subtask.completed,
+                    })
+                  }
+                  style={[
+                    styles.subtaskCheck,
+                    subtask.completed && styles.subtaskCheckCompleted,
+                  ]}
+                >
+                  {subtask.completed && (
+                    <Icon
+                      name="Check"
+                      size={14}
+                      color={theme.colors.accentForeground}
+                    />
+                  )}
+                </Pressable>
+
+                <TextInput
+                  style={[
+                    styles.subtaskInput,
+                    subtask.completed && styles.subtaskInputCompleted,
+                  ]}
+                  value={subtask.title}
+                  onChangeText={(txt) =>
+                    session.updateSubtask(subtask.id, { title: txt })
+                  }
+                  placeholder={t("taskModal.subtaskPlaceholder")}
+                  placeholderTextColor={theme.colors.foregroundMuted}
+                />
+
+                <Pressable
+                  onPress={() => session.removeSubtask(subtask.id)}
+                  hitSlop={8}
+                >
+                  <Icon
+                    name="Trash2"
+                    size={14}
+                    color={theme.colors.statusDanger}
+                  />
+                </Pressable>
+              </View>
+            ))}
+
+            <View style={styles.newSubtaskRow}>
+              <TextInput
+                style={[styles.input, styles.newSubtaskInput]}
+                placeholder={t("taskModal.newSubtaskPlaceholder")}
+                placeholderTextColor={theme.colors.foregroundMuted}
+                value={newSubtaskTitle}
+                onChangeText={(txt) => setNewSubtaskTitle(txt)}
+                onSubmitEditing={handleAddSubtask}
+              />
+              <Pressable
+                onPress={handleAddSubtask}
+                style={[styles.optionChip, styles.addStepButton]}
+              >
+                <Text style={styles.optionChipText}>
+                  {t("taskModal.addStep")}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </ScrollView>
+
+        <View style={styles.footer}>
+          {session.mode === "edit" && (
+            <Button
+              theme={theme}
+              variant="ghost"
+              disabled={isBusy}
+              accessibilityLabel={t("taskModal.deleteTask")}
+              onPress={handleOpenDeleteConfirm}
+              textStyle={styles.dangerText}
+            >
+              {t("taskModal.deleteTask")}
+            </Button>
+          )}
+
+          {/* Action Buttons */}
+          <View style={styles.buttonRow}>
+            <Button
+              theme={theme}
+              variant="secondary"
+              disabled={isBusy}
+              accessibilityLabel={t("taskModal.cancel")}
+              onPress={() => {
+                if (!isBusy) onClose();
+              }}
+            >
+              {t("taskModal.cancel")}
+            </Button>
+
+            <Button
+              theme={theme}
+              variant="primary"
+              loading={isSaving}
+              disabled={isBusy}
+              accessibilityLabel={
+                isSaving
+                  ? t("taskModal.saving")
+                  : session.mode === "edit"
+                    ? t("taskModal.saveChanges")
+                    : t("taskModal.submitCreate")
+              }
+              onPress={() => {
+                void handleSave();
+              }}
+            >
               {isSaving
                 ? t("taskModal.saving")
                 : session.mode === "edit"
                   ? t("taskModal.saveChanges")
                   : t("taskModal.submitCreate")}
-            </Text>
-          </Pressable>
+            </Button>
+          </View>
         </View>
-      </View>
-    </BusinessDialog>
+      </Dialog>
+    </>
   );
 }
 
@@ -758,72 +741,8 @@ function createTaskModalStyles(theme: PluginTheme, compact: boolean) {
       marginLeft: "auto",
       flexShrink: 0,
     },
-    cancelButton: {
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      backgroundColor: theme.colors.surface1,
-    },
-    cancelButtonText: {
-      color: theme.colors.foreground,
-      fontSize: 14,
-    },
-    saveButton: {
-      paddingHorizontal: 18,
-      paddingVertical: 10,
-      borderRadius: 8,
-      backgroundColor: theme.colors.accent,
-    },
-    saveButtonDisabled: {
-      opacity: 0.6,
-    },
-    saveButtonText: {
-      color: theme.colors.accentForeground,
-      fontSize: 14,
-      fontWeight: "600",
-    },
-    deleteSection: {
-      flexDirection: "row",
-      flexShrink: 1,
-      alignItems: "center",
-    },
-    deleteButton: {
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 6,
-      backgroundColor: theme.colors.surface1,
-      borderWidth: 1,
-      borderColor: theme.colors.statusDanger,
-    },
-    deleteButtonText: {
+    dangerText: {
       color: theme.colors.statusDanger,
-      fontSize: 13,
-      fontWeight: "500",
-    },
-    deleteConfirmBox: {
-      gap: 8,
-      flexShrink: 1,
-    },
-    deleteConfirmRow: {
-      flexDirection: "row",
-      gap: 8,
-      alignItems: "center",
-      flexWrap: "wrap",
-    },
-    confirmDeleteButton: {
-      backgroundColor: theme.colors.statusDanger,
-    },
-    confirmDeleteButtonText: {
-      color: "#fff",
-    },
-    cancelDeleteButton: {
-      backgroundColor: theme.colors.surface2,
-    },
-    refreshLinkText: {
-      fontSize: 13,
-      color: theme.colors.accent,
     },
   });
 }

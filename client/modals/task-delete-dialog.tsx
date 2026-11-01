@@ -1,12 +1,12 @@
-import { useMemo, useRef, useSyncExternalStore } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { Modal, useToast } from "@getpaseo/plugin/client/react-native";
+import { useRef, useSyncExternalStore } from "react";
+import { useToast } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type {
   TaskDeleteSession,
   TaskDeleteSessionSnapshot,
 } from "../session/kanban-session";
 import { useI18n } from "../platform/i18n";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 
 const emptySubscribe = () => () => {};
 const getNullSnapshot = () => null;
@@ -88,105 +88,25 @@ export function TaskDeleteDialog({
     onCancel: onClose,
     onDeleted: onClose,
   });
-  const styles = useMemo(
-    () => createTaskDeleteStyles(theme.colors),
-    [theme.colors],
-  );
+
   if (!snapshot) return null;
-  const busy = snapshot.isBusy;
+
   return (
-    <Modal
+    <ConfirmDialog
       open
       title={t("contextMenu.delete")}
-      onOpenChange={(open) => {
-        if (!open) cancel();
+      description={t("contextMenu.deleteConfirm", { title: snapshot.title })}
+      theme={theme}
+      confirmLabel={t("taskModal.confirmDelete")}
+      cancelLabel={t("taskModal.cancel")}
+      loading={snapshot.isBusy}
+      error={snapshot.error}
+      retryLabel={t("kanban.refresh")}
+      onRetry={() => {
+        void refresh();
       }}
-    >
-      <Modal.Content
-        style={styles.modalSurface}
-        contentContainerStyle={styles.modalContent}
-      >
-        <Text style={styles.promptText}>
-          {t("contextMenu.deleteConfirm", { title: snapshot.title })}
-        </Text>
-        {snapshot.error && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{snapshot.error}</Text>
-            <Pressable
-              disabled={busy}
-              onPress={() => {
-                void refresh();
-              }}
-            >
-              <Text style={styles.refreshText}>{t("kanban.refresh")}</Text>
-            </Pressable>
-          </View>
-        )}
-        <View style={styles.actionsRow}>
-          <Pressable
-            disabled={busy}
-            onPress={cancel}
-            style={styles.cancelButton}
-          >
-            <Text style={styles.promptText}>{t("taskModal.cancel")}</Text>
-          </Pressable>
-          <Pressable
-            disabled={busy}
-            onPress={() => {
-              void confirm();
-            }}
-            style={[styles.confirmButton, busy && styles.confirmButtonBusy]}
-          >
-            <Text style={styles.confirmButtonText}>
-              {t("taskModal.confirmDelete")}
-            </Text>
-          </Pressable>
-        </View>
-      </Modal.Content>
-    </Modal>
+      onConfirm={confirm}
+      onCancel={cancel}
+    />
   );
-}
-
-function createTaskDeleteStyles(colors: PluginSurfaceProps["theme"]["colors"]) {
-  return StyleSheet.create({
-    modalSurface: {
-      backgroundColor: colors.surface0,
-    },
-    modalContent: {
-      padding: 20,
-      gap: 16,
-    },
-    promptText: {
-      color: colors.foreground,
-    },
-    errorBox: {
-      gap: 8,
-    },
-    errorText: {
-      color: colors.statusDanger,
-    },
-    refreshText: {
-      color: colors.accent,
-    },
-    actionsRow: {
-      flexDirection: "row",
-      justifyContent: "flex-end",
-      gap: 12,
-    },
-    cancelButton: {
-      padding: 8,
-    },
-    confirmButton: {
-      padding: 8,
-      backgroundColor: colors.statusDanger,
-      borderRadius: 6,
-      opacity: 1,
-    },
-    confirmButtonBusy: {
-      opacity: 0.5,
-    },
-    confirmButtonText: {
-      color: colors.accentForeground,
-    },
-  });
 }

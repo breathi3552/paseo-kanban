@@ -13,6 +13,10 @@ export type TranslationParams = Record<
 
 export const translations = {
   zh: {
+    "common.close": "关闭",
+    "common.confirm": "确认",
+    "common.cancel": "取消",
+    "common.retry": "重试",
     "dispatch.title": "发送到 Agent",
     "dispatch.project": "项目",
     "dispatch.selectProject": "请选择项目。",
@@ -178,6 +182,10 @@ export const translations = {
     "taskModal.submitCreate": "创建",
   },
   en: {
+    "common.close": "Close",
+    "common.confirm": "Confirm",
+    "common.cancel": "Cancel",
+    "common.retry": "Retry",
     "dispatch.title": "Send to Agent",
     "dispatch.project": "Project",
     "dispatch.selectProject": "Select a project.",
