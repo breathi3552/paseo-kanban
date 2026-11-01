@@ -71,9 +71,13 @@ export class MockAnimatedValueXY {
 }
 
 export const mockReactNative = {
-  Platform: { OS: "web" },
+  Platform: {
+    OS: "web",
+    select: (obj) => obj?.web ?? obj?.default,
+  },
   View: "View",
   Text: "Text",
+  TextInput: "TextInput",
   Pressable: "Pressable",
   ScrollView: "ScrollView",
   ActivityIndicator: "ActivityIndicator",
@@ -146,9 +150,36 @@ export function loadClientModule(file, moduleOverrides = {}) {
       if (id === "react/jsx-runtime") return require("react/jsx-runtime");
       if (id === "react-native") return mockReactNative;
       if (id === "@getpaseo/plugin/client/react-native")
-        return { Icon: "Icon" };
-      if (id.startsWith("."))
-        return load(path.resolve(path.dirname(filePath), id));
+        return {
+          Icon: "Icon",
+          TextInput: "TextInput",
+          ScrollView: mockReactNative.ScrollView,
+          useToast: () => ({
+            show: () => {},
+            error: () => {},
+          }),
+        };
+      if (id === "@getpaseo/plugin/client/ui")
+        return {
+          SettingsSelect: (props) => React.createElement("Select", props),
+          ExternalLink: (props) =>
+            React.createElement("ExternalLink", props, props.children),
+        };
+      if (id.startsWith(".")) {
+        const resolved = path.resolve(path.dirname(filePath), id);
+        if (resolved in moduleOverrides) return moduleOverrides[resolved];
+        for (const [overrideKey, overrideValue] of Object.entries(
+          moduleOverrides,
+        )) {
+          if (
+            overrideKey.includes("platform/web") &&
+            resolved.replace(/\\/g, "/").endsWith("client/platform/web")
+          ) {
+            return overrideValue;
+          }
+        }
+        return load(resolved);
+      }
       return require(id);
     }
 

@@ -4,6 +4,30 @@ All notable changes to Paseo Kanban are documented here in bilingual format (Eng
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), adapted for strictly mirrored bilingual release notes.
 
+## [Unreleased]
+
+### Fixes & Improvements
+
+- **Modal & form interaction refinements**: Converge all dialogs into a unified layout with smart initial focus to prevent close button hijacking; input fields trap Escape to preserve uncommitted drafts, and delete confirmations overlay cleanly on top.
+- **Select dropdown & control feedback**: Compact pill-style dropdowns with portal-based rendering to eliminate clipping and instant-dismiss glitches; add desktop hover and pressed micro-feedback across all buttons and controls.
+
+### Compatibility & Migration
+
+- Requires Paseo `>= 0.11.4`.
+- No board data migration required (fully backward compatible).
+
+---
+
+### 修复与优化
+
+- **弹窗与表单交互优化**：全看板弹窗统一采用宽屏布局与智能首焦，防止右上角关闭按钮夺焦；输入框拦截 Escape 键以保护未保存草稿，删除二次确认统一采用轻量顶层覆盖。
+- **下拉选择器与控件反馈**：改用紧凑胶囊样式下拉框，基于独立 Portal 挂载解决层叠裁剪与偶发闪退；全站按钮及交互控件补齐桌面端悬停与按压微触感反馈。
+
+### 兼容性与迁移
+
+- 依赖 Paseo `>= 0.11.4`。
+- 无需看板数据迁移（完全向后兼容）。
+
 ## [0.3.1] - 2026-10-24
 
 ### Features

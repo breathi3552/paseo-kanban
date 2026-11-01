@@ -1,18 +1,12 @@
 import { useMemo, useLayoutEffect, useRef, Fragment, memo } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  StyleSheet,
-  PanResponder,
-} from "react-native";
+import { View, Text, ScrollView, StyleSheet, PanResponder } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { KanbanLane, KanbanTask } from "../../shared/kanban";
 import { KanbanCard, KanbanDropSpacer } from "./kanban-card";
 import type { ProjectNameResolver } from "../session/use-projects";
 import type { LaneDragBinding } from "./drag";
 import { useI18n } from "../platform/i18n";
+import { Button, Badge } from "../components/ui";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 
@@ -161,21 +155,22 @@ function KanbanLaneViewInner({
           <Text style={styles.laneTitleText} numberOfLines={1}>
             {lane.title}
           </Text>
-          <View style={styles.laneCountBadge}>
-            <Text style={styles.laneCountText}>{tasks.length}</Text>
-          </View>
+          <Badge theme={theme} variant="secondary">
+            {tasks.length}
+          </Badge>
         </View>
 
         <View style={styles.laneHeaderActions}>
           {!lane.isCompletionLane && (
-            <Pressable
+            <Button
+              theme={theme}
+              size="sm"
+              variant="secondary"
               onPress={() => onAddTask(lane.id)}
               disabled={completionPending}
-              style={styles.laneHeaderBtn}
-              hitSlop={6}
             >
-              <Text style={styles.laneHeaderBtnText}>{t("lane.add")}</Text>
-            </Pressable>
+              {t("lane.add")}
+            </Button>
           )}
         </View>
       </View>
@@ -289,31 +284,10 @@ function createLaneStyles(theme: PluginTheme, compact: boolean) {
       color: theme.colors.foreground,
       userSelect: "none",
     },
-    laneCountBadge: {
-      backgroundColor: theme.colors.surface2,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 10,
-    },
-    laneCountText: {
-      fontSize: 11,
-      color: theme.colors.foregroundMuted,
-      fontWeight: "600",
-    },
     laneHeaderActions: {
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
-    },
-    laneHeaderBtn: {
-      paddingHorizontal: 6,
-      paddingVertical: 3,
-      borderRadius: 4,
-      backgroundColor: theme.colors.surface2,
-    },
-    laneHeaderBtnText: {
-      fontSize: 11,
-      color: theme.colors.foreground,
     },
     cardsScroll: {
       flex: 1,

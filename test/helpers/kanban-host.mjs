@@ -236,10 +236,13 @@ export function createHost({
     "../platform/web": {
       useProjectFilterLayout: () => {},
       useDialogInputFocus: () => undefined,
+      useWebBoardOutlineReset: () => {},
       WebDialogPortal: ({ children, ...props }) =>
         React.createElement("WebDialogPortal", props, children),
       WebMenuPortal: ({ children, ...props }) =>
         React.createElement("WebMenuPortal", props, children),
+      WebSelectPortal: ({ children, ...props }) =>
+        React.createElement("WebSelectPortal", props, children),
     },
     "@getpaseo/plugin/client": sdk,
     "@getpaseo/plugin/client/react-native": {
@@ -258,6 +261,8 @@ export function createHost({
     },
     "@getpaseo/plugin/client/ui": {
       SettingsSelect: (props) => React.createElement("Select", props),
+      ExternalLink: (props) =>
+        React.createElement("ExternalLink", props, props.children),
     },
   });
   const cleanup = contribute(client);

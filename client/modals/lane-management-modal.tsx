@@ -7,21 +7,19 @@ import {
 import {
   View,
   Text,
-  Pressable,
   StyleSheet,
   Animated,
   type ScrollView as NativeScrollView,
 } from "react-native";
-import {
-  Icon,
-  TextInput,
-  ScrollView,
-} from "@getpaseo/plugin/client/react-native";
+import { Icon, ScrollView } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { LaneEditSession } from "../session/lane-edit-session";
 import { useI18n } from "../platform/i18n";
 import { useLaneReorder } from "../session/use-lane-reorder";
-import { BusinessDialog } from "./business-dialog";
+import { Dialog } from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
+import { Button, type ButtonVariant } from "../components/ui/button";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 
 interface Props {
   session: LaneEditSession;
@@ -58,69 +56,53 @@ export function LaneManagementModal(props: Props) {
     disabled = false,
     display?: string,
     tone: "secondary" | "primary" | "danger" | "destructive" = "secondary",
-    icon?: ComponentProps<typeof Icon>["name"],
+    iconName?: ComponentProps<typeof Icon>["name"],
   ) => {
-    const filled = tone === "primary" || tone === "destructive";
-    const danger = tone === "danger" || tone === "destructive";
-    const textColor = filled
-      ? colors.accentForeground
-      : danger
-        ? colors.statusDanger
-        : colors.foreground;
-    const blocked = disabled || isSaving;
+    const isIconOnly = Boolean(iconName && !display);
+    const variant: ButtonVariant =
+      tone === "primary"
+        ? "primary"
+        : tone === "danger" || tone === "destructive"
+          ? "destructive"
+          : "secondary";
+    const iconNode = iconName ? (
+      <Icon
+        name={iconName}
+        size={16}
+        color={
+          variant === "primary" || variant === "destructive"
+            ? colors.accentForeground
+            : colors.foreground
+        }
+      />
+    ) : undefined;
+
     return (
-      <Pressable
-        accessibilityState={{ disabled: blocked }}
-        accessibilityRole="button"
+      <Button
+        theme={props.theme}
+        variant={variant}
+        size={isIconOnly ? "icon" : "default"}
+        icon={iconNode}
+        disabled={disabled || isSaving}
         accessibilityLabel={label}
         onPress={() => {
           void onPress();
         }}
-        disabled={blocked}
-        style={({ pressed }) => [
-          styles.button,
-          {
-            borderColor: danger
-              ? colors.statusDanger
-              : filled
-                ? colors.accent
-                : colors.border,
-            backgroundColor:
-              tone === "destructive"
-                ? colors.statusDanger
-                : filled
-                  ? colors.accent
-                  : colors.surface1,
-          },
-          icon && styles.iconButton,
-          { opacity: blocked ? 0.4 : pressed ? 0.8 : 1 },
-        ]}
       >
-        {icon ? (
-          <Icon name={icon} size={16} color={textColor} />
-        ) : (
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.buttonText,
-              { color: textColor },
-              filled && styles.buttonTextFilled,
-            ]}
-          >
-            {display ?? label}
-          </Text>
-        )}
-      </Pressable>
+        {display ?? (isIconOnly ? undefined : label)}
+      </Button>
     );
   };
   const adding = editing?.kind === "add";
   const editor = (
-    <TextInput
+    <Input
       autoFocus
       accessibilityLabel={t("laneModal.nameLabel")}
       value={title}
       editable={!isSaving}
       onChangeText={session.setTitle}
+      onEscape={session.cancelName}
+      theme={props.theme}
       style={styles.nameInput}
     />
   );
@@ -152,17 +134,14 @@ export function LaneManagementModal(props: Props) {
       {action(t("laneManagement.reload"), session.reload)}
     </View>
   );
-  const dialogProps = {
-    theme: props.theme,
-    compact: props.compact,
-    contentStyle: styles.dialogContent,
-  };
   return (
     <>
-      <BusinessDialog
-        {...dialogProps}
+      <Dialog
+        theme={props.theme}
         title={t("laneManagement.title")}
         maxWidth={1120}
+        contentStyle={styles.dialogContent}
+        scroll="contained"
         onOpenChange={(open) => {
           if (!open) props.onClose();
         }}
@@ -358,30 +337,26 @@ export function LaneManagementModal(props: Props) {
             </View>
           </>
         )}
-      </BusinessDialog>
+      </Dialog>
       {deleteId && (
-        <BusinessDialog
-          {...dialogProps}
+        <ConfirmDialog
+          open
           title={t("laneManagement.deleteTitle")}
-          onOpenChange={(open) => {
-            if (!open) session.cancelDelete();
-          }}
-        >
-          <Text style={styles.foregroundText}>
-            {t("laneManagement.deletePrompt")}
-          </Text>
-          {errorPanel}
-          <View style={styles.footer}>
-            {action(t("laneModal.cancel"), session.cancelDelete)}
-            {action(
-              t("laneManagement.confirmDelete"),
-              session.confirmDelete,
-              false,
-              undefined,
-              "destructive",
-            )}
-          </View>
-        </BusinessDialog>
+          description={
+            <View style={styles.deleteConfirmWrap}>
+              <Text style={styles.foregroundText}>
+                {t("laneManagement.deletePrompt")}
+              </Text>
+              {errorPanel}
+            </View>
+          }
+          theme={props.theme}
+          confirmLabel={t("laneManagement.confirmDelete")}
+          cancelLabel={t("laneModal.cancel")}
+          loading={isSaving}
+          onConfirm={session.confirmDelete}
+          onCancel={session.cancelDelete}
+        />
       )}
     </>
   );
@@ -474,28 +449,6 @@ function createLaneModalStyles(
       gap: 10,
       marginTop: 10,
     },
-    button: {
-      minHeight: 32,
-      paddingHorizontal: 8,
-      paddingVertical: 6,
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: 8,
-      borderWidth: 1,
-    },
-    iconButton: {
-      width: 32,
-      height: 32,
-      paddingHorizontal: 0,
-      paddingVertical: 0,
-    },
-    buttonText: {
-      fontSize: 13,
-      fontWeight: "400",
-    },
-    buttonTextFilled: {
-      fontWeight: "600",
-    },
     errorText: {
       color: colors.statusDanger,
     },
@@ -508,6 +461,9 @@ function createLaneModalStyles(
     },
     foregroundText: {
       color: colors.foreground,
+    },
+    deleteConfirmWrap: {
+      gap: 12,
     },
   });
 }

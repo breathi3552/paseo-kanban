@@ -28,6 +28,8 @@ interface WebElement {
   focus(): void;
   contains(element: WebElement | null): boolean;
   closest(selector: string): WebElement | null;
+  querySelector<T extends WebElement = WebElement>(selector: string): T | null;
+  dataset?: Record<string, string | undefined>;
   setAttribute(name: string, value: string): void;
   getAttribute(name: string): string | null;
   getClientRects(): { length: number };
@@ -61,31 +63,6 @@ declare const window: {
   removeEventListener(type: string, listener: () => void): void;
 };
 
-/** SettingsSelect exposes no row styles; keep this override local to the board filter. */
-export function useProjectFilterLayout() {
-  useEffect(() => {
-    if (Platform.OS !== "web" || typeof document === "undefined") return;
-    const style = document.createElement("style");
-    style.textContent = `
-      [data-testid="kanban-project-filter"] {
-        padding-inline: 0 !important;
-        justify-content: flex-start !important;
-        flex-wrap: nowrap !important;
-        gap: 0 !important;
-      }
-      [data-testid="kanban-project-filter"] > :first-child {
-        flex: 0 0 auto !important;
-        margin-right: 8px !important;
-      }
-      [data-testid="kanban-project-filter"] > :last-child {
-        min-width: 0;
-      }
-    `;
-    document.body.appendChild(style);
-    return () => style.remove();
-  }, []);
-}
-
 const focusable = (root: WebElement) =>
   Array.from(
     root.querySelectorAll(
@@ -98,6 +75,37 @@ const focusable = (root: WebElement) =>
       node.getClientRects().length > 0,
   );
 
+const isCloseButton = (node: WebElement): boolean => {
+  if (node.getAttribute("data-dialog-close") !== null) return true;
+  if (node.getAttribute("data-dialogclose") !== null) return true;
+  if (
+    node.dataset &&
+    ("dialogClose" in node.dataset || "dialogclose" in node.dataset)
+  )
+    return true;
+  const label = node.getAttribute("aria-label");
+  if (label === "Close" || label === "关闭") return true;
+  return false;
+};
+
+export const initialFocusTarget = (root: WebElement): WebElement => {
+  // 1. 优先聚焦弹窗卡片本身（Dialog Card / role="dialog"），让用户按需点击或 Tab 导航，防止自动夺焦输入框或关闭按钮
+  const dialogCard = root.querySelector?.<WebElement>(
+    '[role="dialog"], [data-dialog-card]',
+  );
+  if (dialogCard) {
+    if (dialogCard.getAttribute("tabindex") === null) {
+      dialogCard.setAttribute("tabindex", "-1");
+    }
+    return dialogCard;
+  }
+
+  // 2. 兜底回退：非关闭按钮的可聚焦元素，排除所有带关闭标记的控件
+  const all = focusable(root);
+  const nonClose = all.filter((node) => !isCloseButton(node));
+  return nonClose[0] ?? all[0] ?? root;
+};
+
 /** Focus styling targets only this dialog's owned content, including host sheets. */
 export function useDialogInputFocus(color?: string) {
   const id = `kanban-dialog-${useId()}`;
@@ -108,15 +116,35 @@ export function useDialogInputFocus(color?: string) {
     const scope = `[id="${id}"]`;
     style.textContent = `
       ${scope} input:focus, ${scope} textarea:focus {
-        outline: 2px solid ${color} !important;
-        outline-offset: 1px !important;
+        outline: none !important;
+        box-shadow: none !important;
         border-color: ${color} !important;
+      }
+      ${scope} button:focus, ${scope} [role="button"]:focus {
+        outline: none !important;
+        box-shadow: none !important;
       }
     `;
     document.body.appendChild(style);
     return () => style.remove();
   }, [id, color]);
   return id;
+}
+
+/** Strips all browser focus outlines from board-owned elements on Web. */
+export function useWebBoardOutlineReset() {
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const style = document.createElement("style");
+    style.setAttribute("data-kanban-board-style", "");
+    style.textContent = `
+      [data-kanban-board], [data-kanban-board] * {
+        outline: none !important;
+      }
+    `;
+    document.body.appendChild(style);
+    return () => style.remove();
+  }, []);
 }
 
 /** Own web surface, never a selector or mutation of the host's private DOM.
@@ -146,7 +174,16 @@ export function WebDialogPortal({
       zIndex: "0",
       display: "flex",
       flexDirection: "column",
+      outline: "none",
     });
+    const resetStyle = document.createElement("style");
+    resetStyle.textContent = `
+      [data-kanban-dialog], [data-kanban-dialog] * {
+        outline: none !important;
+        box-shadow: none !important;
+      }
+    `;
+    node.appendChild(resetStyle);
     document.body.appendChild(node);
     setContainer(node);
     return () => {
@@ -163,7 +200,7 @@ export function WebDialogPortal({
   useEffect(() => {
     if (!container) return;
     if (!container.contains(document.activeElement))
-      (focusable(container)[0] ?? container).focus();
+      initialFocusTarget(container).focus();
     const onKeyDown = (event: KeyEvent) => {
       if (event.defaultPrevented || event.isComposing || event.keyCode === 229)
         return;
@@ -172,27 +209,7 @@ export function WebDialogPortal({
         event.stopPropagation();
         dismiss.current();
       } else if (event.key === "Tab") {
-        const targets = focusable(container);
-        const first = targets[0];
-        const last = targets[targets.length - 1];
-        if (!first) {
-          event.preventDefault();
-          container.focus();
-        } else if (
-          event.shiftKey &&
-          (document.activeElement === first ||
-            document.activeElement === container)
-        ) {
-          event.preventDefault();
-          last.focus();
-        } else if (
-          !event.shiftKey &&
-          (document.activeElement === last ||
-            document.activeElement === container)
-        ) {
-          event.preventDefault();
-          first.focus();
-        }
+        event.preventDefault();
       }
     };
     const rememberFocus = () => {
@@ -218,7 +235,7 @@ export function WebDialogPortal({
     const target =
       previous?.isConnected && container.contains(previous)
         ? previous
-        : (focusable(container)[0] ?? container);
+        : initialFocusTarget(container);
     target.focus();
   });
   return Platform.OS === "web" && container
@@ -241,12 +258,22 @@ export function WebMenuPortal({
     if (Platform.OS !== "web" || typeof document === "undefined") return;
     const previous = document.activeElement;
     const node = document.createElement("div");
+    node.setAttribute("data-kanban-menu-portal", "");
     Object.assign(node.style, {
       position: "fixed",
       inset: "0",
       zIndex: "0",
       pointerEvents: "none",
+      outline: "none",
     });
+    const menuReset = document.createElement("style");
+    menuReset.textContent = `
+      [data-kanban-menu-portal], [data-kanban-menu-portal] * {
+        outline: none !important;
+        box-shadow: none !important;
+      }
+    `;
+    node.appendChild(menuReset);
     document.body.appendChild(node);
     setContainer(node);
     const outside = (event: MenuDocumentEvent) => {
@@ -286,4 +313,60 @@ export function WebMenuPortal({
   return Platform.OS === "web" && container
     ? createPortal(children, container)
     : null;
+}
+
+/** Dropdown select popover portal: elevated above dialogs (z=100) and unconstrained by ScrollView overflow. */
+export function WebSelectPortal({
+  children,
+  onDismiss,
+}: {
+  children: ReactNode;
+  onDismiss: () => void;
+}) {
+  const dismiss = useRef(onDismiss);
+  dismiss.current = onDismiss;
+  const [container, setContainer] = useState<WebElement | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const node = document.createElement("div");
+    node.setAttribute("data-kanban-select-portal", "");
+    Object.assign(node.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: "100",
+      pointerEvents: "auto",
+      outline: "none",
+    });
+    const selectReset = document.createElement("style");
+    selectReset.textContent = `
+      [data-kanban-select-portal], [data-kanban-select-portal] * {
+        outline: none !important;
+        box-shadow: none !important;
+      }
+    `;
+    node.appendChild(selectReset);
+    document.body.appendChild(node);
+    setContainer(node);
+
+    const keydown = (event: MenuDocumentEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        dismiss.current();
+      }
+    };
+
+    document.addEventListener("keydown", keydown, true);
+
+    return () => {
+      document.removeEventListener("keydown", keydown, true);
+      node.remove();
+    };
+  }, []);
+
+  if (Platform.OS === "web" && container) {
+    return createPortal(children, container);
+  }
+  return children;
 }

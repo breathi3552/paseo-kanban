@@ -1,30 +1,29 @@
 import type { ReactNode } from "react";
 import {
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
+  ScrollView,
+  Platform,
   type DimensionValue,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { Icon, Modal, ScrollView } from "@getpaseo/plugin/client/react-native";
+import { Icon } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { WebDialogPortal, useDialogInputFocus } from "../platform/web";
-import { useI18n } from "../platform/i18n";
+import { WebDialogPortal, useDialogInputFocus } from "../../platform/web";
+import { useI18n } from "../../platform/i18n";
 
-interface Props {
+export interface DialogProps {
   title: string;
   icon?: ReactNode;
   open?: boolean;
   onOpenChange: (open: boolean) => void;
   canClose?: () => boolean;
   theme: PluginSurfaceProps["theme"];
-  compact: boolean;
   maxWidth?: number;
   viewportWidth?: number;
-  /** Desktop height in viewport percent; compact/native sizing stays host-owned. */
   viewportHeight?: number;
   /** Content scrolls as a whole, or owns a bounded list/form and fixed footer. */
   scroll?: "content" | "contained";
@@ -32,17 +31,16 @@ interface Props {
   inputFocus?: boolean;
   actions?: ReactNode;
   children: ReactNode;
+  closeLabel?: string;
 }
 
-/** Owns modal rendering policy; business children retain their distinct layouts. */
-export function BusinessDialog({
+export function Dialog({
   title,
   icon,
   open = true,
   onOpenChange,
   canClose = () => true,
   theme,
-  compact,
   maxWidth = 520,
   viewportWidth,
   viewportHeight,
@@ -51,43 +49,29 @@ export function BusinessDialog({
   inputFocus = false,
   actions,
   children,
-}: Props) {
+  closeLabel,
+}: DialogProps) {
   const { t } = useI18n();
   const colors = theme.colors;
   const inputFocusId = useDialogInputFocus(
     open && inputFocus ? colors.accent : undefined,
   );
+
   const changeOpen = (next: boolean) => {
     if (next || canClose()) onOpenChange(next);
   };
-  const dismiss = () => changeOpen(false);
   const bodyStyle = [styles.bodyBase, contentStyle];
+
   if (!open) return null;
-  if (compact || Platform.OS !== "web")
-    return (
-      <Modal title={title} icon={icon} open onOpenChange={changeOpen}>
-        <Modal.Content
-          scrollable={scroll === "content"}
-          style={{ backgroundColor: colors.surface0 }}
-          contentContainerStyle={bodyStyle}
-        >
-          {actions && <View style={styles.actionsWrap}>{actions}</View>}
-          {inputFocus ? (
-            <View nativeID={inputFocusId} style={styles.inputFocusWrap}>
-              {children}
-            </View>
-          ) : (
-            children
-          )}
-        </Modal.Content>
-      </Modal>
-    );
+
+  const resolvedCloseLabel = closeLabel ?? t("common.close");
+
   return (
-    <WebDialogPortal onDismiss={dismiss}>
+    <WebDialogPortal onDismiss={() => changeOpen(false)}>
       <View style={styles.overlay}>
         <Pressable
           style={StyleSheet.absoluteFill}
-          onPress={dismiss}
+          onPress={() => changeOpen(false)}
           accessible={false}
           focusable={false}
         />
@@ -96,6 +80,8 @@ export function BusinessDialog({
           aria-modal
           accessibilityViewIsModal
           accessibilityLabel={title}
+          tabIndex={-1}
+          {...({ dataSet: { dialogCard: "" } } as Record<string, unknown>)}
           style={[
             styles.card,
             {
@@ -122,10 +108,14 @@ export function BusinessDialog({
             {actions}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={t("laneManagement.close")}
+              accessibilityLabel={resolvedCloseLabel}
               hitSlop={8}
-              onPress={dismiss}
+              onPress={() => changeOpen(false)}
               disabled={!canClose()}
+              {...({
+                dataSet: { dialogClose: "" },
+                "data-dialog-close": "",
+              } as Record<string, unknown>)}
               style={({ pressed }) => [
                 styles.close,
                 pressed && { backgroundColor: colors.surface2 },
@@ -135,16 +125,20 @@ export function BusinessDialog({
             </Pressable>
           </View>
           {scroll === "content" ? (
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
+            <View
+              nativeID={inputFocusId}
               style={[
                 styles.scrollSurface,
                 { backgroundColor: colors.surface0 },
               ]}
-              contentContainerStyle={bodyStyle}
             >
-              {children}
-            </ScrollView>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={bodyStyle}
+              >
+                {children}
+              </ScrollView>
+            </View>
           ) : (
             <View
               nativeID={inputFocusId}
@@ -160,47 +154,53 @@ export function BusinessDialog({
 }
 
 const styles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  card: {
+    maxHeight: "90%",
+    borderRadius: 8,
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
+    overflow: "hidden",
+    ...Platform.select({
+      web: {
+        outlineWidth: 0,
+      },
+    }),
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  title: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  close: {
+    padding: 4,
+    borderRadius: 4,
+  },
+  scrollSurface: {
+    flexShrink: 1,
+    minHeight: 0,
+  },
   bodyBase: {
     padding: 24,
     gap: 16,
     minHeight: 0,
     flexShrink: 1,
   },
-  actionsWrap: {
-    alignItems: "flex-start",
-  },
-  inputFocusWrap: {
-    flex: 1,
-    minHeight: 0,
-  },
-  scrollSurface: {
-    flexShrink: 1,
-  },
-  overlay: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-    backgroundColor: "rgba(0,0,0,0.55)",
-  },
-  card: {
-    width: "100%",
-    maxHeight: "85%",
-    minHeight: 0,
-    flexShrink: 1,
-    borderWidth: 1,
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    flexShrink: 0,
-  },
-  title: { flexShrink: 1, minWidth: 0, fontSize: 16, fontWeight: "600" },
-  close: { marginLeft: "auto", padding: 8, borderRadius: 8 },
 });

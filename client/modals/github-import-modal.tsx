@@ -12,13 +12,12 @@ import {
   ScrollView,
   useToast,
 } from "@getpaseo/plugin/client/react-native";
-import { SettingsSelect } from "@getpaseo/plugin/client/ui";
 import { listGitHubIssues, type IssuePage } from "../../shared/github-import";
 import type { KanbanBoard } from "../../shared/kanban";
 import { executeIssueImport, type SaveFn } from "../session/kanban-session";
 import type { ProjectItem } from "../session/use-projects";
 import { useI18n, type TranslationKey } from "../platform/i18n";
-import { BusinessDialog } from "./business-dialog";
+import { Dialog, Button, Checkbox, Select } from "../components/ui";
 
 interface Props {
   board: KanbanBoard;
@@ -194,10 +193,9 @@ export function GitHubImportModal(props: Props) {
   }
 
   return (
-    <BusinessDialog
+    <Dialog
       title={t("import.title")}
       theme={props.theme}
-      compact={props.compact}
       maxWidth={840}
       viewportWidth={90}
       scroll="contained"
@@ -213,10 +211,12 @@ export function GitHubImportModal(props: Props) {
         style={styles.selectors}
       >
         <View style={[styles.select, styles.selectProject]}>
-          <SettingsSelect
+          <Select
+            theme={props.theme}
             label={t("import.project")}
             value={projectId}
             disabled={saving}
+            align="fill"
             options={[
               { label: t("import.selectProject"), value: "" },
               ...props.projects.map((project) => ({
@@ -233,10 +233,12 @@ export function GitHubImportModal(props: Props) {
           />
         </View>
         <View style={[styles.select, styles.selectLane]}>
-          <SettingsSelect
+          <Select
+            theme={props.theme}
             label={t("import.lane")}
             value={laneId}
             disabled={saving}
+            align="fill"
             options={props.board.lanes
               .filter((lane) => !lane.isCompletionLane)
               .map((lane) => ({ label: lane.title, value: lane.id }))}
@@ -259,8 +261,10 @@ export function GitHubImportModal(props: Props) {
           <Text style={styles.error}>
             {t(`import.${error}` as TranslationKey)}
           </Text>
-          <Pressable
-            style={styles.button}
+          <Button
+            theme={props.theme}
+            variant="outline"
+            size="sm"
             onPress={() => {
               if (error === "github_page") {
                 clear();
@@ -269,50 +273,37 @@ export function GitHubImportModal(props: Props) {
               setRetry((value) => value + 1);
             }}
           >
-            <Text style={styles.title}>{t("import.retry")}</Text>
-          </Pressable>
+            {t("import.retry")}
+          </Button>
         </View>
       ) : (
         ready && (
           <>
             <View style={styles.row}>
-              <Pressable
-                style={styles.checkbox}
-                accessibilityRole="checkbox"
-                accessibilityLabel={t("import.selectAll")}
-                accessibilityState={{
-                  checked: allSelected ? true : chosen.length ? "mixed" : false,
-                  disabled: disabled || !selectable.length,
-                }}
-                disabled={disabled || !selectable.length}
-                onPress={() =>
-                  setSelected(
-                    allSelected
-                      ? new Set()
-                      : new Set(selectable.map((issue) => issue.number)),
-                  )
-                }
-              >
-                <Icon
-                  name={
-                    allSelected
-                      ? "SquareCheck"
-                      : chosen.length
-                        ? "SquareMinus"
-                        : "Square"
-                  }
+              <View style={styles.checkbox}>
+                <Checkbox
+                  theme={props.theme}
+                  checked={allSelected ? true : chosen.length ? "mixed" : false}
                   size={20}
-                  color={colors.foregroundMuted}
+                  accessibilityLabel={t("import.selectAll")}
+                  disabled={disabled || !selectable.length}
+                  onCheckedChange={() =>
+                    setSelected(
+                      allSelected
+                        ? new Set()
+                        : new Set(selectable.map((issue) => issue.number)),
+                    )
+                  }
                 />
-              </Pressable>
+              </View>
               <Text style={styles.title}>{t("import.issue")}</Text>
-              <Pressable
-                style={styles.button}
-                accessibilityRole="button"
+              <Button
+                theme={props.theme}
+                size="icon"
+                variant="ghost"
                 accessibilityLabel={t(
                   sort === "desc" ? "import.oldest" : "import.newest",
                 )}
-                accessibilityState={{ disabled }}
                 disabled={disabled}
                 onPress={() => {
                   clear();
@@ -329,7 +320,7 @@ export function GitHubImportModal(props: Props) {
                   size={18}
                   color={colors.foreground}
                 />
-              </Pressable>
+              </Button>
             </View>
             <ScrollView style={styles.list}>
               {!data.issues.length && (
@@ -361,10 +352,12 @@ export function GitHubImportModal(props: Props) {
                     }
                   >
                     <View style={styles.checkbox}>
-                      <Icon
-                        name={checked ? "SquareCheck" : "Square"}
+                      <Checkbox
+                        theme={props.theme}
+                        checked={checked}
                         size={20}
-                        color={colors.foregroundMuted}
+                        disabled={disabled || imported}
+                        pointerEvents="none"
                       />
                     </View>
                     <View style={styles.issueTextWrap}>
@@ -384,15 +377,16 @@ export function GitHubImportModal(props: Props) {
               })}
             </ScrollView>
             <View style={styles.footer}>
-              <Pressable
-                style={styles.button}
-                accessibilityRole="button"
+              <Button
+                theme={props.theme}
+                variant="ghost"
+                size="sm"
                 accessibilityLabel={t("import.previous")}
                 disabled={disabled || page <= 1}
                 onPress={() => goTo(page - 1)}
               >
-                <Text style={styles.secondary}>{t("import.previous")}</Text>
-              </Pressable>
+                {t("import.previous")}
+              </Button>
               {props.compact ? (
                 <Text style={styles.secondary}>
                   {t("import.page", { page, pages })}
@@ -409,34 +403,29 @@ export function GitHubImportModal(props: Props) {
                 )
                   .sort((a, b) => a - b)
                   .map((number) => (
-                    <Pressable
+                    <Button
                       key={number}
-                      style={styles.button}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: number === page }}
+                      theme={props.theme}
+                      variant={number === page ? "primary" : "ghost"}
+                      size="sm"
+                      accessibilityLabel={String(number)}
                       disabled={disabled || page === number}
                       onPress={() => goTo(number)}
                     >
-                      <Text
-                        style={[
-                          styles.title,
-                          number === page && styles.pageActiveText,
-                        ]}
-                      >
-                        {number}
-                      </Text>
-                    </Pressable>
+                      {String(number)}
+                    </Button>
                   ))
               )}
-              <Pressable
-                style={styles.button}
-                accessibilityRole="button"
+              <Button
+                theme={props.theme}
+                variant="ghost"
+                size="sm"
                 accessibilityLabel={t("import.next")}
                 disabled={disabled || page >= pages}
                 onPress={() => goTo(page + 1)}
               >
-                <Text style={styles.secondary}>{t("import.next")}</Text>
-              </Pressable>
+                {t("import.next")}
+              </Button>
             </View>
           </>
         )
@@ -446,9 +435,12 @@ export function GitHubImportModal(props: Props) {
         <View>
           <Text style={styles.error}>{t("import.error")}</Text>
           {!props.settingsReady && (
-            <Pressable
-              style={styles.button}
+            <Button
+              theme={props.theme}
+              variant="outline"
+              size="sm"
               disabled={saving}
+              accessibilityLabel={t("import.retry")}
               onPress={async () => {
                 if (savingRef.current) return;
                 savingRef.current = true;
@@ -458,8 +450,8 @@ export function GitHubImportModal(props: Props) {
                 setSaving(false);
               }}
             >
-              <Text style={styles.title}>{t("import.retry")}</Text>
-            </Pressable>
+              {t("import.retry")}
+            </Button>
           )}
         </View>
       )}
@@ -468,29 +460,28 @@ export function GitHubImportModal(props: Props) {
           {t("import.selected", { count: chosen.length })}
         </Text>
         <View style={styles.footerButtons}>
-          <Pressable
-            style={styles.button}
+          <Button
+            theme={props.theme}
+            variant="secondary"
             disabled={saving}
+            accessibilityLabel={t("import.cancel")}
             onPress={props.onClose}
           >
-            <Text style={styles.title}>{t("import.cancel")}</Text>
-          </Pressable>
-          <Pressable
-            style={[
-              styles.button,
-              styles.primary,
-              (disabled || !validProject || !validLane || !chosen.length) &&
-                styles.primaryDisabled,
-            ]}
+            {t("import.cancel")}
+          </Button>
+          <Button
+            theme={props.theme}
+            variant="primary"
+            loading={saving}
             disabled={disabled || !validProject || !validLane || !chosen.length}
+            accessibilityLabel={t("import.submit")}
             onPress={submit}
           >
-            {saving && <ActivityIndicator color={colors.accentForeground} />}
-            <Text style={styles.primaryText}>{t("import.submit")}</Text>
-          </Pressable>
+            {t("import.submit")}
+          </Button>
         </View>
       </View>
-    </BusinessDialog>
+    </Dialog>
   );
 }
 
@@ -546,9 +537,6 @@ function createImportStyles(
       fontSize: 14,
       flex: 1,
     },
-    pageActiveText: {
-      color: colors.accent,
-    },
     secondary: {
       color: colors.foregroundMuted,
       fontSize: 12,
@@ -572,24 +560,6 @@ function createImportStyles(
     footerButtons: {
       flexDirection: "row",
       gap: 8,
-    },
-    button: {
-      minHeight: 36,
-      minWidth: 36,
-      padding: 8,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    primary: {
-      backgroundColor: colors.accent,
-      borderRadius: 6,
-      paddingHorizontal: 16,
-    },
-    primaryDisabled: {
-      opacity: 0.4,
-    },
-    primaryText: {
-      color: colors.accentForeground,
     },
     error: {
       color: colors.statusDanger,

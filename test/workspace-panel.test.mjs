@@ -111,7 +111,7 @@ test("新任务关联跟随当前项目筛选（All/No Project 默认无关联�
         .findByProps({ placeholder: "Enter task title" })
         .props.onChangeText(title),
     );
-    await press(modal, "Create");
+    await press(modal, "Save");
     assert.ok(visibleTasks(sidebar.root).includes(title));
     assert.equal(visibleTasks(peer.root).includes(title), visibleInPeer);
     await chooseProject(panel.root, association);

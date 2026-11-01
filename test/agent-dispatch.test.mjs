@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { act, loadClientModule } from "./helpers/react-host-env.mjs";
-import { createHost, mount, press, text } from "./helpers/kanban-host.mjs";
+import {
+  createHost,
+  mount,
+  press,
+  text,
+  findDialog,
+} from "./helpers/kanban-host.mjs";
 import { KanbanBoardSchema } from "../shared/kanban.ts";
 
 let language = "en";
@@ -161,7 +167,7 @@ function fixture({
   return { host, createdWorkspaces, createdAgents, opened };
 }
 
-const modal = (renderer) => renderer.root.findByType("Modal");
+const modal = (renderer) => findDialog(renderer.root);
 const select = (renderer, label) =>
   modal(renderer)
     .findAllByType("Select")

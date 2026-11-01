@@ -3,16 +3,17 @@ import {
   View,
   Text,
   ScrollView,
-  Pressable,
   StyleSheet,
   ActivityIndicator,
+  Platform,
   type LayoutChangeEvent,
 } from "react-native";
 import { useSettings, useRpc, openExternalUrl } from "@getpaseo/plugin/client";
 import { settingsRpc } from "@getpaseo/plugin";
 import { useToast, copyText } from "@getpaseo/plugin/client/react-native";
-import { SettingsSelect } from "@getpaseo/plugin/client/ui";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
+import { Button, Badge, Select } from "../components/ui";
+import { useWebBoardOutlineReset } from "../platform/web";
 import { agentDispatchSettings } from "../../shared/agent-dispatch";
 import {
   kanbanSettings,
@@ -38,7 +39,6 @@ import {
   type TaskEditSession,
 } from "../session/kanban-session";
 import { useI18n, I18nLanguageContext } from "../platform/i18n";
-import { useProjectFilterLayout } from "../platform/web";
 import { TaskModal } from "../modals/task-modal";
 import { TaskDeleteDialog } from "../modals/task-delete-dialog";
 import { GitHubImportModal } from "../modals/github-import-modal";
@@ -70,7 +70,6 @@ export function KanbanBoardView(props: KanbanBoardProps) {
 
 function KanbanBoardContent(props: KanbanBoardProps) {
   const { theme } = props;
-  useProjectFilterLayout();
   const [panelWidth, setPanelWidth] = useState<number | null>(null);
   const compact =
     props.layout.compact || (panelWidth !== null && panelWidth < 600);
@@ -430,6 +429,7 @@ function KanbanBoardContent(props: KanbanBoardProps) {
     () => createBoardStyles(theme, layout.compact),
     [theme, layout.compact],
   );
+  useWebBoardOutlineReset();
 
   if (settings.status === "loading" && !preserveImport) {
     return (
@@ -446,14 +446,13 @@ function KanbanBoardContent(props: KanbanBoardProps) {
         <Text style={[styles.centerText, styles.errorCenterText]}>
           {t("kanban.loadError", { error: settings.error })}
         </Text>
-        <Pressable
+        <Button
+          theme={theme}
+          variant="secondary"
           onPress={() => settings.reload()}
-          style={styles.secondaryButton}
         >
-          <Text style={styles.secondaryButtonText}>
-            {t("kanban.retryLoad")}
-          </Text>
-        </Pressable>
+          {t("kanban.retryLoad")}
+        </Button>
       </View>
     );
   }
@@ -468,22 +467,20 @@ function KanbanBoardContent(props: KanbanBoardProps) {
           {t("kanban.formatErrorHint")}
         </Text>
         <View style={styles.invalidActionsRow}>
-          <Pressable
+          <Button
+            theme={theme}
+            variant="secondary"
             onPress={() => settings.reload()}
-            style={styles.secondaryButton}
           >
-            <Text style={styles.secondaryButtonText}>
-              {t("kanban.retryLoad")}
-            </Text>
-          </Pressable>
-          <Pressable
+            {t("kanban.retryLoad")}
+          </Button>
+          <Button
+            theme={theme}
+            variant="primary"
             onPress={() => settings.reset()}
-            style={styles.primaryButton}
           >
-            <Text style={styles.primaryButtonText}>
-              {t("kanban.resetDefault")}
-            </Text>
-          </Pressable>
+            {t("kanban.resetDefault")}
+          </Button>
         </View>
       </View>
     );
@@ -492,49 +489,54 @@ function KanbanBoardContent(props: KanbanBoardProps) {
   if (!board) return null;
 
   return (
-    <View style={styles.container} onLayout={handleLayout}>
+    <View
+      style={styles.container}
+      onLayout={handleLayout}
+      {...({ dataSet: { kanbanBoard: "" } } as Record<string, unknown>)}
+    >
       {/* Top Header */}
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
           <View style={styles.titleRow}>
             <Text style={styles.titleText}>{t("kanban.title")}</Text>
-            <View style={styles.statsBadge}>
-              <Text style={styles.statsText}>
-                {t("kanban.stats", {
-                  tasks: board.tasks.length,
-                  lanes: board.lanes.length,
-                })}
-              </Text>
-            </View>
+            <Badge theme={theme} variant="secondary">
+              {t("kanban.stats", {
+                tasks: board.tasks.length,
+                lanes: board.lanes.length,
+              })}
+            </Badge>
           </View>
 
           <View style={styles.headerActions}>
-            <Pressable
+            <Button
+              theme={theme}
+              variant="secondary"
               onPress={() => openLaneManagement()}
-              style={styles.secondaryButton}
             >
-              <Text style={styles.secondaryButtonText}>
-                {t("laneManagement.title")}
-              </Text>
-            </Pressable>
+              {t("laneManagement.title")}
+            </Button>
 
-            <Pressable
+            <Button
+              theme={theme}
+              variant="primary"
               onPress={() => {
                 if (!drag.isDragLocked() && !completionPendingRef.current)
                   setImportOpen(true);
               }}
-              style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonText}>{t("import.title")}</Text>
-            </Pressable>
+              {t("import.title")}
+            </Button>
           </View>
         </View>
 
         {/* Project Filter */}
         <View style={styles.filterWrapper}>
-          <SettingsSelect
+          <Select
+            theme={theme}
             testID="kanban-project-filter"
             label={t("kanban.filterLabel")}
+            layout="horizontal"
+            align="left"
             value={selectedProjectId}
             options={[
               { value: "all", label: t("kanban.filterAll") },
@@ -565,15 +567,17 @@ function KanbanBoardContent(props: KanbanBoardProps) {
               ? t("kanban.saveFailed", { error: taskOperationError })
               : t("kanban.conflictError", { error: settings.saveError })}
           </Text>
-          <Pressable
+          <Button
+            theme={theme}
+            variant="outline"
+            size="sm"
             onPress={() => {
               setTaskOperationError(null);
               settings.reload();
             }}
-            style={styles.conflictAction}
           >
-            <Text style={styles.conflictActionText}>{t("kanban.refresh")}</Text>
-          </Pressable>
+            {t("kanban.refresh")}
+          </Button>
         </View>
       )}
 
@@ -728,6 +732,11 @@ function createBoardStyles(
       minHeight: 0,
       backgroundColor: theme.colors.surface0,
       userSelect: "none",
+      ...Platform.select({
+        web: {
+          outlineWidth: 0,
+        },
+      }),
     },
     header: {
       paddingHorizontal: compact ? 12 : 20,
@@ -757,47 +766,12 @@ function createBoardStyles(
       fontWeight: "700",
       color: theme.colors.foreground,
     },
-    statsBadge: {
-      backgroundColor: theme.colors.surface2,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 10,
-    },
-    statsText: {
-      fontSize: 11,
-      color: theme.colors.foregroundMuted,
-      fontWeight: "600",
-    },
     headerActions: {
       flexDirection: "row",
       flexWrap: "wrap",
       maxWidth: "100%",
       alignItems: "center",
       gap: 8,
-    },
-    primaryButton: {
-      backgroundColor: theme.colors.accent,
-      paddingHorizontal: 14,
-      paddingVertical: 8,
-      borderRadius: 8,
-    },
-    primaryButtonText: {
-      color: theme.colors.accentForeground,
-      fontSize: 13,
-      fontWeight: "600",
-    },
-    secondaryButton: {
-      backgroundColor: theme.colors.surface1,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 8,
-    },
-    secondaryButtonText: {
-      color: theme.colors.foreground,
-      fontSize: 13,
-      fontWeight: "500",
     },
     filterWrapper: {
       maxWidth: 520,
@@ -822,19 +796,6 @@ function createBoardStyles(
       color: theme.colors.statusDanger,
       fontSize: 13,
       flex: 1,
-    },
-    conflictAction: {
-      marginLeft: 10,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      backgroundColor: theme.colors.surface1,
-      borderRadius: 4,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-    },
-    conflictActionText: {
-      fontSize: 12,
-      color: theme.colors.foreground,
     },
     lanesWrapper: {
       flex: 1,
