@@ -1,11 +1,23 @@
 # 编码规范
 
-## 1. 组件与样式规范
+## 1. 组件复用与样式规范
 
-### 1.1 源码级原子组件
+### 1.1 UI 阶梯复用原则（严禁业务层手搓）
 
-- 基础 UI 控件统一收敛并维护在 `client/components/ui/`（`Button`、`Input`、`Dialog`、`ConfirmDialog`、`Badge`、`Checkbox`、`Select`），禁止在业务页面与弹窗中随意手写裸 `Pressable`、裸 `TextInput` 或手写拼凑徽标与复选框。
-- 优先复用 Paseo 宿主官方 SDK 提供的优质高内聚能力（如 `@getpaseo/plugin/client/ui` 中的 `<ExternalLink>`），杜绝在插件内重复造轮子。
+插件内所有 UI 界面与弹窗严格遵守两层复用机制，彻底杜绝在业务代码中手搓底层裸控件：
+
+1. **宿主能力优先（Paseo SDK）**：
+   - 优先复用 Paseo 宿主官方 SDK 提供的标准组件与 Hooks（如 `@getpaseo/plugin/client/ui` 导出的 `<ExternalLink>`、`Icon`，以及 `useToast`、`useTheme` 等）；
+   - 充分继承上游经安全审计的能力，杜绝在插件内重复造轮子。
+2. **源码级原子组件收敛（`client/components/ui/`）**：
+   - 宿主未直接提供或需适配看板规范的基础控件，必须统一收敛在 `client/components/ui/` 目录下（包括：`Button`、`Input`、`Dialog`、`ConfirmDialog`、`Badge`、`Checkbox`、`Select`）；
+   - 任何新增的通用控件必须在原子层沉淀为纯净受控组件，供全站统一聚合导出消费。
+3. **严禁在业务代码中裸写原生控件**：
+   - 严禁在看板视图、泳道、卡片或 5 个业务弹窗中直接使用裸 `<Pressable>` 充当操作按钮，必须统一使用 `<Button>`；
+   - 严禁直接使用裸 `<TextInput>`，表单输入必须统一使用 `<Input>`，以保证内置的 Escape 防穿透、边框聚焦环与 IME 输入法保护生效；
+   - 严禁就地使用 `View + Text + borderRadius` 手写拼凑临时标签（统一使用 `<Badge>`）；
+   - 严禁使用自定义图标切换模拟复选框（统一使用 `<Checkbox>`）；
+   - 严禁手写私有下拉浮层或直接拼装菜单（统一使用 `<Select>`）。
 
 ### 1.2 动态主题驱动
 
