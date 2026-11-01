@@ -4,6 +4,42 @@ All notable changes to Paseo Kanban are documented here in bilingual format (Eng
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), adapted for strictly mirrored bilingual release notes.
 
+## [Unreleased]
+
+### Features
+
+- **Source-owned UI primitive library**: Introduce unified UI primitives (`Button`, `Input`, `Dialog`, `ConfirmDialog`, `Badge`, `Checkbox`, and `Select`) owned directly within the repository, fully driven by Paseo dynamic theme colors with zero third-party component dependencies.
+- **Desktop interaction states & tactile feedback**: Add full desktop interaction state matrices across all buttons and triggers, featuring smooth hover illumination, keyboard focus ring highlights (`colors.accent`), and tactile pressed scale micro-feedback (`scale(0.98)`).
+
+### Fixes & Improvements
+
+- **Dialog container convergence & initial focus**: Converge all 5 modals (task modal, swimlane management, GitHub issue import, Agent dispatch, and delete confirmation) to a unified wide `Dialog` container; smart initial focus lands on the dialog container to prevent close button hijacking; `Input` traps Escape event bubbling to protect uncommitted drafts.
+- **Select popover portal & dismissal stability**: Replace host select dropdowns with source-owned compact pill triggers; popovers mount via an independent Web Portal to bypass scrollview clipping and stacking context occlusions, calculate viewport bounds to auto-flip upward, and use a transparent backdrop to eliminate instant-dismiss flickers.
+- **Raw native component cleanup**: Audit and eliminate hand-rolled `Pressable`, multi-line `TextInput`, and ad-hoc badge/checkbox wrappers across the board and modals; adopt the official Paseo SDK `<ExternalLink>` for secure external link handling.
+
+### Compatibility & Migration
+
+- Requires Paseo `>= 0.11.4`.
+- No board data migration or dependency changes required (fully backward compatible).
+
+---
+
+### 新增特性
+
+- **源码级 UI 原子组件体系**：全看板统一引入自研原子组件资产（`Button`、`Input`、`Dialog`、`ConfirmDialog`、`Badge`、`Checkbox` 与 `Select`），完全由 Paseo 宿主动态色彩驱动，零外部第三方黑盒依赖。
+- **桌面端状态矩阵与微触感反馈**：全站按钮与选择器全面补齐桌面端交互矩阵，支持平滑悬停提亮、键盘 Tab 聚焦环高亮（`colors.accent`）以及按压微缩放触感反馈（`scale(0.98)`）。
+
+### 修复与优化
+
+- **弹窗容器收敛与初始焦点智能管理**：全板 5 大弹窗（任务详情、泳道管理、GitHub 导入、Agent 派发、删除确认）全量收敛至统一宽屏 `Dialog`；初始焦点智能落在弹窗卡片本身，杜绝右上角关闭按钮夺焦；`Input` 统一拦截 Escape 事件冒泡以保护未保存草稿。
+- **下拉浮层独立 Portal 与防闪退遮罩**：自研紧凑胶囊 Trigger 替换宿主下拉框；浮层基于独立 Web Portal 挂载，彻底突破滚动容器裁剪与层叠上下文遮挡，结合视口测量自动向上翻转，并通过透明 Backdrop 遮罩彻底消除外部捕获事件误判引起的瞬退缺陷。
+- **原生裸写控件审计与全面治理**：淘汰全站散落手写的 `Pressable`、多行 `TextInput`、自制徽标与复选框，直接接入 Paseo 官方 SDK 标准 `<ExternalLink>` 安全唤起外部链接。
+
+### 兼容性与迁移
+
+- 依赖 Paseo `>= 0.11.4`。
+- 无需看板数据迁移或依赖项变更（完全向后兼容）。
+
 ## [0.3.1] - 2026-10-24
 
 ### Features
