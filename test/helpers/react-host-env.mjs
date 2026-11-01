@@ -71,7 +71,10 @@ export class MockAnimatedValueXY {
 }
 
 export const mockReactNative = {
-  Platform: { OS: "web" },
+  Platform: {
+    OS: "web",
+    select: (obj) => obj?.web ?? obj?.default,
+  },
   View: "View",
   Text: "Text",
   TextInput: "TextInput",

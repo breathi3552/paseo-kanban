@@ -2,10 +2,7 @@ import { useMemo, useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { ScrollView, useToast } from "@getpaseo/plugin/client/react-native";
-import { SettingsSelect } from "@getpaseo/plugin/client/ui";
-import { Dialog } from "../components/ui/dialog";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
+import { Dialog, Button, Input, Select } from "../components/ui";
 import type { KanbanBoard, KanbanTask } from "../../shared/kanban";
 import type { SaveFn } from "../session/kanban-session";
 import type { ProjectItem } from "../session/use-projects";
@@ -109,7 +106,8 @@ export function AgentDispatchModal({
             style={styles.promptInput}
           />
         </View>
-        <SettingsSelect
+        <Select
+          theme={theme}
           label={t("dispatch.project")}
           value={projectId}
           disabled={disabled || task.source === "github_issue"}
@@ -129,7 +127,8 @@ export function AgentDispatchModal({
         {errors.project && (
           <Text style={styles.errorText}>{t("dispatch.selectProject")}</Text>
         )}
-        <SettingsSelect
+        <Select
+          theme={theme}
           label={t("dispatch.workspace")}
           value={workspaceId}
           disabled={disabled}
@@ -167,7 +166,8 @@ export function AgentDispatchModal({
         {workspaceId === "new-worktree" && errors.branch && (
           <Text style={styles.errorText}>{t("dispatch.invalidBranch")}</Text>
         )}
-        <SettingsSelect
+        <Select
+          theme={theme}
           label={t("dispatch.profile")}
           value={profileId}
           disabled={disabled}

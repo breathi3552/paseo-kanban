@@ -489,3 +489,105 @@ test("IssueLink 基础行为：使用宿主 ExternalLink 渲染并保持安全�
   );
   assert.equal(linkNode.props.accessibilityLabel, "在浏览器打开 Issue");
 });
+
+test("Select 基础行为：Trigger 呈现、展开选中与层级提升", async () => {
+  const Select = loadClientComponent("components/ui/select", "Select");
+
+  let selectedValue = "opt-1";
+  const options = [
+    { value: "opt-1", label: "Option One" },
+    { value: "opt-2", label: "Option Two" },
+    { value: "opt-3", label: "Option Three" },
+  ];
+
+  let renderer;
+  await act(async () => {
+    renderer = TestRenderer.create(
+      React.createElement(Select, {
+        theme,
+        label: "Category",
+        value: selectedValue,
+        options,
+        onValueChange: (val) => {
+          selectedValue = val;
+        },
+      }),
+    );
+  });
+
+  // 初始状态：显示当前选中项文本，弹层关闭
+  const trigger = renderer.root.findByProps({ accessibilityRole: "button" });
+  assert.equal(trigger.props.accessibilityState.expanded, false);
+  assert.ok(
+    renderer.root.findAll((n) => n.props.children === "Option One").length > 0,
+  );
+
+  // 点击 Trigger 展开
+  await act(async () => {
+    trigger.props.onPress();
+  });
+  assert.equal(trigger.props.accessibilityState.expanded, true);
+
+  // 选项少于 10 项，不显示搜索框
+  assert.equal(
+    renderer.root.findAll((n) => n.props.placeholder === "搜索选项...").length,
+    0,
+  );
+
+  // 点击 Option Two
+  const optionTwo = renderer.root
+    .findAll((n) => n.props.accessibilityRole === "button")
+    .find((n) => n.props.accessibilityState?.selected === false);
+  assert.ok(optionTwo, "found option two");
+  await act(async () => {
+    optionTwo.props.onPress();
+  });
+  assert.equal(selectedValue, "opt-2");
+  assert.equal(trigger.props.accessibilityState.expanded, false);
+});
+
+test("Select 搜索过滤：当选项数量达到阈值（>= 10）时启用搜索过滤", async () => {
+  const Select = loadClientComponent("components/ui/select", "Select");
+
+  const options = Array.from({ length: 12 }, (_, i) => ({
+    value: `item-${i + 1}`,
+    label: `Project ${String.fromCharCode(65 + i)}`,
+  }));
+
+  let selectedValue = "item-1";
+  let renderer;
+  await act(async () => {
+    renderer = TestRenderer.create(
+      React.createElement(Select, {
+        theme,
+        value: selectedValue,
+        options,
+        onValueChange: (val) => {
+          selectedValue = val;
+        },
+      }),
+    );
+  });
+
+  const trigger = renderer.root.findByProps({ accessibilityRole: "button" });
+  await act(async () => {
+    trigger.props.onPress();
+  });
+
+  // 选项达到 12 项，展示搜索框
+  const searchInput = renderer.root.findByProps({
+    placeholder: "搜索选项...",
+  });
+  assert.ok(searchInput, "search input is displayed");
+
+  // 过滤输入
+  await act(async () => {
+    searchInput.props.onChangeText("Project B");
+  });
+  const visibleOptions = renderer.root.findAll(
+    (n) =>
+      n.props.accessibilityRole === "button" &&
+      n.props.accessibilityState?.selected !== undefined,
+  );
+  assert.equal(visibleOptions.length, 1);
+});

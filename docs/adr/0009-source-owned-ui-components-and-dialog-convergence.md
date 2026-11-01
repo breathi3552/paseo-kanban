@@ -18,7 +18,7 @@
 
 ### 1. 源码级持有 UI 组件体系（shadcn/ui 模式）
 
-- 借鉴 React Native Reusables (RNR) 与 @rn-primitives 设计哲学，核心基础组件（Button、Dialog、Input、ConfirmDialog）源码直接落入 `client/components/ui/` 目录统一维护，不引入外部庞大 npm 全家桶依赖。
+- 借鉴 React Native Reusables (RNR) 与 @rn-primitives 设计哲学，核心基础组件（Button、Dialog、Input、ConfirmDialog、Badge、Checkbox、Select）源码直接落入 `client/components/ui/` 目录统一维护，不引入外部庞大 npm 全家桶依赖。
 - 色彩与样式纯粹由 Paseo 宿主动态注入的 `theme.colors` 驱动，剥离任何静态 CSS/Tailwind 强绑定，动态适配日间、夜间及第三方宿主主题。
 
 ### 2. 弹窗体系收敛与桌面 Web 单模渲染
@@ -45,6 +45,13 @@
 ### 6. 测试契约对齐
 
 - 维持 `role="dialog"`、`aria-modal` 与 `accessibilityLabel` 无障碍契约；测试套件统一通过 `findDialog(renderer.root)` 进行弹窗断言，对齐 `test/agent-dispatch.test.mjs` 中的私有查询 helper，消除对特定底层类型命名的脆弱依赖。
+
+### 7. 自研 Select 原子组件与全站下拉收敛
+
+- 彻底替换宿主原生 `SettingsSelect`，自研源码级 `Select` 原子组件，采用 Paseo 规范的紧凑胶囊 Trigger（32px 高度、圆角 6、细边框与 `surface2` 实心底色），解决原生组件强行将 Trigger 推至最右侧导致的向左对齐布局割裂。
+- 消除在 `ScrollView` 容器中浮层被兄弟元素遮挡与层叠上下文断裂缺陷：展开时容器动态提升至 `zIndex: 1000`，浮层具备实心不透明背景及悬浮阴影。
+- 引入按需搜索过滤：短列表（< 10 项）保持极简清爽无搜索栏；长列表（≥ 10 项）自动在下拉框顶部提供实时输入过滤框。
+- 全站（看板顶部项目筛选、任务详情、Agent 派发、GitHub 导入）全量收敛至 `Select` 原子组件，彻底删除遗留的 `useProjectFilterLayout` 全局 CSS 注入 Hack。
 
 ## 备选方案
 

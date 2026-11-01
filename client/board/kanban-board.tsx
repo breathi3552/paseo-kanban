@@ -10,9 +10,8 @@ import {
 import { useSettings, useRpc, openExternalUrl } from "@getpaseo/plugin/client";
 import { settingsRpc } from "@getpaseo/plugin";
 import { useToast, copyText } from "@getpaseo/plugin/client/react-native";
-import { SettingsSelect } from "@getpaseo/plugin/client/ui";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { Button, Badge } from "../components/ui";
+import { Button, Badge, Select } from "../components/ui";
 import { agentDispatchSettings } from "../../shared/agent-dispatch";
 import {
   kanbanSettings,
@@ -38,7 +37,6 @@ import {
   type TaskEditSession,
 } from "../session/kanban-session";
 import { useI18n, I18nLanguageContext } from "../platform/i18n";
-import { useProjectFilterLayout } from "../platform/web";
 import { TaskModal } from "../modals/task-modal";
 import { TaskDeleteDialog } from "../modals/task-delete-dialog";
 import { GitHubImportModal } from "../modals/github-import-modal";
@@ -70,7 +68,6 @@ export function KanbanBoardView(props: KanbanBoardProps) {
 
 function KanbanBoardContent(props: KanbanBoardProps) {
   const { theme } = props;
-  useProjectFilterLayout();
   const [panelWidth, setPanelWidth] = useState<number | null>(null);
   const compact =
     props.layout.compact || (panelWidth !== null && panelWidth < 600);
@@ -527,9 +524,12 @@ function KanbanBoardContent(props: KanbanBoardProps) {
 
         {/* Project Filter */}
         <View style={styles.filterWrapper}>
-          <SettingsSelect
+          <Select
+            theme={theme}
             testID="kanban-project-filter"
             label={t("kanban.filterLabel")}
+            layout="horizontal"
+            align="left"
             value={selectedProjectId}
             options={[
               { value: "all", label: t("kanban.filterAll") },

@@ -13,7 +13,6 @@ import {
   useToast,
 } from "@getpaseo/plugin/client/react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { SettingsSelect } from "@getpaseo/plugin/client/ui";
 import type { KanbanLane } from "../../shared/kanban";
 import { getProjectOptions, type ProjectItem } from "../session/use-projects";
 import {
@@ -32,6 +31,7 @@ import {
   ConfirmDialog,
   Input,
   Checkbox,
+  Select,
 } from "../components/ui";
 
 type PluginTheme = PluginSurfaceProps["theme"];
@@ -390,7 +390,8 @@ export function TaskModal({
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>{t("taskModal.projectLabel")}</Text>
-            <SettingsSelect
+            <Select
+              theme={theme}
               label=""
               value={snapshot.projectId ?? ""}
               options={[
@@ -399,6 +400,7 @@ export function TaskModal({
               ]}
               onValueChange={(id) => session.setProjectId(id || null)}
               disabled={isBusy || snapshot.source === "github_issue"}
+              align="left"
             />
           </View>
 

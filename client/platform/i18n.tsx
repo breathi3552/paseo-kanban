@@ -180,6 +180,8 @@ export const translations = {
     "taskModal.saving": "保存中...",
     "taskModal.saveChanges": "保存",
     "taskModal.submitCreate": "保存",
+    "select.searchPlaceholder": "搜索选项...",
+    "select.noMatches": "无匹配结果",
   },
   en: {
     "common.close": "Close",
@@ -363,6 +365,8 @@ export const translations = {
     "taskModal.saving": "Saving...",
     "taskModal.saveChanges": "Save",
     "taskModal.submitCreate": "Save",
+    "select.searchPlaceholder": "Search options...",
+    "select.noMatches": "No matches found",
   },
 } as const;
 

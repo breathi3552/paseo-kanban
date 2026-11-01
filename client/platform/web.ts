@@ -63,31 +63,6 @@ declare const window: {
   removeEventListener(type: string, listener: () => void): void;
 };
 
-/** SettingsSelect exposes no row styles; keep this override local to the board filter. */
-export function useProjectFilterLayout() {
-  useEffect(() => {
-    if (Platform.OS !== "web" || typeof document === "undefined") return;
-    const style = document.createElement("style");
-    style.textContent = `
-      [data-testid="kanban-project-filter"] {
-        padding-inline: 0 !important;
-        justify-content: flex-start !important;
-        flex-wrap: nowrap !important;
-        gap: 0 !important;
-      }
-      [data-testid="kanban-project-filter"] > :first-child {
-        flex: 0 0 auto !important;
-        margin-right: 8px !important;
-      }
-      [data-testid="kanban-project-filter"] > :last-child {
-        min-width: 0;
-      }
-    `;
-    document.body.appendChild(style);
-    return () => style.remove();
-  }, []);
-}
-
 const focusable = (root: WebElement) =>
   Array.from(
     root.querySelectorAll(

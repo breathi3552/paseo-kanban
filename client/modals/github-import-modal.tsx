@@ -12,13 +12,12 @@ import {
   ScrollView,
   useToast,
 } from "@getpaseo/plugin/client/react-native";
-import { SettingsSelect } from "@getpaseo/plugin/client/ui";
 import { listGitHubIssues, type IssuePage } from "../../shared/github-import";
 import type { KanbanBoard } from "../../shared/kanban";
 import { executeIssueImport, type SaveFn } from "../session/kanban-session";
 import type { ProjectItem } from "../session/use-projects";
 import { useI18n, type TranslationKey } from "../platform/i18n";
-import { Dialog, Button, Checkbox } from "../components/ui";
+import { Dialog, Button, Checkbox, Select } from "../components/ui";
 
 interface Props {
   board: KanbanBoard;
@@ -212,10 +211,12 @@ export function GitHubImportModal(props: Props) {
         style={styles.selectors}
       >
         <View style={[styles.select, styles.selectProject]}>
-          <SettingsSelect
+          <Select
+            theme={props.theme}
             label={t("import.project")}
             value={projectId}
             disabled={saving}
+            align="fill"
             options={[
               { label: t("import.selectProject"), value: "" },
               ...props.projects.map((project) => ({
@@ -232,10 +233,12 @@ export function GitHubImportModal(props: Props) {
           />
         </View>
         <View style={[styles.select, styles.selectLane]}>
-          <SettingsSelect
+          <Select
+            theme={props.theme}
             label={t("import.lane")}
             value={laneId}
             disabled={saving}
+            align="fill"
             options={props.board.lanes
               .filter((lane) => !lane.isCompletionLane)
               .map((lane) => ({ label: lane.title, value: lane.id }))}
