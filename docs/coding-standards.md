@@ -1,8 +1,26 @@
 # 编码规范
 
-## 1. 组件与样式
+## 1. 组件与样式规范
 
-组件样式统一定义在文件底部的 `StyleSheet.create` 或 `create*Styles(theme)` 中；浏览器专属 DOM 与 Portal 能力统一封装在 `client/platform/web.ts`。
+### 1.1 源码级原子组件
+
+- 基础 UI 控件统一收敛并维护在 `client/components/ui/`（`Button`、`Input`、`Dialog`、`ConfirmDialog`、`Badge`、`Checkbox`、`Select`），禁止在业务页面与弹窗中随意手写裸 `Pressable`、裸 `TextInput` 或手写拼凑徽标与复选框。
+- 优先复用 Paseo 宿主官方 SDK 提供的优质高内聚能力（如 `@getpaseo/plugin/client/ui` 中的 `<ExternalLink>`），杜绝在插件内重复造轮子。
+
+### 1.2 动态主题驱动
+
+- 严禁硬编码静态颜色（如写死 `#3b82f6`、`#ffffff`、`rgba(...)` 等魔数），所有前景色、背景色、边框色与高亮色必须纯粹由宿主动态注入的 `theme.colors`（如 `colors.surface1`、`colors.surface2`、`colors.border`、`colors.accent`、`colors.foreground` 等）驱动，以无缝兼容日间、夜间及第三方自定义主题。
+
+### 1.3 桌面端全状态矩阵
+
+- 交互型控件（尤其是 `Button` 和 `Select` Trigger）必须完整支持桌面端交互矩阵：
+  - `hovered`：鼠标悬停平滑提亮或着色反馈；
+  - `focused`：键盘 Tab 导航时呈现清晰的 Focus Ring 聚焦环高亮（`colors.accent`）；
+  - `pressed`：按压时提供触感微缩放（`transform: [{ scale: 0.98 }]`）。
+
+### 1.4 样式组织
+
+组件样式统一定义在文件底部的 `StyleSheet.create` 或 `create*Styles(theme)` 中，严禁在 JSX 中书写内联样式对象；浏览器专属 DOM 与 Portal 容器能力统一封装在 `client/platform/web.ts`。
 
 ## 2. 国际化 (i18n)
 
