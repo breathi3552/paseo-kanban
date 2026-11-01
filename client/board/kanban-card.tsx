@@ -2,7 +2,6 @@ import { useMemo, useEffect, useRef, type ReactNode } from "react";
 import {
   View,
   Text,
-  Pressable,
   StyleSheet,
   Animated,
   Platform,
@@ -18,6 +17,7 @@ import {
   type CardContextEvent,
   type CardKeyEvent,
 } from "./card-interaction";
+import { Button, Badge, Checkbox } from "../components/ui";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 export interface KanbanCardProps {
@@ -32,28 +32,6 @@ export interface KanbanCardProps {
   onContextMenu?: (taskId: string, point: { x: number; y: number }) => void;
   completionDisabled?: boolean;
   interactionDisabled?: boolean;
-}
-
-function CompletionIndicator({
-  completed,
-  theme,
-}: {
-  completed: boolean;
-  theme: PluginTheme;
-}) {
-  const styles = useMemo(() => createCardStyles(theme, false), [theme]);
-  return (
-    <View
-      style={[
-        styles.completionBox,
-        completed ? styles.completionBoxChecked : styles.completionBoxUnchecked,
-      ]}
-    >
-      {completed && (
-        <Icon name="Check" size={14} color={theme.colors.accentForeground} />
-      )}
-    </View>
-  );
 }
 
 /** Shared card text also keeps the drag preview's dimensions aligned with the card. */
@@ -84,14 +62,16 @@ function CardBody({
       {(projectDisplayName || task.subtasks.length > 0) && (
         <View style={styles.badgesRow}>
           {projectDisplayName && (
-            <View style={styles.projectBadge}>
-              <Text numberOfLines={1} style={styles.projectBadgeText}>
-                {projectDisplayName}
-              </Text>
-            </View>
+            <Badge theme={theme} variant="outline" style={styles.projectBadge}>
+              {projectDisplayName}
+            </Badge>
           )}
           {task.subtasks.length > 0 && (
-            <View style={styles.subtaskBadge}>
+            <Badge
+              theme={theme}
+              variant="secondary"
+              style={styles.subtaskBadge}
+            >
               <Text
                 style={[
                   styles.subtaskBadgeText,
@@ -103,7 +83,7 @@ function CardBody({
                   total: task.subtasks.length,
                 })}
               </Text>
-            </View>
+            </Badge>
           )}
         </View>
       )}
@@ -155,8 +135,10 @@ export function KanbanCard({
   const CardContainer =
     !binding.isDragging && slideAnimation ? Animated.View : View;
   const send = onSendToAgent ? (
-    <Pressable
-      accessibilityRole="button"
+    <Button
+      theme={theme}
+      size="icon"
+      variant="ghost"
       accessibilityLabel={t("dispatch.title")}
       {...{ dataSet: { kanbanControl: "true" } }}
       disabled={disabled}
@@ -172,7 +154,7 @@ export function KanbanCard({
       }}
     >
       <Icon name="Send" size={16} color={theme.colors.accent} />
-    </Pressable>
+    </Button>
   ) : undefined;
   return (
     <View
@@ -224,8 +206,16 @@ export function KanbanCard({
             : undefined,
         ]}
       >
-        <Pressable
-          {...{ dataSet: { kanbanControl: "true" } }}
+        <Checkbox
+          theme={theme}
+          checked={Boolean(task.completed)}
+          size={18}
+          disabled={disabled || !onSetCompleted}
+          accessibilityLabel={t(
+            task.completed ? "card.reopenTask" : "card.completeTask",
+            { title: task.title },
+          )}
+          dataSet={{ kanbanControl: "true" }}
           onTouchStart={(event) => {
             binding.cardPanHandlers?.onTouchCancel?.(event);
             event.stopPropagation();
@@ -235,26 +225,11 @@ export function KanbanCard({
             styles.checkboxControl,
             completionDisabled && styles.checkboxControlDisabled,
           ]}
-          accessibilityRole="checkbox"
-          accessibilityLabel={t(
-            task.completed ? "card.reopenTask" : "card.completeTask",
-            { title: task.title },
-          )}
-          accessibilityState={{
-            checked: Boolean(task.completed),
-            disabled: disabled || !onSetCompleted,
-          }}
-          disabled={disabled || !onSetCompleted}
           onPress={(event) => {
             event.stopPropagation();
             if (!disabled) onSetCompleted?.(task.id, !task.completed);
           }}
-        >
-          <CompletionIndicator
-            completed={Boolean(task.completed)}
-            theme={theme}
-          />
-        </Pressable>
+        />
         <CardBody
           task={task}
           projectDisplayName={projectDisplayName}
@@ -301,9 +276,11 @@ export function KanbanCardPreview({
       }
     >
       <View style={styles.previewCheckboxWrap}>
-        <CompletionIndicator
-          completed={Boolean(task.completed)}
+        <Checkbox
           theme={theme}
+          checked={Boolean(task.completed)}
+          size={18}
+          disabled
         />
       </View>
       <CardBody
@@ -382,22 +359,6 @@ export function KanbanDropSpacer({
 
 function createCardStyles(theme: PluginTheme, compact: boolean) {
   return StyleSheet.create({
-    completionBox: {
-      width: 18,
-      height: 18,
-      borderWidth: 1,
-      borderRadius: 4,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    completionBoxChecked: {
-      borderColor: theme.colors.accent,
-      backgroundColor: theme.colors.accent,
-    },
-    completionBoxUnchecked: {
-      borderColor: theme.colors.foregroundMuted,
-      backgroundColor: "transparent",
-    },
     bodyContainer: {
       flex: 1,
       gap: 8,
@@ -422,18 +383,7 @@ function createCardStyles(theme: PluginTheme, compact: boolean) {
       gap: 6,
     },
     projectBadge: {
-      backgroundColor: theme.colors.surface1,
-      borderColor: theme.colors.border,
-      borderWidth: 1,
-      borderRadius: 4,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-    },
-    projectBadgeText: {
-      fontSize: 11,
-      lineHeight: 14,
-      color: theme.colors.foregroundMuted,
-      fontWeight: "500",
+      maxWidth: 160,
     },
     subtaskBadge: {
       backgroundColor: theme.colors.surface1,

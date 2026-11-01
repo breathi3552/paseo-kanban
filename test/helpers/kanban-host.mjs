@@ -258,6 +258,8 @@ export function createHost({
     },
     "@getpaseo/plugin/client/ui": {
       SettingsSelect: (props) => React.createElement("Select", props),
+      ExternalLink: (props) =>
+        React.createElement("ExternalLink", props, props.children),
     },
   });
   const cleanup = contribute(client);

@@ -3,7 +3,6 @@ import {
   View,
   Text,
   ScrollView,
-  Pressable,
   StyleSheet,
   ActivityIndicator,
   type LayoutChangeEvent,
@@ -13,6 +12,7 @@ import { settingsRpc } from "@getpaseo/plugin";
 import { useToast, copyText } from "@getpaseo/plugin/client/react-native";
 import { SettingsSelect } from "@getpaseo/plugin/client/ui";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
+import { Button, Badge } from "../components/ui";
 import { agentDispatchSettings } from "../../shared/agent-dispatch";
 import {
   kanbanSettings,
@@ -446,14 +446,13 @@ function KanbanBoardContent(props: KanbanBoardProps) {
         <Text style={[styles.centerText, styles.errorCenterText]}>
           {t("kanban.loadError", { error: settings.error })}
         </Text>
-        <Pressable
+        <Button
+          theme={theme}
+          variant="secondary"
           onPress={() => settings.reload()}
-          style={styles.secondaryButton}
         >
-          <Text style={styles.secondaryButtonText}>
-            {t("kanban.retryLoad")}
-          </Text>
-        </Pressable>
+          {t("kanban.retryLoad")}
+        </Button>
       </View>
     );
   }
@@ -468,22 +467,20 @@ function KanbanBoardContent(props: KanbanBoardProps) {
           {t("kanban.formatErrorHint")}
         </Text>
         <View style={styles.invalidActionsRow}>
-          <Pressable
+          <Button
+            theme={theme}
+            variant="secondary"
             onPress={() => settings.reload()}
-            style={styles.secondaryButton}
           >
-            <Text style={styles.secondaryButtonText}>
-              {t("kanban.retryLoad")}
-            </Text>
-          </Pressable>
-          <Pressable
+            {t("kanban.retryLoad")}
+          </Button>
+          <Button
+            theme={theme}
+            variant="primary"
             onPress={() => settings.reset()}
-            style={styles.primaryButton}
           >
-            <Text style={styles.primaryButtonText}>
-              {t("kanban.resetDefault")}
-            </Text>
-          </Pressable>
+            {t("kanban.resetDefault")}
+          </Button>
         </View>
       </View>
     );
@@ -498,35 +495,33 @@ function KanbanBoardContent(props: KanbanBoardProps) {
         <View style={styles.headerTopRow}>
           <View style={styles.titleRow}>
             <Text style={styles.titleText}>{t("kanban.title")}</Text>
-            <View style={styles.statsBadge}>
-              <Text style={styles.statsText}>
-                {t("kanban.stats", {
-                  tasks: board.tasks.length,
-                  lanes: board.lanes.length,
-                })}
-              </Text>
-            </View>
+            <Badge theme={theme} variant="secondary">
+              {t("kanban.stats", {
+                tasks: board.tasks.length,
+                lanes: board.lanes.length,
+              })}
+            </Badge>
           </View>
 
           <View style={styles.headerActions}>
-            <Pressable
+            <Button
+              theme={theme}
+              variant="secondary"
               onPress={() => openLaneManagement()}
-              style={styles.secondaryButton}
             >
-              <Text style={styles.secondaryButtonText}>
-                {t("laneManagement.title")}
-              </Text>
-            </Pressable>
+              {t("laneManagement.title")}
+            </Button>
 
-            <Pressable
+            <Button
+              theme={theme}
+              variant="primary"
               onPress={() => {
                 if (!drag.isDragLocked() && !completionPendingRef.current)
                   setImportOpen(true);
               }}
-              style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonText}>{t("import.title")}</Text>
-            </Pressable>
+              {t("import.title")}
+            </Button>
           </View>
         </View>
 
@@ -565,15 +560,17 @@ function KanbanBoardContent(props: KanbanBoardProps) {
               ? t("kanban.saveFailed", { error: taskOperationError })
               : t("kanban.conflictError", { error: settings.saveError })}
           </Text>
-          <Pressable
+          <Button
+            theme={theme}
+            variant="outline"
+            size="sm"
             onPress={() => {
               setTaskOperationError(null);
               settings.reload();
             }}
-            style={styles.conflictAction}
           >
-            <Text style={styles.conflictActionText}>{t("kanban.refresh")}</Text>
-          </Pressable>
+            {t("kanban.refresh")}
+          </Button>
         </View>
       )}
 
@@ -757,47 +754,12 @@ function createBoardStyles(
       fontWeight: "700",
       color: theme.colors.foreground,
     },
-    statsBadge: {
-      backgroundColor: theme.colors.surface2,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 10,
-    },
-    statsText: {
-      fontSize: 11,
-      color: theme.colors.foregroundMuted,
-      fontWeight: "600",
-    },
     headerActions: {
       flexDirection: "row",
       flexWrap: "wrap",
       maxWidth: "100%",
       alignItems: "center",
       gap: 8,
-    },
-    primaryButton: {
-      backgroundColor: theme.colors.accent,
-      paddingHorizontal: 14,
-      paddingVertical: 8,
-      borderRadius: 8,
-    },
-    primaryButtonText: {
-      color: theme.colors.accentForeground,
-      fontSize: 13,
-      fontWeight: "600",
-    },
-    secondaryButton: {
-      backgroundColor: theme.colors.surface1,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 8,
-    },
-    secondaryButtonText: {
-      color: theme.colors.foreground,
-      fontSize: 13,
-      fontWeight: "500",
     },
     filterWrapper: {
       maxWidth: 520,
@@ -822,19 +784,6 @@ function createBoardStyles(
       color: theme.colors.statusDanger,
       fontSize: 13,
       flex: 1,
-    },
-    conflictAction: {
-      marginLeft: 10,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      backgroundColor: theme.colors.surface1,
-      borderRadius: 4,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-    },
-    conflictActionText: {
-      fontSize: 12,
-      color: theme.colors.foreground,
     },
     lanesWrapper: {
       flex: 1,

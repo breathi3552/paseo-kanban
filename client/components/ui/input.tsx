@@ -43,10 +43,10 @@ export function Input({
 
   const handleKeyDown = (event: WebSyntheticKeyEvent) => {
     if (event.isComposing || event.keyCode === 229) return;
-    if (event.key === "Escape" && onEscape) {
+    if (event.key === "Escape") {
       event.preventDefault?.();
       event.stopPropagation?.();
-      onEscape();
+      onEscape?.();
     }
   };
 

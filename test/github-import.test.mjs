@@ -281,3 +281,21 @@ test("GitHub 导入弹窗操作按钮统一接入 Button 原子组件与 loading
   assert.ok(submitBtn, "Import 按钮必须存在并具有标准 accessibilityLabel");
   assert.equal(submitBtn.props.accessibilityRole, "button");
 });
+
+test("GitHub 导入弹窗排序与分页导航按钮统一收敛至 Button 原子组件", async (t) => {
+  const { renderer } = await setup(t, {
+    rpc: async () => page(1, 25, 60),
+  });
+  await choose(renderer, "Project", "project-a");
+  const dialog = modal(renderer);
+  const nextBtn = dialog
+    .findAllByType("Pressable")
+    .find((n) => n.props.accessibilityLabel === "Next page");
+  assert.ok(nextBtn, "Next page 按钮必须存在");
+  assert.equal(nextBtn.props.accessibilityRole, "button");
+  assert.equal(
+    typeof nextBtn.props.style,
+    "function",
+    "必须使用 Button 状态矩阵动态样式函数",
+  );
+});

@@ -151,6 +151,16 @@ export function loadClientModule(file, moduleOverrides = {}) {
           Icon: "Icon",
           TextInput: "TextInput",
           ScrollView: mockReactNative.ScrollView,
+          useToast: () => ({
+            show: () => {},
+            error: () => {},
+          }),
+        };
+      if (id === "@getpaseo/plugin/client/ui")
+        return {
+          SettingsSelect: (props) => React.createElement("Select", props),
+          ExternalLink: (props) =>
+            React.createElement("ExternalLink", props, props.children),
         };
       if (id.startsWith(".")) {
         const resolved = path.resolve(path.dirname(filePath), id);

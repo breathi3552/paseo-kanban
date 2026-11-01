@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -7,6 +7,7 @@ import {
   type StyleProp,
   type ViewStyle,
   type TextStyle,
+  type GestureResponderEvent,
 } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 
@@ -21,18 +22,22 @@ interface ButtonInteractionState {
   focused?: boolean;
 }
 
-export interface ButtonProps {
+export interface ButtonProps extends Omit<
+  ComponentProps<typeof Pressable>,
+  "style" | "children"
+> {
   children?: ReactNode;
   variant?: ButtonVariant;
   size?: ButtonSize;
   disabled?: boolean;
   loading?: boolean;
   icon?: ReactNode;
-  onPress?: (event?: unknown) => void | Promise<unknown>;
+  onPress?: (event: GestureResponderEvent) => void | Promise<unknown>;
   accessibilityLabel?: string;
   theme: PluginSurfaceProps["theme"];
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
+  dataSet?: Record<string, string>;
 }
 
 export function Button({
@@ -47,6 +52,7 @@ export function Button({
   theme,
   style,
   textStyle,
+  ...restProps
 }: ButtonProps) {
   const colors = theme.colors;
   const blocked = disabled || loading;
@@ -85,6 +91,7 @@ export function Button({
 
   return (
     <Pressable
+      {...restProps}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: blocked }}

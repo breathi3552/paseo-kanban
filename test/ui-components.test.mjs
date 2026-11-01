@@ -174,6 +174,37 @@ test("Input 基础行为：文本更新、Esc 拦截与冒泡阻止", async () =
   assert.equal(defaultPrevented, true);
 });
 
+test("Input 无论是否传入 onEscape，均在按下 Escape 时消费事件阻止向外冒泡", async () => {
+  const Input = loadClientComponent("components/ui/input", "Input");
+  let propagationStopped = false;
+  let defaultPrevented = false;
+
+  let renderer;
+  await act(async () => {
+    renderer = TestRenderer.create(
+      React.createElement(Input, {
+        theme,
+        value: "Some input text",
+      }),
+    );
+  });
+
+  const textInput = renderer.root.findByType("TextInput");
+  const fakeEvent = {
+    key: "Escape",
+    isComposing: false,
+    stopPropagation: () => {
+      propagationStopped = true;
+    },
+    preventDefault: () => {
+      defaultPrevented = true;
+    },
+  };
+  textInput.props.onKeyDown?.(fakeEvent);
+  assert.equal(propagationStopped, true);
+  assert.equal(defaultPrevented, true);
+});
+
 test("Dialog 基础行为：对话框契约、通用关闭、canClose 防护与滚动焦点挂载", async () => {
   const Dialog = loadClientComponent("components/ui/dialog", "Dialog", {
     "../../platform/web": {
@@ -371,4 +402,90 @@ test("ConfirmDialog 基础行为：确认、取消、加载防重与错误提示
     deleteButton.props.onPress();
   });
   assert.equal(confirmed, 1);
+});
+
+test("Badge 基础行为：文本渲染、变体样式与自定义内容", async () => {
+  const Badge = loadClientComponent("components/ui/badge", "Badge");
+
+  let renderer;
+  await act(async () => {
+    renderer = TestRenderer.create(
+      React.createElement(
+        Badge,
+        {
+          theme,
+          variant: "secondary",
+        },
+        "5 tasks",
+      ),
+    );
+  });
+
+  const textNode = renderer.root.findByType("Text");
+  assert.equal(textNode.props.children, "5 tasks");
+
+  // 测试 outline 变体
+  await act(async () => {
+    renderer.update(
+      React.createElement(
+        Badge,
+        {
+          theme,
+          variant: "outline",
+        },
+        "Outline",
+      ),
+    );
+  });
+  const updatedText = renderer.root.findByType("Text");
+  assert.equal(updatedText.props.children, "Outline");
+});
+
+test("Checkbox 基础行为：勾选/反选切换、状态契约与禁用保护", async () => {
+  const Checkbox = loadClientComponent("components/ui/checkbox", "Checkbox");
+  let checked = false;
+
+  let renderer;
+  await act(async () => {
+    renderer = TestRenderer.create(
+      React.createElement(Checkbox, {
+        theme,
+        checked,
+        accessibilityLabel: "Complete task",
+        onCheckedChange: (next) => {
+          checked = next;
+        },
+      }),
+    );
+  });
+
+  const node = renderer.root.findByProps({ accessibilityRole: "checkbox" });
+  assert.equal(node.props.accessibilityState.checked, false);
+
+  // 触发点击切换
+  await act(async () => {
+    node.props.onPress({ stopPropagation() {} });
+  });
+  assert.equal(checked, true);
+});
+
+test("IssueLink 基础行为：使用宿主 ExternalLink 渲染并保持安全链接与无障碍标签", async () => {
+  const IssueLink = loadClientComponent("modals/issue-link", "IssueLink");
+
+  let renderer;
+  await act(async () => {
+    renderer = TestRenderer.create(
+      React.createElement(IssueLink, {
+        url: "https://github.com/example/repo/issues/42",
+        theme,
+      }),
+    );
+  });
+
+  const linkNode = renderer.root.findByType("ExternalLink");
+  assert.equal(
+    linkNode.props.href,
+    "https://github.com/example/repo/issues/42",
+  );
+  assert.equal(linkNode.props.accessibilityLabel, "在浏览器打开 Issue");
 });

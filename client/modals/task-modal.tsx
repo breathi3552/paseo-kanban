@@ -8,7 +8,6 @@ import {
 } from "react";
 import { View, Text, Pressable, StyleSheet, PanResponder } from "react-native";
 import {
-  TextInput,
   Icon,
   ScrollView,
   useToast,
@@ -27,9 +26,13 @@ import {
 import { useI18n } from "../platform/i18n";
 import { useTaskDelete } from "./task-delete-dialog";
 import { IssueLink } from "./issue-link";
-import { Dialog } from "../components/ui/dialog";
-import { Button } from "../components/ui/button";
-import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import {
+  Dialog,
+  Button,
+  ConfirmDialog,
+  Input,
+  Checkbox,
+} from "../components/ui";
 
 type PluginTheme = PluginSurfaceProps["theme"];
 
@@ -348,10 +351,10 @@ export function TaskModal({
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>{t("taskModal.titleLabel")}</Text>
-            <TextInput
+            <Input
+              theme={theme}
               style={styles.input}
               placeholder={t("taskModal.titlePlaceholder")}
-              placeholderTextColor={theme.colors.foregroundMuted}
               value={snapshot.title}
               onChangeText={(txt) => session.setTitle(txt)}
             />
@@ -403,7 +406,8 @@ export function TaskModal({
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>{t("taskModal.descLabel")}</Text>
             <View style={styles.descWrapper}>
-              <TextInput
+              <Input
+                theme={theme}
                 style={[
                   styles.multilineInput,
                   { height: descHeight, paddingBottom: 22 },
@@ -411,7 +415,6 @@ export function TaskModal({
                 multiline
                 numberOfLines={3}
                 placeholder={t("taskModal.descPlaceholder")}
-                placeholderTextColor={theme.colors.foregroundMuted}
                 value={snapshot.description}
                 onChangeText={(txt) => session.setDescription(txt)}
               />
@@ -439,27 +442,19 @@ export function TaskModal({
 
             {snapshot.subtasks.map((subtask) => (
               <View key={subtask.id} style={styles.subtaskItem}>
-                <Pressable
-                  onPress={() =>
+                <Checkbox
+                  theme={theme}
+                  checked={subtask.completed}
+                  size={18}
+                  onCheckedChange={() =>
                     session.updateSubtask(subtask.id, {
                       completed: !subtask.completed,
                     })
                   }
-                  style={[
-                    styles.subtaskCheck,
-                    subtask.completed && styles.subtaskCheckCompleted,
-                  ]}
-                >
-                  {subtask.completed && (
-                    <Icon
-                      name="Check"
-                      size={14}
-                      color={theme.colors.accentForeground}
-                    />
-                  )}
-                </Pressable>
+                />
 
-                <TextInput
+                <Input
+                  theme={theme}
                   style={[
                     styles.subtaskInput,
                     subtask.completed && styles.subtaskInputCompleted,
@@ -469,7 +464,6 @@ export function TaskModal({
                     session.updateSubtask(subtask.id, { title: txt })
                   }
                   placeholder={t("taskModal.subtaskPlaceholder")}
-                  placeholderTextColor={theme.colors.foregroundMuted}
                 />
 
                 <Pressable
@@ -486,22 +480,22 @@ export function TaskModal({
             ))}
 
             <View style={styles.newSubtaskRow}>
-              <TextInput
+              <Input
+                theme={theme}
                 style={[styles.input, styles.newSubtaskInput]}
                 placeholder={t("taskModal.newSubtaskPlaceholder")}
-                placeholderTextColor={theme.colors.foregroundMuted}
                 value={newSubtaskTitle}
                 onChangeText={(txt) => setNewSubtaskTitle(txt)}
                 onSubmitEditing={handleAddSubtask}
               />
-              <Pressable
+              <Button
+                theme={theme}
+                size="sm"
+                variant="outline"
                 onPress={handleAddSubtask}
-                style={[styles.optionChip, styles.addStepButton]}
               >
-                <Text style={styles.optionChipText}>
-                  {t("taskModal.addStep")}
-                </Text>
-              </Pressable>
+                {t("taskModal.addStep")}
+              </Button>
             </View>
           </View>
         </ScrollView>
@@ -675,20 +669,6 @@ function createTaskModalStyles(theme: PluginTheme, compact: boolean) {
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border,
     },
-    subtaskCheck: {
-      width: 22,
-      height: 22,
-      borderRadius: 4,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: theme.colors.surface2,
-    },
-    subtaskCheckCompleted: {
-      backgroundColor: theme.colors.accent,
-      borderColor: theme.colors.accent,
-    },
     subtaskInput: {
       flex: 1,
       fontSize: 13,
@@ -706,10 +686,6 @@ function createTaskModalStyles(theme: PluginTheme, compact: boolean) {
     },
     newSubtaskInput: {
       flex: 1,
-    },
-    addStepButton: {
-      backgroundColor: theme.colors.surface2,
-      justifyContent: "center",
     },
     errorBanner: {
       backgroundColor: theme.colors.surface2,
