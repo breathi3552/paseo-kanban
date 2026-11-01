@@ -79,6 +79,8 @@ export function Dialog({
           aria-modal
           accessibilityViewIsModal
           accessibilityLabel={title}
+          tabIndex={-1}
+          {...({ dataSet: { dialogCard: "" } } as Record<string, unknown>)}
           style={[
             styles.card,
             {
@@ -109,8 +111,10 @@ export function Dialog({
               hitSlop={8}
               onPress={() => changeOpen(false)}
               disabled={!canClose()}
-              // Web 标记：避免抢占初始首焦点
-              {...({ "data-dialog-close": "" } as Record<string, unknown>)}
+              {...({
+                dataSet: { dialogClose: "" },
+                "data-dialog-close": "",
+              } as Record<string, unknown>)}
               style={({ pressed }) => [
                 styles.close,
                 pressed && { backgroundColor: colors.surface2 },

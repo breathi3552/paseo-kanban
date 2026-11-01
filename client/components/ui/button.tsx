@@ -15,6 +15,12 @@ export type ButtonVariant =
 
 export type ButtonSize = "default" | "sm" | "icon";
 
+interface ButtonInteractionState {
+  pressed: boolean;
+  hovered?: boolean;
+  focused?: boolean;
+}
+
 export interface ButtonProps {
   children?: ReactNode;
   variant?: ButtonVariant;
@@ -86,17 +92,42 @@ export function Button({
       onPress={(event) => {
         if (!blocked && onPress) return onPress(event);
       }}
-      style={({ pressed }) => [
-        styles.base,
-        size === "sm" && styles.sizeSm,
-        size === "icon" && styles.sizeIcon,
-        {
-          backgroundColor,
-          borderColor,
-          opacity: blocked ? 0.45 : pressed ? 0.8 : 1,
-        },
-        style,
-      ]}
+      style={(state: ButtonInteractionState) => {
+        const isHovered = Boolean(state.hovered && !blocked);
+        const isFocused = Boolean(state.focused && !blocked);
+        const isPressed = Boolean(state.pressed && !blocked);
+        let activeBg = backgroundColor;
+        let activeBorder = borderColor;
+
+        if (isFocused) {
+          activeBorder = colors.accent;
+        }
+
+        if (isHovered) {
+          if (isGhost || isOutline || variant === "secondary") {
+            activeBg = colors.surface2;
+          }
+        }
+
+        return [
+          styles.base,
+          size === "sm" && styles.sizeSm,
+          size === "icon" && styles.sizeIcon,
+          {
+            backgroundColor: activeBg,
+            borderColor: activeBorder,
+            opacity: blocked
+              ? 0.45
+              : isPressed
+                ? 0.85
+                : isHovered && (isPrimary || isDestructive)
+                  ? 0.92
+                  : 1,
+            ...(isPressed ? { transform: [{ scale: 0.98 }] } : {}),
+          },
+          style,
+        ];
+      }}
     >
       {loading ? (
         <ActivityIndicator size="small" color={textColor} />

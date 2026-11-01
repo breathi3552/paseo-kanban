@@ -28,6 +28,8 @@ interface WebElement {
   focus(): void;
   contains(element: WebElement | null): boolean;
   closest(selector: string): WebElement | null;
+  querySelector<T extends WebElement = WebElement>(selector: string): T | null;
+  dataset?: Record<string, string | undefined>;
   setAttribute(name: string, value: string): void;
   getAttribute(name: string): string | null;
   getClientRects(): { length: number };
@@ -98,21 +100,34 @@ const focusable = (root: WebElement) =>
       node.getClientRects().length > 0,
   );
 
-const initialFocusTarget = (root: WebElement): WebElement => {
-  const inputs = Array.from(
-    root.querySelectorAll('input:not([type="hidden"]), textarea, select'),
-  ).filter(
-    (node) =>
-      node.getAttribute("disabled") === null &&
-      node.getAttribute("aria-disabled") !== "true" &&
-      node.getClientRects().length > 0,
-  );
-  if (inputs.length > 0) return inputs[0];
+const isCloseButton = (node: WebElement): boolean => {
+  if (node.getAttribute("data-dialog-close") !== null) return true;
+  if (node.getAttribute("data-dialogclose") !== null) return true;
+  if (
+    node.dataset &&
+    ("dialogClose" in node.dataset || "dialogclose" in node.dataset)
+  )
+    return true;
+  const label = node.getAttribute("aria-label");
+  if (label === "Close" || label === "关闭") return true;
+  return false;
+};
 
-  const all = focusable(root);
-  const nonClose = all.filter(
-    (node) => node.getAttribute("data-dialog-close") === null,
+export const initialFocusTarget = (root: WebElement): WebElement => {
+  // 1. 优先聚焦弹窗卡片本身（Dialog Card / role="dialog"），让用户按需点击或 Tab 导航，防止自动夺焦输入框或关闭按钮
+  const dialogCard = root.querySelector?.<WebElement>(
+    '[role="dialog"], [data-dialog-card]',
   );
+  if (dialogCard) {
+    if (dialogCard.getAttribute("tabindex") === null) {
+      dialogCard.setAttribute("tabindex", "-1");
+    }
+    return dialogCard;
+  }
+
+  // 2. 兜底回退：非关闭按钮的可聚焦元素，排除所有带关闭标记的控件
+  const all = focusable(root);
+  const nonClose = all.filter((node) => !isCloseButton(node));
   return nonClose[0] ?? all[0] ?? root;
 };
 

@@ -264,3 +264,20 @@ test("读取失败与空列表显示明确状态，重试可恢复，慢请求�
   const empty = await setup(t, { rpc: async () => page(1, 0, 0) });
   assert.match(texts(modal(empty.renderer)), /No open issues/);
 });
+
+test("GitHub 导入弹窗操作按钮统一接入 Button 原子组件与 loading 态", async (t) => {
+  const { renderer } = await setup(t);
+  const dialog = modal(renderer);
+  // 验证底栏存在规范的 Cancel 与 Import 按钮
+  const cancelBtn = dialog
+    .findAllByType("Pressable")
+    .find((n) => n.props.accessibilityLabel === "Cancel");
+  assert.ok(cancelBtn, "Cancel 按钮必须存在并具有标准 accessibilityLabel");
+  assert.equal(cancelBtn.props.accessibilityRole, "button");
+
+  const submitBtn = dialog
+    .findAllByType("Pressable")
+    .find((n) => n.props.accessibilityLabel === "Import");
+  assert.ok(submitBtn, "Import 按钮必须存在并具有标准 accessibilityLabel");
+  assert.equal(submitBtn.props.accessibilityRole, "button");
+});

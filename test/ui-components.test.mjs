@@ -70,6 +70,64 @@ test("Button 基础行为：角色、文本、点击与禁用态", async () => {
   assert.equal(clicked, 1);
 });
 
+test("Button 桌面端状态矩阵：hovered、focused 与 pressed 动态样式计算", async () => {
+  const Button = loadClientComponent("components/ui/button", "Button");
+
+  let renderer;
+  await act(async () => {
+    renderer = TestRenderer.create(
+      React.createElement(
+        Button,
+        {
+          theme,
+          variant: "secondary",
+        },
+        "Hover me",
+      ),
+    );
+  });
+
+  const pressable = renderer.root.findByType("Pressable");
+  const styleFn = pressable.props.style;
+  assert.equal(
+    typeof styleFn,
+    "function",
+    "Pressable style 必须为状态驱动函数",
+  );
+
+  // 1. 默认常态
+  const defaultStyles = []
+    .concat(styleFn({ pressed: false, hovered: false, focused: false }))
+    .flat()
+    .filter(Boolean);
+  const defaultStyleObj = Object.assign({}, ...defaultStyles);
+  assert.equal(defaultStyleObj.backgroundColor, theme.colors.surface1);
+
+  // 2. 悬停态 (Hovered)：secondary/ghost 背景应过渡为 surface2
+  const hoveredStyles = []
+    .concat(styleFn({ pressed: false, hovered: true, focused: false }))
+    .flat()
+    .filter(Boolean);
+  const hoveredStyleObj = Object.assign({}, ...hoveredStyles);
+  assert.equal(hoveredStyleObj.backgroundColor, theme.colors.surface2);
+
+  // 3. 按压态 (Pressed)：产生微触感缩放 scale(0.98)
+  const pressedStyles = []
+    .concat(styleFn({ pressed: true, hovered: true, focused: false }))
+    .flat()
+    .filter(Boolean);
+  const pressedStyleObj = Object.assign({}, ...pressedStyles);
+  assert.deepEqual(pressedStyleObj.transform, [{ scale: 0.98 }]);
+
+  // 4. 键盘聚焦态 (Focused)：展示清晰的 Focus Ring
+  const focusedStyles = []
+    .concat(styleFn({ pressed: false, hovered: false, focused: true }))
+    .flat()
+    .filter(Boolean);
+  const focusedStyleObj = Object.assign({}, ...focusedStyles);
+  assert.equal(focusedStyleObj.borderColor, theme.colors.accent);
+});
+
 test("Input 基础行为：文本更新、Esc 拦截与冒泡阻止", async () => {
   const Input = loadClientComponent("components/ui/input", "Input");
   let text = "Initial";
@@ -175,6 +233,82 @@ test("Dialog 基础行为：对话框契约、通用关闭、canClose 防护与�
     closeButton.props.onPress();
   });
   assert.equal(open, false);
+});
+
+test("Dialog 初始焦点与防抢焦策略：优先聚焦 Dialog 容器卡片，排除关闭按钮", async () => {
+  const { loadClientModule } = await import("./helpers/react-host-env.mjs");
+  const web = loadClientModule("platform/web");
+  const initialFocusTarget = web.initialFocusTarget;
+
+  // 构造模拟 DOM 结构，模拟 Dialog 打开时的 DOM 节点树
+  const container = {
+    tabIndex: -1,
+    attributes: {},
+    setAttribute(k, v) {
+      this.attributes[k] = v;
+    },
+    getAttribute(k) {
+      return this.attributes[k] ?? null;
+    },
+  };
+
+  const closeButton = {
+    nodeName: "BUTTON",
+    attributes: { "aria-label": "关闭" },
+    dataset: { dialogClose: "" },
+    getAttribute(k) {
+      return this.attributes[k] ?? null;
+    },
+    getClientRects: () => [{ width: 24, height: 24 }],
+  };
+
+  const titleInput = {
+    nodeName: "INPUT",
+    attributes: { type: "text", name: "title" },
+    dataset: {},
+    getAttribute(k) {
+      return this.attributes[k] ?? null;
+    },
+    getClientRects: () => [{ width: 200, height: 32 }],
+  };
+
+  const dialogCard = {
+    nodeName: "DIV",
+    attributes: { role: "dialog", "aria-modal": "true" },
+    dataset: { dialogCard: "" },
+    getAttribute(k) {
+      return this.attributes[k] ?? null;
+    },
+    setAttribute(k, v) {
+      this.attributes[k] = v;
+    },
+    getClientRects: () => [{ width: 600, height: 400 }],
+  };
+
+  // 当存在 role="dialog" 时，initialFocusTarget 应当优先返回 dialogCard，而不是直接把焦点抢进 titleInput
+  const mockRoot = {
+    ...container,
+    querySelector: (selector) => {
+      if (selector.includes('[role="dialog"]')) return dialogCard;
+      return null;
+    },
+    querySelectorAll: (selector) => {
+      if (selector.includes("input")) return [titleInput];
+      return [closeButton, titleInput];
+    },
+  };
+
+  const target = initialFocusTarget(mockRoot);
+  assert.equal(
+    target,
+    dialogCard,
+    "首焦点必须落在 Dialog 容器卡片上，禁止直接夺焦标题输入框",
+  );
+  assert.equal(
+    dialogCard.attributes["tabindex"],
+    "-1",
+    "Dialog 容器卡片必须具备 tabindex=-1 以便聚焦",
+  );
 });
 
 test("ConfirmDialog 基础行为：确认、取消、加载防重与错误提示", async () => {

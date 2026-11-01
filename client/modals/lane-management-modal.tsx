@@ -7,7 +7,6 @@ import {
 import {
   View,
   Text,
-  Pressable,
   StyleSheet,
   Animated,
   type ScrollView as NativeScrollView,
@@ -19,6 +18,7 @@ import { useI18n } from "../platform/i18n";
 import { useLaneReorder } from "../session/use-lane-reorder";
 import { Dialog } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
+import { Button, type ButtonVariant } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 
 interface Props {
@@ -56,59 +56,41 @@ export function LaneManagementModal(props: Props) {
     disabled = false,
     display?: string,
     tone: "secondary" | "primary" | "danger" | "destructive" = "secondary",
-    icon?: ComponentProps<typeof Icon>["name"],
+    iconName?: ComponentProps<typeof Icon>["name"],
   ) => {
-    const filled = tone === "primary" || tone === "destructive";
-    const danger = tone === "danger" || tone === "destructive";
-    const textColor = filled
-      ? colors.accentForeground
-      : danger
-        ? colors.statusDanger
-        : colors.foreground;
-    const blocked = disabled || isSaving;
+    const isIconOnly = Boolean(iconName && !display);
+    const variant: ButtonVariant =
+      tone === "primary"
+        ? "primary"
+        : tone === "danger" || tone === "destructive"
+          ? "destructive"
+          : "secondary";
+    const iconNode = iconName ? (
+      <Icon
+        name={iconName}
+        size={16}
+        color={
+          variant === "primary" || variant === "destructive"
+            ? colors.accentForeground
+            : colors.foreground
+        }
+      />
+    ) : undefined;
+
     return (
-      <Pressable
-        accessibilityState={{ disabled: blocked }}
-        accessibilityRole="button"
+      <Button
+        theme={props.theme}
+        variant={variant}
+        size={isIconOnly ? "icon" : "default"}
+        icon={iconNode}
+        disabled={disabled || isSaving}
         accessibilityLabel={label}
         onPress={() => {
           void onPress();
         }}
-        disabled={blocked}
-        style={({ pressed }) => [
-          styles.button,
-          {
-            borderColor: danger
-              ? colors.statusDanger
-              : filled
-                ? colors.accent
-                : colors.border,
-            backgroundColor:
-              tone === "destructive"
-                ? colors.statusDanger
-                : filled
-                  ? colors.accent
-                  : colors.surface1,
-          },
-          icon && styles.iconButton,
-          { opacity: blocked ? 0.4 : pressed ? 0.8 : 1 },
-        ]}
       >
-        {icon ? (
-          <Icon name={icon} size={16} color={textColor} />
-        ) : (
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.buttonText,
-              { color: textColor },
-              filled && styles.buttonTextFilled,
-            ]}
-          >
-            {display ?? label}
-          </Text>
-        )}
-      </Pressable>
+        {display ?? (isIconOnly ? undefined : label)}
+      </Button>
     );
   };
   const adding = editing?.kind === "add";
@@ -466,28 +448,6 @@ function createLaneModalStyles(
       justifyContent: "flex-end",
       gap: 10,
       marginTop: 10,
-    },
-    button: {
-      minHeight: 32,
-      paddingHorizontal: 8,
-      paddingVertical: 6,
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: 8,
-      borderWidth: 1,
-    },
-    iconButton: {
-      width: 32,
-      height: 32,
-      paddingHorizontal: 0,
-      paddingVertical: 0,
-    },
-    buttonText: {
-      fontSize: 13,
-      fontWeight: "400",
-    },
-    buttonTextFilled: {
-      fontWeight: "600",
     },
     errorText: {
       color: colors.statusDanger,

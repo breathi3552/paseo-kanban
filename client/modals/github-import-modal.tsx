@@ -19,6 +19,7 @@ import { executeIssueImport, type SaveFn } from "../session/kanban-session";
 import type { ProjectItem } from "../session/use-projects";
 import { useI18n, type TranslationKey } from "../platform/i18n";
 import { Dialog } from "../components/ui/dialog";
+import { Button } from "../components/ui/button";
 
 interface Props {
   board: KanbanBoard;
@@ -445,9 +446,12 @@ export function GitHubImportModal(props: Props) {
         <View>
           <Text style={styles.error}>{t("import.error")}</Text>
           {!props.settingsReady && (
-            <Pressable
-              style={styles.button}
+            <Button
+              theme={props.theme}
+              variant="outline"
+              size="sm"
               disabled={saving}
+              accessibilityLabel={t("import.retry")}
               onPress={async () => {
                 if (savingRef.current) return;
                 savingRef.current = true;
@@ -457,8 +461,8 @@ export function GitHubImportModal(props: Props) {
                 setSaving(false);
               }}
             >
-              <Text style={styles.title}>{t("import.retry")}</Text>
-            </Pressable>
+              {t("import.retry")}
+            </Button>
           )}
         </View>
       )}
@@ -467,26 +471,25 @@ export function GitHubImportModal(props: Props) {
           {t("import.selected", { count: chosen.length })}
         </Text>
         <View style={styles.footerButtons}>
-          <Pressable
-            style={styles.button}
+          <Button
+            theme={props.theme}
+            variant="secondary"
             disabled={saving}
+            accessibilityLabel={t("import.cancel")}
             onPress={props.onClose}
           >
-            <Text style={styles.title}>{t("import.cancel")}</Text>
-          </Pressable>
-          <Pressable
-            style={[
-              styles.button,
-              styles.primary,
-              (disabled || !validProject || !validLane || !chosen.length) &&
-                styles.primaryDisabled,
-            ]}
+            {t("import.cancel")}
+          </Button>
+          <Button
+            theme={props.theme}
+            variant="primary"
+            loading={saving}
             disabled={disabled || !validProject || !validLane || !chosen.length}
+            accessibilityLabel={t("import.submit")}
             onPress={submit}
           >
-            {saving && <ActivityIndicator color={colors.accentForeground} />}
-            <Text style={styles.primaryText}>{t("import.submit")}</Text>
-          </Pressable>
+            {t("import.submit")}
+          </Button>
         </View>
       </View>
     </Dialog>
@@ -578,17 +581,6 @@ function createImportStyles(
       padding: 8,
       alignItems: "center",
       justifyContent: "center",
-    },
-    primary: {
-      backgroundColor: colors.accent,
-      borderRadius: 6,
-      paddingHorizontal: 16,
-    },
-    primaryDisabled: {
-      opacity: 0.4,
-    },
-    primaryText: {
-      color: colors.accentForeground,
     },
     error: {
       color: colors.statusDanger,
