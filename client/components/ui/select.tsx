@@ -62,6 +62,27 @@ interface DOMElement {
   };
 }
 
+function findDOMNode(refCurrent: unknown): DOMElement | null {
+  if (!refCurrent) return null;
+  const target = refCurrent as Record<string, unknown>;
+  if (typeof target.getBoundingClientRect === "function") {
+    return target as DOMElement;
+  }
+  if (
+    typeof target.getScrollableNode === "function" &&
+    target.getScrollableNode()
+  ) {
+    return target.getScrollableNode() as DOMElement;
+  }
+  if (
+    target._node &&
+    typeof (target._node as DOMElement).getBoundingClientRect === "function"
+  ) {
+    return target._node as DOMElement;
+  }
+  return null;
+}
+
 interface SelectInteractionState {
   pressed: boolean;
   hovered?: boolean;
@@ -115,7 +136,7 @@ export function Select({
     if (Platform.OS !== "web" || typeof window === "undefined") {
       return;
     }
-    const el = triggerRef.current as unknown as DOMElement | null;
+    const el = findDOMNode(triggerRef.current);
     if (el && typeof el.getBoundingClientRect === "function") {
       const r = el.getBoundingClientRect();
       if (r.width > 0 || r.height > 0) {
@@ -133,13 +154,13 @@ export function Select({
 
   const handleToggle = () => {
     if (disabled) return;
-    setIsOpen((prev) => {
-      if (!prev) {
-        setSearchQuery("");
-        updateTriggerRect();
-      }
-      return !prev;
-    });
+    if (!isOpen) {
+      updateTriggerRect();
+      setSearchQuery("");
+      setIsOpen(true);
+    } else {
+      setIsOpen(false);
+    }
   };
 
   const handleSelect = (nextValue: string) => {
@@ -192,6 +213,7 @@ export function Select({
       width: align === "fill" ? triggerRect.width : undefined,
       minWidth: Math.max(triggerRect.width, 180),
       maxWidth: 360,
+      zIndex: 101,
     };
   }, [triggerRect, align]);
 
@@ -280,6 +302,11 @@ export function Select({
 
         {isOpen && (
           <WebSelectPortal onDismiss={() => setIsOpen(false)}>
+            <Pressable
+              style={styles.backdrop}
+              onPress={() => setIsOpen(false)}
+              accessibilityRole="none"
+            />
             <View
               pointerEvents="auto"
               style={[
@@ -423,6 +450,15 @@ const styles = StyleSheet.create({
   triggerText: {
     fontSize: 13,
     flex: 1,
+  },
+  backdrop: {
+    position: "fixed" as unknown as "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "transparent",
+    zIndex: 100,
   },
   popover: {
     maxHeight: 220,

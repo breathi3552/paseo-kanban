@@ -316,22 +316,11 @@ export function WebSelectPortal({
       position: "fixed",
       inset: "0",
       zIndex: "100",
-      pointerEvents: "none",
+      pointerEvents: "auto",
     });
     document.body.appendChild(node);
     setContainer(node);
 
-    const outside = (event: MenuDocumentEvent) => {
-      if (!node.contains(event.target)) {
-        dismiss.current();
-      }
-    };
-    const resize = () => dismiss.current();
-    const scroll = (event: MenuDocumentEvent) => {
-      if (!node.contains(event.target)) {
-        dismiss.current();
-      }
-    };
     const keydown = (event: MenuDocumentEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -340,16 +329,10 @@ export function WebSelectPortal({
       }
     };
 
-    document.addEventListener("pointerdown", outside, true);
-    document.addEventListener("scroll", scroll, true);
     document.addEventListener("keydown", keydown, true);
-    window.addEventListener("resize", resize);
 
     return () => {
-      document.removeEventListener("pointerdown", outside, true);
-      document.removeEventListener("scroll", scroll, true);
       document.removeEventListener("keydown", keydown, true);
-      window.removeEventListener("resize", resize);
       node.remove();
     };
   }, []);
