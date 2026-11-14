@@ -4,7 +4,7 @@
 
 [Paseo](https://paseo.sh) 工作区的任务看板插件。
 
-![Paseo 看板全景概览](./assets/marketplace/board-0.1.3.png)
+![Paseo 看板全景概览](./assets/marketplace/board-overview.png)
 
 ---
 
@@ -29,16 +29,23 @@
 
 ### 看板全景
 
-![看板全景](./assets/marketplace/board-0.1.3.png)
+![看板全景](./assets/marketplace/board-overview.png)
+
+### 发送到 Agent
+
+![发送到 Agent](./assets/marketplace/send-to-agent.png)
+
+### 拖拽交互与位移动画
+
+![拖拽交互与位移动画](./assets/marketplace/drag-and-drop.png)
+
+### GitHub Issue 导入
+
+![GitHub Issue 导入](./assets/marketplace/github-issue-import.png)
 
 ### 任务详情与子步骤
 
-![任务详情与子步骤](./assets/marketplace/task-editor-0.1.3.png)
-
-### 工作区标签页与分屏
-
-![工作区标签页与分屏](./assets/marketplace/workspace-split-0.1.3.png)
-
+![任务详情与子步骤](./assets/marketplace/task-editor.png)
 ---
 
 ## 环境要求

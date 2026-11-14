@@ -1,5 +1,15 @@
 {
   "id": "paseo-kanban",
+  "name": "Kanban",
+  "description": "A Kanban board plugin for Paseo workspaces",
+  "icon": "assets/marketplace/icon.png",
+  "media": [
+    "assets/marketplace/board-overview.png",
+    "assets/marketplace/send-to-agent.png",
+    "assets/marketplace/drag-and-drop.png",
+    "assets/marketplace/github-issue-import.png",
+    "assets/marketplace/task-editor.png"
+  ],
   "requirements": {
     "paseo": ">=0.11.4"
   }

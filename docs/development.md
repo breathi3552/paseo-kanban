@@ -69,3 +69,12 @@ gh workflow run release.yml --ref "v$VERSION"
 - **本地复核**：发布后可运行 `npm run verify:release`，核对 npm 元数据、tarball 与本地待打包文件的一致性。
 - **重试恢复**：若因网络或凭据问题失败，修复后在同一 tag 上重跑工作流。若 npm 已发布成功而后续步骤失败，重跑工作流会自动跳过重复发包并补齐校验与 GitHub Release。
 - **版本不可变**：已发布的 npm 版本与 git tag 不可覆盖或移动。如需修正包内容，必须递增版本号发布新版本。
+
+## 4. 官方市场素材规范
+
+按照 Paseo 官方插件发布规范（Paseo >= 0.11.0），插件展示素材遵循以下约定：
+
+1. **清单声明**：在 `paseo-plugin.json` 中配置 `icon`（512×512 PNG 图标）与 `media` 数组（首张为插件市场卡片缩略图，后续为各核心特性截图）。
+2. **发布包包含素材**：`package.json` 的 `files` 字段必须包含 `"assets/"`，确保发布至 npm 的包体包含静态素材文件。
+3. **命名约定**：素材文件统一存放于 `assets/marketplace/`，采用语义化命名（如 `board-overview.png`、`send-to-agent.png`、`drag-and-drop.png`、`github-issue-import.png`、`task-editor.png`），不绑定临时版本号。
+4. **官方 Registry 映射**：官方插件注册表（`getpaseo/plugins`）在收录或版本更新时，会将媒体素材映射为当前版本固定 commit SHA 的公开 HTTPS URL。截图必须使用虚构示例数据，严禁泄露真实凭据或私有项目内容。

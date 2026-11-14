@@ -26,7 +26,8 @@
     "index.server.ts",
     "client/",
     "server/",
-    "shared/"
+    "shared/",
+    "assets/"
   ],
   "scripts": {
     "test": "node --experimental-strip-types --test \"test/*.test.mjs\"",

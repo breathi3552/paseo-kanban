@@ -4,7 +4,7 @@
 
 A Kanban board plugin for [Paseo](https://paseo.sh) workspaces.
 
-![Paseo Kanban Board](./assets/marketplace/board-0.1.3.png)
+![Paseo Kanban Board](./assets/marketplace/board-overview.png)
 
 ---
 
@@ -29,16 +29,23 @@ A Kanban board plugin for [Paseo](https://paseo.sh) workspaces.
 
 ### Board overview
 
-![Board Overview](./assets/marketplace/board-0.1.3.png)
+![Board overview](./assets/marketplace/board-overview.png)
 
-### Task details and subtasks checklist
+### Send to Agent
 
-![Task Editor](./assets/marketplace/task-editor-0.1.3.png)
+![Send to Agent](./assets/marketplace/send-to-agent.png)
 
-### Workspace tabs and split controls
+### Drag and drop displacement
 
-![Workspace Split](./assets/marketplace/workspace-split-0.1.3.png)
+![Drag and drop with displacement animation](./assets/marketplace/drag-and-drop.png)
 
+### GitHub issue import
+
+![GitHub issue import](./assets/marketplace/github-issue-import.png)
+
+### Task details and subtasks
+
+![Task details and subtasks](./assets/marketplace/task-editor.png)
 ---
 
 ## Requirements
