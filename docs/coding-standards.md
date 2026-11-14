@@ -33,7 +33,7 @@
 
 ## 2. 国际化 (i18n)
 
-所有用户可见文本（界面文案、占位符、校验错误、Toast 通知与 `accessibilityLabel`）统一在 `client/platform/i18n.tsx` 的中文字典 `zh` 与英文字典 `en` 中定义。打开页面时按宿主与系统语言解析（见 [ADR-0003](./adr/0003-internationalization-and-locale-adaptation.md)）。
+所有用户可见文本（界面文案、占位符、校验错误、Toast 通知与 `accessibilityLabel`）统一在 `client/platform/i18n.tsx` 的中文字典 `zh` 与英文字典 `en` 中定义。打开页面时按宿主与系统语言解析。
 
 ## 3. 操作反馈与并发保护
 
