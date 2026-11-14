@@ -13,7 +13,6 @@ A Kanban board plugin for [Paseo](https://paseo.sh) workspaces.
 - **Send to Agent**: Send a card's title, description, steps, and source to a new Agent session using a host preset. Select an existing workspace, a new regular workspace, or a new worktree. Agent execution does not update card status.
 - **Drag and drop with displacement animation**: Reorder cards within a lane or move cards across lanes. Displays animated slot displacement in the target lane and scrolls automatically near viewport edges.
 - **GitHub issue import**: Import open issues from the project repository's GitHub origin into a selected lane using daemon `gh` CLI credentials. Includes pagination, repository-wide creation-time sorting, deduplication, and source links.
-- **Completion lane and status restoration**: A dedicated completion lane collects finished tasks. Unchecking or dragging a card out of the completion lane restores it to its original ordinary swimlane without data loss.
 
 ---
 
