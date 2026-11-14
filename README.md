@@ -8,27 +8,21 @@ A Kanban board plugin for [Paseo](https://paseo.sh) workspaces.
 
 ---
 
-## Highlights
+## Key features
 
-- **Swimlane management**: Add, rename, and delete lanes in a horizontal dialog. Reorder lanes using the left and right buttons or drag handles, then save the order. Deleting a lane with unfinished tasks requires confirmation and deletes those tasks across all projects. Completed tasks are kept.
-- **Task context menu**: Right-click a card to edit, move, complete, copy the prompt, open the source issue, or delete. Drag a card from anywhere on its surface except the checkbox and the Send to Agent button.
-- **Drag and drop**: Reorder cards within a lane or move cards across lanes. Displays animated slot displacement and scrolls automatically near viewport edges.
 - **Send to Agent**: Send a card's title, description, steps, and source to a new Agent session using a host preset. Select an existing workspace, a new regular workspace, or a new worktree. Agent execution does not update card status.
-- **GitHub issue import**: Import open issues from the project repository's GitHub origin into a selected lane. Includes pagination, repository-wide creation-time sorting, deduplication, and source links.
+- **Drag and drop with displacement animation**: Reorder cards within a lane or move cards across lanes. Displays animated slot displacement in the target lane and scrolls automatically near viewport edges.
+- **GitHub issue import**: Import open issues from the project repository's GitHub origin into a selected lane using daemon `gh` CLI credentials. Includes pagination, repository-wide creation-time sorting, deduplication, and source links.
+- **Completion lane and status restoration**: A dedicated completion lane collects finished tasks. Unchecking or dragging a card out of the completion lane restores it to its original ordinary swimlane without data loss.
 
 ---
 
-## Other features
+## General features
 
-- **Task details and subtasks**:
-  - Edit task titles and multi-line descriptions with a resizable text box.
-  - Track checklist progress with live subtask counters.
-  - Link tasks to Paseo projects with compact select menus.
-- **Task completion and restoration**: Check a card or drag it into the completion lane to finish. Uncheck or drag out of the completion lane to restore the card to its original ordinary swimlane.
-- **Workspace tabs and splits**: Open the board beside an agent or terminal with Paseo's split controls, initially filtered to the workspace project, or open it from the sidebar.
-- **Project filtering**: Filter cards by Paseo project or view unassigned tasks. Includes searchable dropdown lists. Filters are independent per window while sharing the underlying board data.
-- **Native UI components**: Uses local React components (`Button`, `Input`, `Dialog`, `ConfirmDialog`, `Badge`, `Checkbox`, `Select`) styled with Paseo theme CSS variables, with no third-party UI dependencies.
-- **Host storage and concurrency protection**: Stores board data in host-scoped plugin settings. Uses optimistic revision checks (CAS) to prevent silent overwrites and preserve form drafts.
+- **Task details and subtasks**: Edit task titles and multi-line descriptions with a resizable text box, and track checklist progress with live counters. Right-click a card to edit, move, copy the full prompt, open the source issue, or delete.
+- **Swimlane management**: Add, rename, and reorder lanes in a horizontal dialog. Deleting a lane with unfinished tasks requires confirmation to prevent accidental deletion.
+- **Project filtering**: Link tasks to Paseo projects and filter cards by project with searchable dropdown lists. Filters are independent per window while sharing the underlying board data.
+- **Workspace tabs and splits**: Open the board from the sidebar or beside an agent or terminal with Paseo's native split controls.
 
 ---
 
