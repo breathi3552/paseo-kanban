@@ -2,7 +2,7 @@
 
 [简体中文](./README.zh-CN.md)
 
-A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) workspaces.
+A Kanban board plugin for [Paseo](https://paseo.sh) workspaces.
 
 ![Paseo Kanban Board](./assets/marketplace/board-0.1.3.png)
 
@@ -10,39 +10,39 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 
 ## Highlights
 
-- **Swimlane Management**: Manage lanes in one horizontal dialog. Add, rename, and delete immediately; preview ordering with left/right controls or dragging, then save the order. Deleting a lane with unfinished tasks requires confirmation and removes those tasks across all projects; completed tasks are kept.
-- **Task Context Menu**: Right-click a card to edit, move, complete, copy its full prompt, open its source Issue, or delete with confirmation. Left-click no longer opens details; drag anywhere except the checkbox and Send to Agent button.
-- **Drag-and-Drop Interaction**: Fluid intra-lane reordering and cross-lane movement with animated drop-slot displacement, viewport edge auto-scrolling, and smooth drop-in feedback.
-- **Send to Agent**: Send a card's title, description, steps, and source to a new Agent using a host preset. Choose an existing workspace, a new regular workspace, or a new worktree; execution stays independent of board status.
-- **GitHub Issue Import**: One-way import of open issues from the project repository's GitHub origin into a chosen lane, featuring pagination, repository-wide creation-time sorting, automatic deduplication, and source links.
+- **Swimlane management**: Add, rename, and delete lanes in a horizontal dialog. Reorder lanes using the left and right buttons or drag handles, then save the order. Deleting a lane with unfinished tasks requires confirmation and deletes those tasks across all projects. Completed tasks are kept.
+- **Task context menu**: Right-click a card to edit, move, complete, copy the prompt, open the source issue, or delete. Drag a card from anywhere on its surface except the checkbox and the Send to Agent button.
+- **Drag and drop**: Reorder cards within a lane or move cards across lanes. Displays animated slot displacement and scrolls automatically near viewport edges.
+- **Send to Agent**: Send a card's title, description, steps, and source to a new Agent session using a host preset. Select an existing workspace, a new regular workspace, or a new worktree. Agent execution does not update card status.
+- **GitHub issue import**: Import open issues from the project repository's GitHub origin into a selected lane. Includes pagination, repository-wide creation-time sorting, deduplication, and source links.
 
 ---
 
-## Other Features
+## Other features
 
-- **Rich Task Cards**:
-  - Task title and multi-line description editing (with resizable description area).
-  - Subtask checklists with live completion progress tracking.
-  - Link tasks to projects created in Paseo using compact select dropdowns.
-- **Task Completion & Restoration**: Check a card or drag it into the completion lane to finish; uncheck or drag out to restore cards to their original ordinary swimlane.
-- **Workspace Tabs and Splits**: Open the board beside an agent or terminal with Paseo's native split controls, initially filtered to the workspace's project, or use the sidebar entry.
-- **Independent Project Filtering**: Filter cards by specific Paseo projects using custom select dropdowns with search filtering or view unassigned tasks without isolating the shared underlying board data.
-- **Source-Owned UI Component System**: Built on a unified suite of native UI primitives (`Button`, `Input`, `Dialog`, `ConfirmDialog`, `Badge`, `Checkbox`, `Select`) with desktop hover and tactile pressed feedback, zero third-party dependencies, and Paseo dynamic theme adaptation.
-- **Host Storage & Concurrency Protection**: Board data is safely stored in host-scoped plugin settings with optimistic revision checks (CAS) to prevent silent overwrites and preserve form drafts.
+- **Task details and subtasks**:
+  - Edit task titles and multi-line descriptions with a resizable text box.
+  - Track checklist progress with live subtask counters.
+  - Link tasks to Paseo projects with compact select menus.
+- **Task completion and restoration**: Check a card or drag it into the completion lane to finish. Uncheck or drag out of the completion lane to restore the card to its original ordinary swimlane.
+- **Workspace tabs and splits**: Open the board beside an agent or terminal with Paseo's split controls, initially filtered to the workspace project, or open it from the sidebar.
+- **Project filtering**: Filter cards by Paseo project or view unassigned tasks. Includes searchable dropdown lists. Filters are independent per window while sharing the underlying board data.
+- **Native UI components**: Uses local React components (`Button`, `Input`, `Dialog`, `ConfirmDialog`, `Badge`, `Checkbox`, `Select`) styled with Paseo theme CSS variables, with no third-party UI dependencies.
+- **Host storage and concurrency protection**: Stores board data in host-scoped plugin settings. Uses optimistic revision checks (CAS) to prevent silent overwrites and preserve form drafts.
 
 ---
 
 ## Screenshots
 
-### Board Overview
+### Board overview
 
 ![Board Overview](./assets/marketplace/board-0.1.3.png)
 
-### Task Details & Subtasks Checklist
+### Task details and subtasks checklist
 
 ![Task Editor](./assets/marketplace/task-editor-0.1.3.png)
 
-### Workspace Tabs & Split Controls
+### Workspace tabs and split controls
 
 ![Workspace Split](./assets/marketplace/workspace-split-0.1.3.png)
 
@@ -58,17 +58,17 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 
 ## Installation
 
-### Quick Install (Recommended)
+### Quick install (recommended)
 
-Install directly from npm or GitHub:
+Install using the Paseo CLI:
 
-**Via NPM (Release package):**
+**From npm:**
 
 ```bash
 paseo plugin install npm:paseo-kanban
 ```
 
-**Via GitHub:**
+**From GitHub:**
 
 ```bash
 paseo plugin add breathi3552/paseo-kanban
@@ -91,7 +91,7 @@ Open the board from either entry:
 - **Sidebar → Kanban**: shows all tasks by default.
 - **Workspace → `+` → Kanban**: initially filters to the workspace's project, with other filters available; use Paseo's native split controls to place it beside an agent or terminal.
 
-### Local Development
+### Local development
 
 To contribute or debug locally:
 
@@ -107,7 +107,7 @@ paseo plugin link .
 
 ---
 
-## Development & Testing
+## Development and testing
 
 Install dependencies and run the full quality check:
 
@@ -126,7 +126,7 @@ See the [CHANGELOG](./CHANGELOG.md). Each release's npm package and GitHub Relea
 
 ---
 
-## Architecture & Design
+## Architecture and design
 
 Core terminology and design decisions are documented in [`GLOSSARY.md`](./GLOSSARY.md) and [`docs/adr/`](./docs/adr/).
 
