@@ -2,11 +2,11 @@
 
 ## 状态
 
-已接受（弹窗容器体系部分被 [ADR-0009](./0009-source-owned-ui-components-and-dialog-convergence.md) 替代）。实现遵循 [泳道管理规格 (#24)](https://github.com/breathi3552/paseo-kanban/issues/24)。
+已接受。
 
 ## 背景
 
-原有看板的泳道操作分散在各泳道头部，仅支持单一泳道的新增与编辑，不支持横向重排；当泳道内包含任何任务时，删除操作直接报错拒绝。宿主 SDK 0.11.4 提供的标准 Modal 在桌面端固定宽度为 520px，无法容纳看板全部泳道的横向平铺展示。同时，看板采用整板单版本存储（[ADR-0004](./0004-host-board-storage-and-project-references.md)），在多工作区或多端并发场景下，其他会话的任务变动会导致泳道编辑因 revision 不匹配而保存失败。
+原有看板的泳道操作分散在各泳道头部，仅支持单一泳道的新增与编辑，不支持横向重排；当泳道内包含任何任务时，删除操作直接报错拒绝。宿主 SDK 0.11.4 提供的标准 Modal 在桌面端固定宽度为 520px，无法容纳看板全部泳道的横向平铺展示。同时，看板采用整板单版本存储（[ADR-0002](./0002-host-board-storage-and-project-references.md)），在多工作区或多端并发场景下，其他会话的任务变动会导致泳道编辑因 revision 不匹配而保存失败。
 
 为解决上述问题，系统引入集中式泳道管理弹窗，支持横向重排与级联删除，并通过自定义 Web Portal 与细粒度 CAS 保证交互与并发安全。
 
@@ -20,7 +20,7 @@
 
 ### 2. 宽屏 Web Portal 与层级隔离
 
-- 桌面端使用独立打包的 React DOM 19.1.0 `createPortal` 产物（`client/platform/generated/`），将弹窗直接挂载至 `document.body`，突破宿主 520px 宽度限制，支持最大 1120px 视口；窄屏与弹窗体系收敛在 [ADR-0009](./0009-source-owned-ui-components-and-dialog-convergence.md) 中统一为标准 `Dialog`。
+- 桌面端使用独立打包的 React DOM 19.1.0 `createPortal` 产物（`client/platform/generated/`），将弹窗直接挂载至 `document.body`，突破宿主 520px 宽度限制，支持最大 1120px 视口；弹窗体系在 [ADR-0007](./0007-source-owned-ui-components-and-dialog-convergence.md) 中统一收敛为标准 `Dialog`。
 - Portal 容器层级固定为 `z=0`，位于普通应用内容之上，但在宿主 overlay plane（`z=1`）之下，保证宿主全局 Toast 和命令面板正常覆盖在管理弹窗之上。
 - 具备桌面键盘生命周期：Esc 键关闭、Tab 键焦点圈定（Focus Trap）以及弹窗卸载后的焦点恢复。
 - 任务右键菜单沿用相同层级与 Portal 渲染，使用非模态生命周期：不铺阻挡层，外部点击或看板滚动自动关闭菜单。
@@ -28,13 +28,13 @@
 ### 3. 泳道重排的“本地预览”状态机
 
 - 普通泳道支持左右移动按钮与把手手势拖拽两种重排方式；拖拽接近视口边缘时触发自动横向滚动。
-- 区别于任务卡片拖拽的“释放即落位保存”（[ADR-0001](./0001-task-ordering-and-drag-animation.md)），泳道重排采用“本地预览、显式保存”模式。拖拽与移动仅更新本地预览顺序，点击“保存顺序”提交持久化，点击“还原顺序”放弃变动。
+- 区别于任务卡片拖拽的“释放即落位保存”（[ADR-0001](./0001-task-ordering-and-drag-lifecycle.md)），泳道重排采用“本地预览、显式保存”模式。拖拽与移动仅更新本地预览顺序，点击“保存顺序”提交持久化，点击“还原顺序”放弃变动。
 - 存在未保存的排序草稿时，界面拦截新增、重命名与删除操作，防止顺序草稿与结构变动交叉产生状态歧义。
 
 ### 4. 级联删除未完成任务
 
 - 允许删除包含未完成任务的普通泳道。当泳道内存在未完成任务时，弹出二次确认对话框说明影响范围。
-- 确认删除后，原子化清理全板所有项目中归属于该泳道的未完成任务；已完成任务（`task.completed === true`）继续保留在数据集中，其恢复目标回退至最右侧普通泳道（遵循 [ADR-0005](./0005-completion-lane-and-task-restoration.md)）。
+- 确认删除后，原子化清理全板所有项目中归属于该泳道的未完成任务；已完成任务（`task.completed === true`）继续保留在数据集中，其恢复目标回退至最右侧普通泳道（遵循 [ADR-0003](./0003-completion-lane-and-task-restoration.md)）。
 - 最后一条普通泳道及完成泳道继续受到保护，禁止删除。
 
 ### 5. 细粒度 CAS 并发安全重试
@@ -57,5 +57,5 @@
 ## 实现与兼容
 
 - 状态转换函数集中在 `shared/kanban.ts`（`reorderLanes`、`deleteLane`、`requireLaneTitle` 及 `LaneTitleError`）。
-- 交互与生命周期由 `client/modals/lane-management-modal.tsx`、`client/components/ui/dialog.tsx`（已收敛废除旧 `business-dialog.tsx`，见 [ADR-0009](./0009-source-owned-ui-components-and-dialog-convergence.md)）与 `client/lanes/use-lane-reorder.ts` 承载。
+- 交互与生命周期由 `client/modals/lane-management-modal.tsx`、`client/components/ui/dialog.tsx`（见 [ADR-0007](./0007-source-owned-ui-components-and-dialog-convergence.md)）与 `client/lanes/use-lane-reorder.ts` 承载。
 - 看板存储 schema 保持不变（版本 3），无需数据迁移。

@@ -2,8 +2,6 @@
 
 Paseo 任务看板插件的领域模型与通用业务术语表，定义任务流转、泳道组织与拖拽交互的核心概念。
 
-完成状态、普通泳道归属与显示位置的设计取舍记录在 [ADR-0005](./docs/adr/0005-completion-lane-and-task-restoration.md)，完整需求见 [完成泳道规格 (#10)](https://github.com/breathi3552/paseo-kanban/issues/10)。
-
 ## 术语
 
 **看板**：
@@ -59,7 +57,7 @@ _避免使用_：看板、项目
 _避免使用_：独立项目看板
 
 **任务传递**：
-将任务内容转换为提示词直接发送至新建 Agent 会话的单向操作。支持选择已有工作区、新建普通工作区或 worktree，整套应用宿主 Agent 配置，执行状态不回流看板。详见 [ADR-0008](./docs/adr/0008-one-way-task-dispatch-to-agent.md)。
+将任务内容转换为提示词直接发送至新建 Agent 会话的单向操作。支持选择已有工作区、新建普通工作区或 worktree，整套应用宿主 Agent 配置，执行状态不回流看板。
 _避免使用_：自动执行、双向同步
 
 **Agent 配置 (Agent profile)**：
@@ -79,5 +77,5 @@ Paseo 项目本地 Git remote `origin` 对应的 GitHub 仓库，是当前项目
 _避免使用_：任意来源仓库、跨仓库导入
 
 **Issue 导入**：
-从项目关联的 GitHub 仓库单向复制 Open Issue 到指定普通泳道的操作。复制内容包括标题、正文及编号外链。单次导入上限 25 项，已导入的 Issue 自动置灰去重。导入后任务独立管理，不与 GitHub 保持双向状态同步。详见 [ADR-0006](./docs/adr/0006-one-way-github-issue-import.md)。
+从项目关联的 GitHub 仓库单向复制 Open Issue 到指定普通泳道的操作。复制内容包括标题、正文及编号外链。单次导入上限 25 项，已导入的 Issue 自动置灰去重。导入后任务独立管理，不与 GitHub 保持双向状态同步。
 _避免使用_：Issue 同步、双向联动
