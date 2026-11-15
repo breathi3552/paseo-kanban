@@ -4,6 +4,30 @@ All notable changes to Paseo Kanban are documented here in bilingual format (Eng
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), adapted for strictly mirrored bilingual release notes.
 
+## [0.3.3] - 2026-11-15
+
+### Fixes & Improvements
+
+- **Marketplace listing & screenshots**: Added `name`, `description`, `icon`, and `media` metadata to `paseo-plugin.json`, bundled `assets/` in the release package, and updated README and marketplace screenshots with live captures of Send to Agent, drag-and-drop displacement, GitHub issue import, and the task editor.
+- **Documentation clarity**: Reorganized `README.md`, `README.zh-CN.md`, and `OVERVIEW.md` into key features and general capabilities, and consolidated the domain glossary and architecture decision records.
+
+### Compatibility & Migration
+
+- Requires Paseo `>= 0.11.4`.
+- No board data migration required (fully backward compatible).
+
+---
+
+### 修复与优化
+
+- **插件市场清单与实景截图**：在 `paseo-plugin.json` 中补齐 `name`、`description`、`icon` 与 `media` 清单声明并将 `assets/` 纳入发布包；将 README 与插件市场截图替换为实景采集，涵盖发送到 Agent、拖拽位移动画、GitHub Issue 导入与任务详情编辑。
+- **文档清晰度优化**：将 `README.md`、`README.zh-CN.md` 与 `OVERVIEW.md` 重组为核心特性与基础功能，并精简合并领域术语表与架构决策记录。
+
+### 兼容性与迁移
+
+- 依赖 Paseo `>= 0.11.4`。
+- 无需看板数据迁移（完全向后兼容）。
+
 ## [0.3.2] - 2026-11-01
 
 ### Fixes & Improvements
