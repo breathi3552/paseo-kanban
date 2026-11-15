@@ -2,50 +2,50 @@
 
 [简体中文](./README.zh-CN.md)
 
-A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) workspaces.
+A Kanban board plugin for [Paseo](https://paseo.sh) workspaces.
 
-![Paseo Kanban Board](./assets/marketplace/board-0.1.3.png)
-
----
-
-## Highlights
-
-- **Swimlane Management**: Manage lanes in one horizontal dialog. Add, rename, and delete immediately; preview ordering with left/right controls or dragging, then save the order. Deleting a lane with unfinished tasks requires confirmation and removes those tasks across all projects; completed tasks are kept.
-- **Task Context Menu**: Right-click a card to edit, move, complete, copy its full prompt, open its source Issue, or delete with confirmation. Left-click no longer opens details; drag anywhere except the checkbox and Send to Agent button.
-- **Drag-and-Drop Interaction**: Fluid intra-lane reordering and cross-lane movement with animated drop-slot displacement, viewport edge auto-scrolling, and smooth drop-in feedback.
-- **Send to Agent**: Send a card's title, description, steps, and source to a new Agent using a host preset. Choose an existing workspace, a new regular workspace, or a new worktree; execution stays independent of board status.
-- **GitHub Issue Import**: One-way import of open issues from the project repository's GitHub origin into a chosen lane, featuring pagination, repository-wide creation-time sorting, automatic deduplication, and source links.
+![Paseo Kanban Board](./assets/marketplace/board-overview.png)
 
 ---
 
-## Other Features
+## Key features
 
-- **Rich Task Cards**:
-  - Task title and multi-line description editing (with resizable description area).
-  - Subtask checklists with live completion progress tracking.
-  - Link tasks to projects created in Paseo using compact select dropdowns.
-- **Task Completion & Restoration**: Check a card or drag it into the completion lane to finish; uncheck or drag out to restore cards to their original ordinary swimlane.
-- **Workspace Tabs and Splits**: Open the board beside an agent or terminal with Paseo's native split controls, initially filtered to the workspace's project, or use the sidebar entry.
-- **Independent Project Filtering**: Filter cards by specific Paseo projects using custom select dropdowns with search filtering or view unassigned tasks without isolating the shared underlying board data.
-- **Source-Owned UI Component System**: Built on a unified suite of native UI primitives (`Button`, `Input`, `Dialog`, `ConfirmDialog`, `Badge`, `Checkbox`, `Select`) with desktop hover and tactile pressed feedback, zero third-party dependencies, and Paseo dynamic theme adaptation.
-- **Host Storage & Concurrency Protection**: Board data is safely stored in host-scoped plugin settings with optimistic revision checks (CAS) to prevent silent overwrites and preserve form drafts.
+- **Send to Agent**: Send a card's title, description, steps, and source to a new Agent session using a host preset. Select an existing workspace, a new regular workspace, or a new worktree. Agent execution does not update card status.
+- **Drag and drop with displacement animation**: Reorder cards within a lane or move cards across lanes. Displays animated slot displacement in the target lane and scrolls automatically near viewport edges.
+- **GitHub issue import**: Import open issues from the project repository's GitHub origin into a selected lane using daemon `gh` CLI credentials. Includes pagination, repository-wide creation-time sorting, deduplication, and source links.
+
+---
+
+## General features
+
+- **Task details and subtasks**: Edit task titles and multi-line descriptions with a resizable text box, and track checklist progress with live counters. Right-click a card to edit, move, copy the full prompt, open the source issue, or delete.
+- **Swimlane management**: Add, rename, and reorder lanes in a horizontal dialog. Deleting a lane with unfinished tasks requires confirmation to prevent accidental deletion.
+- **Project filtering**: Link tasks to Paseo projects and filter cards by project with searchable dropdown lists. Filters are independent per window while sharing the underlying board data.
+- **Workspace tabs and splits**: Open the board from the sidebar or beside an agent or terminal with Paseo's native split controls.
 
 ---
 
 ## Screenshots
 
-### Board Overview
+### Board overview
 
-![Board Overview](./assets/marketplace/board-0.1.3.png)
+![Board overview](./assets/marketplace/board-overview.png)
 
-### Task Details & Subtasks Checklist
+### Send to Agent
 
-![Task Editor](./assets/marketplace/task-editor-0.1.3.png)
+![Send to Agent](./assets/marketplace/send-to-agent.png)
 
-### Workspace Tabs & Split Controls
+### Drag and drop displacement
 
-![Workspace Split](./assets/marketplace/workspace-split-0.1.3.png)
+![Drag and drop with displacement animation](./assets/marketplace/drag-and-drop.png)
 
+### GitHub issue import
+
+![GitHub issue import](./assets/marketplace/github-issue-import.png)
+
+### Task details and subtasks
+
+![Task details and subtasks](./assets/marketplace/task-editor.png)
 ---
 
 ## Requirements
@@ -58,17 +58,17 @@ A lightweight, responsive Kanban board plugin for [Paseo](https://paseo.sh) work
 
 ## Installation
 
-### Quick Install (Recommended)
+### Quick install (recommended)
 
-Install directly from npm or GitHub:
+Install using the Paseo CLI:
 
-**Via NPM (Release package):**
+**From npm:**
 
 ```bash
 paseo plugin install npm:paseo-kanban
 ```
 
-**Via GitHub:**
+**From GitHub:**
 
 ```bash
 paseo plugin add breathi3552/paseo-kanban
@@ -91,7 +91,7 @@ Open the board from either entry:
 - **Sidebar → Kanban**: shows all tasks by default.
 - **Workspace → `+` → Kanban**: initially filters to the workspace's project, with other filters available; use Paseo's native split controls to place it beside an agent or terminal.
 
-### Local Development
+### Local development
 
 To contribute or debug locally:
 
@@ -107,7 +107,7 @@ paseo plugin link .
 
 ---
 
-## Development & Testing
+## Development and testing
 
 Install dependencies and run the full quality check:
 
@@ -126,7 +126,7 @@ See the [CHANGELOG](./CHANGELOG.md). Each release's npm package and GitHub Relea
 
 ---
 
-## Architecture & Design
+## Architecture and design
 
 Core terminology and design decisions are documented in [`GLOSSARY.md`](./GLOSSARY.md) and [`docs/adr/`](./docs/adr/).
 

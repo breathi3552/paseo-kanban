@@ -1,42 +1,43 @@
 # Kanban
 
-A lightweight, responsive Kanban board plugin for Paseo workspaces.
+A Kanban board plugin for Paseo workspaces.
 
-## Features
+## Key features
 
-- **Task context menu**: Right-click a card to edit, move, complete, copy its full prompt, open its source Issue, or confirm deletion. Desktop left-click no longer opens details; the checkbox and Send to Agent button remain independent of card dragging.
-- **Send to Agent**: Send task context to a new Agent using a Paseo preset in an existing workspace, new regular workspace, or new worktree. Agent execution does not update task status.
-- **GitHub issue import**: Import up to 25 open issues from the project’s GitHub.com origin into a chosen lane. Tasks remain independent and link back to their source. Requires Git and an authenticated `gh` on the daemon machine.
-- **Flexible swimlanes**: Add, rename, and delete in one horizontal dialog. Preview lane order with left/right controls or dragging, then save. Deleting a populated lane requires confirmation and removes unfinished tasks across all projects; completed tasks are kept.
-- **Rich task cards**: Edit task titles and multi-line descriptions, manage subtask checklists, and link tasks to Paseo projects with compact dropdown selectors.
-- **Unified UI primitives**: Built on a source-owned primitive library (`Button`, `Input`, `Dialog`, `ConfirmDialog`, `Badge`, `Checkbox`, `Select`) with full desktop feedback and theme adaptation.
-- **Task completion**: Check a card or drag it into the completion lane to finish; uncheck or drag out to restore.
-- **Workspace tabs and splits**: Open the board beside an agent or terminal with Paseo's native split controls, initially filtered to the workspace's project, or use the sidebar entry.
-- **Smooth drag and drop**: Support intra-lane reordering and cross-lane movement.
+- **Send to Agent**: Send task context to a new Agent session using a host preset in an existing workspace, a new regular workspace, or a new worktree. Agent execution does not update task status.
+- **Drag and drop with displacement animation**: Reorder cards within a lane or move cards across lanes with animated slot displacement and edge auto-scrolling.
+- **GitHub issue import**: Import up to 25 open issues per batch from the project's GitHub repository into a selected lane. Includes deduplication, creation-time sorting, and source links.
+
+## General features
+
+- **Task details and subtasks**: Edit task titles and multi-line descriptions, manage subtask checklists, and link tasks to Paseo projects with compact dropdown menus. Right-click a card to edit, move, copy the prompt, open the source issue, or delete.
+- **Flexible swimlanes**: Add, rename, and reorder lanes in a horizontal dialog with deletion confirmation for populated lanes.
+- **Workspace tabs and splits**: Open the board beside an agent or terminal with Paseo's split controls, initially filtered to the workspace project, or use the sidebar entry.
 
 ## Storage and requirements
 
-- **Data and privacy**: Board data is stored locally in host-scoped plugin settings with revision checks for concurrent edits. Core board use requires no external service; optional GitHub import reads GitHub using the daemon machine’s existing `gh` authentication and copies selected issue content into local settings.
+- **Data and privacy**: Stores board data in host-scoped plugin settings. Optional GitHub import reads GitHub using the daemon machine's existing `gh` authentication and copies selected issue content into local settings.
 - **Host requirement**: Paseo 0.11.4 or later.
 
 ---
 
 # 看板 (Kanban)
 
-专为 Paseo 工作区打造的轻量响应式看板插件。
+Paseo 工作区的任务看板插件。
 
-## 核心功能
+## 核心特性
 
-- **任务右键菜单**：右键卡片可编辑、移动、完成、复制完整提示词、打开来源 Issue 或确认删除。桌面左键单击不再打开详情，checkbox 与发送按钮保持独立，不参与卡片拖拽。
-- **发送到 Agent**：选择 Paseo 预设，在已有工作区、新建普通工作区或 worktree 中新建 Agent 并直接发送任务上下文；Agent 执行不修改任务状态。
-- **GitHub Issue 导入**：从项目的 GitHub.com origin 选择 Open Issues，每次最多导入 25 项到指定泳道；任务独立管理并保留外链。需要在 daemon 所在机器安装 Git 并登录 `gh`。
-- **灵活的泳道管理**：在横向弹窗中增删改，通过左右按钮或拖动预览排列，再保存顺序。含任务的泳道经确认后连同所有项目中的未完成任务删除，已完成任务保留。
-- **丰富的任务卡片**：支持任务标题与多行描述编辑、子步骤清单管理，以及通过下拉框关联 Paseo 项目。
-- **源码级统一组件体系**：全看板统一基于自研原子组件体系（`Button`、`Input`、`Dialog`、`ConfirmDialog`、`Badge`、`Checkbox`、`Select`），补齐桌面端交互反馈与主题自适应。
-- **工作区标签页与分屏**：支持通过 Paseo 原生分屏控件与 Agent、Terminal 并排打开，默认筛选工作区所属项目，或使用侧边栏入口。
-- **流畅拖拽交互**：支持同泳道排序与跨泳道状态流转。
+- **发送到 Agent**：选择宿主预设并在已有工作区、新建普通工作区或 worktree 中启动新 Agent，直接发送任务上下文。Agent 执行不修改任务状态。
+- **拖拽交互与位移动画**：支持同泳道拖拽排序与跨泳道移动。移动过程中目标泳道展示平滑的占位槽避让动画，拖拽靠近视口边缘时自动滚动。
+- **GitHub Issue 导入**：从项目关联的 GitHub 仓库单向导入 Open Issue 到指定泳道，单次上限 25 项。导入后任务独立管理并保留外链。该功能要求运行 Paseo daemon 的机器已安装 Git 并完成 `gh auth login`。
 
-## 存储与要求
+## 基础功能
 
-- **数据与隐私**：看板数据保存在宿主本地插件设置中，具备版本并发冲突保护（CAS）。看板基础功能无需外部服务；可选的 GitHub 导入使用 daemon 所在机器的 `gh` 登录态读取 GitHub，并将选中的 Issue 内容复制到本地设置。
+- **任务详情与子步骤**：支持任务标题与多行描述编辑、子步骤清单管理，以及通过下拉框关联 Paseo 项目。右键卡片可快速编辑、流转、复制提示词、跳转来源 Issue 与删除。
+- **灵活的泳道管理**：在横向弹窗中添加、重命名与调整泳道顺序。删除含有未完成任务的泳道需要二次确认，避免误删。
+- **工作区标签页与分屏**：支持通过 Paseo 原生分屏控件与 Agent、终端并排展示。默认自动筛选当前工作区项目，也可通过侧边栏独立打开。
+
+## 存储与环境要求
+
+- **数据与隐私**：看板数据保存在宿主本地插件设置中。可选的 GitHub 导入使用 daemon 所在机器的 `gh` 登录态读取 GitHub，并将选中的 Issue 内容复制到本地设置。
 - **宿主要求**：Paseo 0.11.4 或更高版本。
